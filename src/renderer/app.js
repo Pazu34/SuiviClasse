@@ -324,6 +324,7 @@ function importDialog(c) {
         if (!roles.includes('nom') && !roles.includes('nomprenom')) { err.textContent = 'Associez au moins une colonne à « Nom » ou « Nom et prénom ».'; return; }
         const rep = X.applyTable(state.classes, rows, importOpts(roles));
         state.classes.forEach(sortStudents);
+        if (rep.createdClasses) state.classes.sort((x, y) => collator.compare(x.nom, y.nom));
         if (!cls() && state.classes.length) state.ui.classe = state.classes[0].id;
         commit(); close(); render();
         const lines = [`${rep.created} élève(s) créé(s), ${rep.updated} mis à jour, ${rep.unchanged} inchangé(s)` + (rep.createdClasses ? `, ${rep.createdClasses} classe(s) créée(s)` : '') + '.'];

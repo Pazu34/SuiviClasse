@@ -15,6 +15,9 @@ contextBridge.exposeInMainWorld('api', {
   changePassword: (o, n, data) => call('vault:changePassword', o, n, data),
   openDir: () => call('vault:openDir'),
   chooseDir: () => call('vault:chooseDir'),
+  getPrefs: () => call('prefs:get'),
+  setPrefs: values => call('prefs:set', values),
+  resetPrefs: () => call('prefs:reset'),
   exportFile: (name, content, filters) => call('file:export', name, content, filters),
   importFile: filters => call('file:import', filters),
 });

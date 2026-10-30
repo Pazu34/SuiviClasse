@@ -5,7 +5,6 @@ const $app = document.getElementById('app');
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 const TYPES = { seance: 'Séance', travail: 'Travail non fait', oubli: 'Oubli de matériel' };
 const MIN_PW = 8;
-const AUTO_LOCK_MS = 15 * 60 * 1000;
 
 function h(tag, attrs, ...children) {
   const el = document.createElement(tag);
@@ -23,11 +22,12 @@ const fmtDate = iso => new Date(iso).toLocaleString('fr-FR', { dateStyle: 'short
 const collator = new Intl.Collator('fr', { sensitivity: 'base' });
 
 function newData() {
-  return { version: 1, settings: { annee: '', seuilOubli: 3, seuilTravail: 3 }, classes: [], ui: { classe: null, trimestre: 1 } };
+  return { version: 1, settings: { annee: '' }, classes: [], ui: { classe: null, trimestre: 1 } };
 }
 
 /* ---------- état ---------- */
 let state = null;        // données déchiffrées
+let prefs = null;        // { values, schema, file } : préférences (fichier preferences.json)
 let password = null;     // gardé en mémoire uniquement le temps de la session (pour le changement de mot de passe)
 let saveTimer = null, lockTimer = null, dirty = false;
 let search = '';
@@ -59,7 +59,8 @@ async function flush() {
 }
 function resetIdle() {
   clearTimeout(lockTimer);
-  if (state) lockTimer = setTimeout(() => lockApp(), AUTO_LOCK_MS);
+  const min = prefs ? prefs.values.autoLockMinutes : 15;
+  if (state && min > 0) lockTimer = setTimeout(() => lockApp(), min * 60 * 1000);
 }
 ['click', 'keydown', 'mousemove'].forEach(ev => document.addEventListener(ev, resetIdle, { passive: true }));
 
@@ -91,6 +92,7 @@ async function showLogin(message) {
       password = pw.value;
       state.ui = state.ui || { classe: null, trimestre: 1 };
       if (!cls() && state.classes.length) state.ui.classe = state.classes[0].id;
+      prefs = await window.api.getPrefs();
       resetIdle();
       render();
     } catch (e) { err.textContent = e.message; }
@@ -125,7 +127,8 @@ function render() {
       h('div', { class: 'tri' }, [1, 2, 3].map(t => h('button', { class: t === tri() ? 'active' : '', onclick: () => { state.ui.trimestre = t; render(); } }, 'T' + t))),
       h('input', { type: 'search', placeholder: 'Rechercher un élève…', value: search, oninput: e => { search = e.target.value; renderTable(); } }),
       h('span', { id: 'saved' }, dirty ? 'Modifié…' : 'Enregistré ✓'),
-      h('button', { onclick: showSettings }, '⚙ Paramètres'),
+      h('button', { onclick: showPrefs, title: 'Préférences (Ctrl+,)' }, '⚙ Préférences'),
+      h('button', { onclick: showSettings }, '🗂 Données'),
       h('button', { onclick: lockApp }, '🔒 Verrouiller')),
     h('div', { class: 'main' }, c ? classView(c) : h('div', { class: 'empty' }, 'Aucune classe. Cliquez sur « ＋ Classe » pour commencer.')));
   if (c) renderTable();
@@ -143,9 +146,9 @@ function classView(c) {
     h('div', { class: 'wrap' }, h('table', { id: 'tbl' })));
 }
 
-function counter(s, type, t, thr) {
+function counter(s, type, t, orange, rouge) {
   const n = count(s, type, t);
-  const cl = n >= thr ? 'bad' : n >= thr - 1 && n > 0 ? 'warn' : n === 0 ? 'ok' : '';
+  const cl = n >= rouge ? 'bad' : n >= orange ? 'warn' : n === 0 ? 'ok' : '';
   return h('span', { class: 'counter ' + cl },
     h('button', { title: 'Retirer le dernier', onclick: () => removeLast(s, type, t) }, '−'),
     h('b', {}, String(n)),
@@ -155,8 +158,8 @@ function seanceCell(s, t) {
   const { plus, moins } = seance(s, t);
   const btn = (v, label) => h('button', { onclick: () => addEvent(s, 'seance', t, v) }, label);
   return [
-    h('td', {}, h('span', { class: 'counter ' + (plus >= 3 ? 'ok' : '') }, btn(0.5, '+0,5'), btn(1, '+1'), h('b', {}, fmt(plus)))),
-    h('td', {}, h('span', { class: 'counter ' + (moins <= -2 ? 'bad' : moins < 0 ? 'warn' : '') }, btn(-0.5, '−0,5'), btn(-1, '−1'), h('b', {}, fmt(moins)))),
+    h('td', {}, h('span', { class: 'counter ' + (plus >= prefs.values.seancePlusVert ? 'ok' : '') }, btn(0.5, '+0,5'), btn(1, '+1'), h('b', {}, fmt(plus)))),
+    h('td', {}, h('span', { class: 'counter ' + (moins <= -prefs.values.seanceMoinsRouge ? 'bad' : moins < 0 ? 'warn' : '') }, btn(-0.5, '−0,5'), btn(-1, '−1'), h('b', {}, fmt(moins)))),
   ];
 }
 
@@ -185,8 +188,8 @@ function renderTable() {
         [1, 2, 3].map(k => h('td', {}, noteInput(s, k))),
         h('td', {}, m == null ? '' : fmt(m)),
         seanceCell(s, t),
-        h('td', {}, counter(s, 'travail', t, state.settings.seuilTravail)),
-        h('td', {}, counter(s, 'oubli', t, state.settings.seuilOubli)),
+        h('td', {}, counter(s, 'travail', t, prefs.values.travailOrange, prefs.values.travailRouge)),
+        h('td', {}, counter(s, 'oubli', t, prefs.values.oubliOrange, prefs.values.oubliRouge)),
         h('td', {}, h('input', { class: 'comm', value: s.comms[t], placeholder: 'Commentaire pour le bulletin…', onchange: e => { s.comms[t] = e.target.value; commit(); } })));
     })),
     h('tfoot', {}, h('tr', {}, h('td', { colspan: 4 }, 'Moyenne de la classe'),
@@ -302,27 +305,47 @@ function showStudent() {
 }
 
 /* ---------- paramètres ---------- */
+function showPrefs() {
+  if (!prefs || document.querySelector('.modal.prefs')) return;
+  const inputs = {};
+  const groups = [...new Set(prefs.schema.map(f => f.group))];
+  const msg = h('div', { class: 'error' });
+  const body = h('div', {}, groups.map(g => h('fieldset', {}, h('legend', {}, g),
+    prefs.schema.filter(f => f.group === g).map(f => {
+      inputs[f.key] = h('input', { type: 'number', min: f.min, max: f.max, step: f.type === 'int' ? 1 : 0.5, value: prefs.values[f.key] });
+      return h('div', { class: 'pref' }, h('label', {}, f.label), inputs[f.key], h('span', { class: 'muted' }, f.unit || ''));
+    }))),
+    h('p', { class: 'muted', style: 'font-size:12px' }, 'Réglages enregistrés dans : ' + prefs.file), msg);
+  const apply = async (call, close) => {
+    try { prefs = await call(); resetIdle(); close(); render(); }
+    catch (e) { msg.textContent = e.message; }
+  };
+  const close = modal('Préférences', body, close => [
+    h('button', { onclick: () => { if (confirm('Revenir aux réglages par défaut ?')) apply(() => window.api.resetPrefs(), close); } }, 'Valeurs par défaut'),
+    h('span', { class: 'spacer' }), h('button', { onclick: close }, 'Annuler'),
+    h('button', { class: 'primary', onclick: () => {
+      const v = Object.fromEntries(prefs.schema.map(f => [f.key, inputs[f.key].value]));
+      apply(() => window.api.setPrefs(v), close);
+    } }, 'Enregistrer')]);
+  body.closest('.modal').classList.add('prefs');
+}
+document.addEventListener('keydown', e => { if (e.ctrlKey && e.key === ',') { e.preventDefault(); showPrefs(); } });
+
 function showSettings() {
-  const num = (v) => h('input', { type: 'number', min: 1, value: v });
-  const o = num(state.settings.seuilOubli), w = num(state.settings.seuilTravail);
   const annee = h('input', { value: state.settings.annee, placeholder: 'ex. 2026-2027' });
   const cur = h('input', { type: 'password', autocomplete: 'off' }), n1 = h('input', { type: 'password', autocomplete: 'off' }), n2 = h('input', { type: 'password', autocomplete: 'off' });
   const msg = h('div', { class: 'error' });
-  modal('Paramètres', h('div', {},
+  modal('Données et mot de passe', h('div', {},
     h('label', {}, 'Année scolaire'), annee,
-    h('label', {}, 'Seuil d’alerte « oublis de matériel » (rouge à partir de…)'), o,
-    h('label', {}, 'Seuil d’alerte « travail non fait » (rouge à partir de…)'), w,
     h('h3', { style: 'margin-top:20px' }, 'Changer le mot de passe'),
     h('label', {}, 'Mot de passe actuel'), cur, h('label', {}, 'Nouveau mot de passe'), n1, h('label', {}, 'Confirmer'), n2, msg,
-    h('p', { class: 'muted', style: 'font-size:12px' }, 'Verrouillage automatique après 15 minutes d’inactivité. Sauvegardes quotidiennes chiffrées dans le sous-dossier « sauvegardes ».')),
+    h('p', { class: 'muted', style: 'font-size:12px' }, 'Sauvegardes quotidiennes chiffrées dans le sous-dossier « sauvegardes ».')),
     close => [
       h('button', { onclick: () => window.api.openDir() }, 'Ouvrir le dossier des données'),
       h('span', { class: 'spacer' }), h('button', { onclick: close }, 'Fermer'),
       h('button', { class: 'primary', onclick: async () => {
         msg.textContent = '';
         state.settings.annee = annee.value.trim();
-        state.settings.seuilOubli = Math.max(1, parseInt(o.value) || 3);
-        state.settings.seuilTravail = Math.max(1, parseInt(w.value) || 3);
         try {
           if (n1.value || cur.value) {
             if (n1.value.length < MIN_PW) throw new Error(`Le nouveau mot de passe doit contenir au moins ${MIN_PW} caractères.`);

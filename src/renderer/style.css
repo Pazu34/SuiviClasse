@@ -76,3 +76,10 @@ tfoot td { font-weight: 600; background: #f5f6fa; position: sticky; bottom: 0; }
 .modal .actions { margin-top: 14px; display: flex; gap: 8px; justify-content: flex-end; }
 .empty { padding: 40px; text-align: center; color: var(--muted); }
 @media print { .top, .classbar button, .drawer button { display: none; } .wrap { max-height: none; } }
+
+fieldset { border: 1px solid var(--line); border-radius: 8px; margin: 0 0 12px; padding: 6px 12px 10px; }
+legend { font-weight: 600; padding: 0 6px; }
+.pref { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.pref label { flex: 1; margin: 0; font-weight: 400; }
+.modal .pref input { width: 80px; text-align: center; }
+.modal.prefs { max-height: 85vh; overflow: auto; }

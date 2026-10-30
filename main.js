@@ -3,6 +3,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron')
 const fs = require('fs');
 const path = require('path');
 const { Vault } = require('./src/vault');
+const { Prefs } = require('./src/prefs');
 
 // Dossier de données : à côté de l'exécutable portable (clé USB), sinon dans ./donnees.
 const baseDir = process.env.PORTABLE_EXECUTABLE_DIR || (app.isPackaged ? path.dirname(process.execPath) : __dirname);
@@ -21,6 +22,7 @@ function dataDir() {
 app.setPath('userData', path.join(dataDir(), '.electron'));
 
 let vault = new Vault(dataDir());
+let prefs = new Prefs(dataDir());
 let win;
 
 function createWindow() {
@@ -52,9 +54,13 @@ handle('vault:chooseDir', async () => {
   if (r.canceled) return null;
   vault.lock();
   vault = new Vault(r.filePaths[0]);
+  prefs = new Prefs(r.filePaths[0]);
   try { fs.writeFileSync(configFile, JSON.stringify({ dataDir: r.filePaths[0] }, null, 2)); } catch { /* clé en lecture seule */ }
   return { exists: vault.exists(), dir: vault.dir };
 });
+handle('prefs:get', () => prefs.describe());
+handle('prefs:set', values => { prefs.set(values); return prefs.describe(); });
+handle('prefs:reset', () => { prefs.reset(); return prefs.describe(); });
 handle('file:export', async (suggestedName, content, filters) => {
   const r = await dialog.showSaveDialog(win, { defaultPath: suggestedName, filters });
   if (r.canceled || !r.filePath) return null;

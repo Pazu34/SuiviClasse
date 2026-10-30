@@ -1,0 +1,25 @@
+{
+  "name": "suivi-classe",
+  "productName": "SuiviClasse",
+  "version": "1.0.0",
+  "description": "Suivi quotidien des élèves (notes, commentaires, oublis, travail, implication), données chiffrées, version portable.",
+  "main": "main.js",
+  "license": "GPL-3.0-or-later",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test \"test/*.test.js\"",
+    "dist": "electron-builder --win portable --x64"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "fr.suiviclasse.app",
+    "productName": "SuiviClasse",
+    "files": ["main.js", "preload.js", "src/**/*"],
+    "directories": { "output": "dist" },
+    "win": { "target": [{ "target": "portable", "arch": ["x64"] }], "artifactName": "SuiviClasse-portable.exe" },
+    "portable": { "artifactName": "SuiviClasse-portable.exe" }
+  }
+}

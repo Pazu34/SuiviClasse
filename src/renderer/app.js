@@ -140,8 +140,8 @@ function classView(c) {
   return h('div', {},
     h('div', { class: 'classbar' },
       h('h2', {}, c.nom, h('span', { class: 'muted', style: 'font-size:13px;font-weight:400' }, ` — ${c.eleves.length} élèves`)),
-      h('button', { onclick: () => addStudentsDialog(c) }, '＋ Ajouter des élèves'),
-      h('button', { onclick: () => exportClass(c) }, '⭳ Export CSV (bulletins)'),
+      h('button', { onclick: () => importDialog(c) }, '⭳ Importer / ajouter des élèves…'),
+      h('button', { onclick: () => exportDialog(c) }, '⭱ Exporter (PRONOTE, tableur)…'),
       h('button', { onclick: () => renameClass(c) }, 'Renommer'),
       h('button', { class: 'danger', onclick: () => deleteClass(c) }, 'Supprimer la classe')),
     h('div', { class: 'wrap' }, h('table', { id: 'tbl' })));
@@ -162,6 +162,18 @@ function seanceCell(s, t) {
     h('td', {}, h('span', { class: 'counter ' + (plus >= prefs.values.seancePlusVert ? 'ok' : '') }, btn(0.5, '+0,5'), btn(1, '+1'), h('b', {}, fmt(plus)))),
     h('td', {}, h('span', { class: 'counter ' + (moins <= -prefs.values.seanceMoinsRouge ? 'bad' : moins < 0 ? 'warn' : '') }, btn(-0.5, '−0,5'), btn(-1, '−1'), h('b', {}, fmt(moins)))),
   ];
+}
+
+function overClass(el, len) {
+  const max = prefs.values.appreciationMax;
+  el.classList.toggle('over', len > max);
+  el.title = len > max ? `${len} caractères : dépasse la limite de ${max} (PRONOTE)` : `${len} / ${max} caractères`;
+}
+function commentInput(s, t) {
+  const el = h('input', { class: 'comm', value: s.comms[t], placeholder: 'Commentaire pour le bulletin…',
+    oninput: e => overClass(e.target, e.target.value.length), onchange: e => { s.comms[t] = e.target.value; commit(); } });
+  overClass(el, s.comms[t].length);
+  return el;
 }
 
 function renderTable() {
@@ -191,7 +203,7 @@ function renderTable() {
         seanceCell(s, t),
         h('td', {}, counter(s, 'travail', t, prefs.values.travailOrange, prefs.values.travailRouge)),
         h('td', {}, counter(s, 'oubli', t, prefs.values.oubliOrange, prefs.values.oubliRouge)),
-        h('td', {}, h('input', { class: 'comm', value: s.comms[t], placeholder: 'Commentaire pour le bulletin…', onchange: e => { s.comms[t] = e.target.value; commit(); } })));
+        h('td', {}, commentInput(s, t)));
     })),
     h('tfoot', {}, h('tr', {}, h('td', { colspan: 4 }, 'Moyenne de la classe'),
       [1, 2, 3].map(k => { const v = c.eleves.map(s => s.notes[k]).filter(n => n != null); return h('td', {}, v.length ? fmt(v.reduce((a, b) => a + b) / v.length) : ''); }),
@@ -238,27 +250,73 @@ function deleteClass(c) {
   state.ui.classe = state.classes[0]?.id || null; commit(); render();
 }
 
-function parseStudents(text) {
-  return text.split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => {
-    const parts = l.split(/[;\t]/).map(x => x.trim());
-    if (parts.length >= 2) return { nom: parts[0], prenom: parts[1], infos: parts[2] || '' };
-    const w = l.split(/\s+/);                       // « DUPONT Marie » : mots en capitales = nom
-    let i = 0; while (i < w.length - 1 && w[i] === w[i].toUpperCase()) i++;
-    return i === 0 ? { nom: w[0], prenom: w.slice(1).join(' '), infos: '' } : { nom: w.slice(0, i).join(' '), prenom: w.slice(i).join(' '), infos: '' };
-  }).filter(x => x.nom);
+function copyText(text) {
+  return navigator.clipboard.writeText(text).catch(() => {
+    const t = h('textarea', { style: 'position:fixed;opacity:0' }, text); document.body.append(t); t.select(); document.execCommand('copy'); t.remove();
+  });
 }
-function addStudentsDialog(c) {
-  const ta = h('textarea', { rows: 10, placeholder: 'Un élève par ligne :\nDUPONT Marie\nMARTIN;Paul;PAI asthme' });
-  modal(`Ajouter des élèves à ${c.nom}`,
-    h('div', {}, h('p', { class: 'muted' }, 'Collez la liste (depuis Excel par exemple) : « NOM Prénom », ou colonnes NOM ; Prénom ; Infos.'), ta),
-    close => [
-      h('button', { onclick: async () => { const t = await window.api.importFile([{ name: 'Texte / CSV', extensions: ['csv', 'txt'] }]); if (t) ta.value += (ta.value ? '\n' : '') + t; } }, 'Importer un fichier CSV…'),
-      h('span', { class: 'spacer' }), h('button', { onclick: close }, 'Annuler'),
+
+function importDialog(c) {
+  const X = Exchange;
+  let rows = [];
+  const roleSelects = [];
+  const ta = h('textarea', { rows: 5, placeholder: 'Collez ici (Ctrl+V) des colonnes copiées depuis PRONOTE ou un tableur…\nUne simple liste « NOM Prénom » (une ligne par élève) fonctionne aussi.' });
+  const delimSel = h('select', {}, [['', 'Séparateur : automatique'], ['\t', 'Tabulation'], [';', 'Point-virgule'], [',', 'Virgule']].map(([v, l]) => h('option', { value: v }, l)));
+  const skip = h('input', { type: 'number', min: 0, value: 0, style: 'width:64px' });
+  const create = h('input', { type: 'checkbox', checked: c.eleves.length === 0 });
+  const preview = h('div', { class: 'wrap', style: 'max-height:260px;margin-top:8px' });
+  const info = h('div', { class: 'muted', style: 'margin-top:6px' });
+  const err = h('div', { class: 'error' });
+
+  const drawPreview = () => {
+    roleSelects.length = 0;
+    const n = Math.max(0, ...rows.map(r => r.length)), k = parseInt(skip.value) || 0;
+    if (!rows.length) { preview.replaceChildren(); info.textContent = ''; return; }
+    const head = h('tr', {}, Array.from({ length: n }, (_, i) => {
+      const sel = h('select', {}, X.ROLES.map(([v, l]) => h('option', { value: v }, l)));
+      sel.value = roleSelects[i]?.value || guessed[i] || 'ignore'; roleSelects.push(sel); return h('th', {}, sel);
+    }));
+    preview.replaceChildren(h('table', {}, h('thead', {}, head), h('tbody', {}, rows.slice(0, 8).map((r, ri) =>
+      h('tr', { style: ri < k ? 'opacity:.45' : '' }, Array.from({ length: n }, (_, i) => h('td', {}, r[i] || '')))))));
+    info.textContent = `${Math.max(0, rows.length - k)} ligne(s) à importer sur ${rows.length}. Associez chaque colonne à une rubrique ; les lignes grisées (titres) sont ignorées.`;
+  };
+  let guessed = [];
+  const analyse = () => {
+    err.textContent = '';
+    rows = X.parseTable(ta.value, delimSel.value || undefined);
+    if (!rows.length) { drawPreview(); return; }
+    const hasHeader = X.looksLikeHeader(rows[0]);
+    skip.value = hasHeader ? 1 : 0;
+    const n = Math.max(...rows.map(r => r.length));
+    guessed = hasHeader ? rows[0].map(x => X.guessRole(x, tri())) : Array.from({ length: n }, (_, i) => n === 1 ? 'nomprenom' : ['nom', 'prenom', 'infos'][i] || 'ignore');
+    while (guessed.length < n) guessed.push('ignore');
+    drawPreview();
+  };
+  ta.addEventListener('input', analyse); delimSel.addEventListener('change', analyse); skip.addEventListener('input', drawPreview);
+
+  const close = modal(`Importer dans ${c.nom}`, h('div', {},
+    h('p', { class: 'muted' }, 'Dans PRONOTE, le bouton de copie en haut à droite d’une liste (ou du tableau de notes) place les données dans le presse-papiers : collez-les ici. Un fichier texte exporté de PRONOTE ou d’Excel convient aussi.'),
+    ta,
+    h('div', { class: 'row' }, h('button', { onclick: async () => {
+      try { const t = await window.api.importFile([{ name: 'Texte / CSV', extensions: ['txt', 'csv', 'tsv'] }]); if (t != null) { ta.value = t; analyse(); } } catch (e) { err.textContent = e.message; }
+    } }, 'Ouvrir un fichier…'), delimSel, h('label', { style: 'min-width:0;font-weight:400' }, 'Ne pas importer les ', skip, ' premières lignes')),
+    preview, info,
+    h('label', { style: 'font-weight:400' }, create, ' Créer les élèves absents de la classe (sinon, seuls les élèves existants sont mis à jour)'),
+    err), close => [
+      h('button', { onclick: close }, 'Annuler'),
       h('button', { class: 'primary', onclick: () => {
-        const list = parseStudents(ta.value);
-        list.forEach(x => c.eleves.push(newStudent(x.nom, x.prenom, x.infos)));
-        sortStudents(c); commit(); close(); render();
-      } }, 'Ajouter')]);
+        const roles = roleSelects.map(x => x.value);
+        if (!roles.includes('nom') && !roles.includes('nomprenom')) { err.textContent = 'Associez au moins une colonne à « Nom » ou « Nom et prénom ».'; return; }
+        const rep = X.applyTable(state.classes, rows, { roles, skip: parseInt(skip.value) || 0, classId: c.id, createStudents: create.checked,
+          newStudent, newClass: nom => ({ id: uid(), nom, eleves: [] }) });
+        state.classes.forEach(sortStudents); commit(); close(); render();
+        const lines = [`${rep.created} élève(s) créé(s), ${rep.updated} mis à jour, ${rep.unchanged} inchangé(s)` + (rep.createdClasses ? `, ${rep.createdClasses} classe(s) créée(s)` : '') + '.'];
+        if (rep.unmatched.length) lines.push(`Non trouvés (ignorés) : ${rep.unmatched.slice(0, 15).join(', ')}${rep.unmatched.length > 15 ? '…' : ''}`);
+        if (rep.invalid.length) lines.push(`Valeurs de note non reconnues (ignorées) : ${rep.invalid.slice(0, 10).join(' ; ')}`);
+        alert(lines.join('\n\n'));
+      } }, 'Importer')]);
+  document.querySelector('.modal:last-of-type').classList.add('wide');
+  ta.focus();
 }
 
 /* ---------- fiche élève ---------- */
@@ -287,7 +345,12 @@ function showStudent() {
           if (raw === '') s.notes[k] = null; else if (n == null || n < 0 || n > 20) { alert('Note invalide (0 à 20).'); return; } else s.notes[k] = n;
           commit(); renderTable(); } }),
         h('span', { class: 'muted' }, `Séance + ${fmt(seance(s, k).plus)} · − ${fmt(seance(s, k).moins)} · travail ${count(s, 'travail', k)} · oublis ${count(s, 'oubli', k)}`)),
-      h('textarea', { rows: 3, placeholder: `Commentaire du trimestre ${k}`, onchange: e => { s.comms[k] = e.target.value; commit(); renderTable(); } }, s.comms[k]))),
+      (() => {
+        const cnt = h('div', { class: 'muted', style: 'text-align:right;font-size:12px' });
+        const upd = len => { cnt.textContent = `${len} / ${prefs.values.appreciationMax}`; cnt.classList.toggle('over', len > prefs.values.appreciationMax); };
+        const ta = h('textarea', { rows: 3, placeholder: `Commentaire du trimestre ${k}`, oninput: e => upd(e.target.value.length), onchange: e => { s.comms[k] = e.target.value; commit(); renderTable(); } }, s.comms[k]);
+        upd(s.comms[k].length); return [ta, cnt];
+      })())),
     h('h3', {}, `Journal du trimestre ${t}`),
     noteIn,
     h('div', { class: 'row' }, quick('seance', 0.5, 'Séance +0,5'), quick('seance', 1, 'Séance +1'), quick('seance', -0.5, 'Séance −0,5'), quick('seance', -1, 'Séance −1'),
@@ -360,20 +423,37 @@ function showSettings() {
 }
 
 /* ---------- export ---------- */
-function exportClass(c) {
-  const q = v => `"${String(v ?? '').replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`;
-  const head = ['n°', 'Nom', 'Prénom', 'Infos'];
-  for (const t of [1, 2, 3]) head.push(`T${t} note`, `T${t} séance +`, `T${t} séance −`, `T${t} travail non fait`, `T${t} oublis`, `T${t} commentaire`);
-  head.push('Moyenne');
-  const lines = [head.map(q).join(';')];
-  c.eleves.forEach((s, i) => {
-    const row = [i + 1, s.nom, s.prenom, s.infos];
-    for (const t of [1, 2, 3]) { const se = seance(s, t); row.push(s.notes[t] == null ? '' : fmt(s.notes[t]), fmt(se.plus), fmt(se.moins), count(s, 'travail', t), count(s, 'oubli', t), s.comms[t]); }
-    const m = moyenne(s); row.push(m == null ? '' : fmt(m));
-    lines.push(row.map(q).join(';'));
-  });
-  window.api.exportFile(`bulletins-${c.nom}.csv`, '﻿' + lines.join('\r\n'), [{ name: 'CSV (Excel)', extensions: ['csv'] }])
-    .then(p => { if (p) alert('Fichier enregistré :\n' + p + '\n\nAttention : il n’est pas chiffré.'); });
+function exportDialog(c) {
+  const X = Exchange;
+  const tSel = h('select', {}, [1, 2, 3].map(t => h('option', { value: t }, `Trimestre ${t}`))); tSel.value = tri();
+  const defaults = ['nom', 'prenom', 'note', 'comm'];
+  const boxes = X.EXPORT_FIELDS.map(([k, l]) => ({ k, el: h('input', { type: 'checkbox', checked: defaults.includes(k) }), l }));
+  const header = h('input', { type: 'checkbox', checked: true });
+  const sep = h('select', {}, [['\t', 'Tabulation (collage PRONOTE / Excel)'], [';', 'Point-virgule (CSV)']].map(([v, l]) => h('option', { value: v }, l)));
+  const warn = h('div', { class: 'error' }), msg = h('div', { class: 'muted' });
+  const build = () => {
+    const fields = boxes.filter(b => b.el.checked).map(b => b.k);
+    if (!fields.length) { warn.textContent = 'Cochez au moins un champ.'; return null; }
+    const r = X.buildExport(c, { fields, t: +tSel.value, header: header.checked, delim: sep.value, maxLen: prefs.values.appreciationMax },
+      (s, t) => { const se = seance(s, t); return { plus: se.plus, moins: se.moins, travail: count(s, 'travail', t), oubli: count(s, 'oubli', t) }; });
+    warn.textContent = r.tooLong.length ? `⚠ Appréciation(s) de plus de ${prefs.values.appreciationMax} caractères (PRONOTE les refuserait ou les tronquerait) : ${r.tooLong.join(', ')}` : '';
+    return r;
+  };
+  modal(`Exporter ${c.nom}`, h('div', {},
+    h('p', { class: 'muted' }, 'Choisissez les champs, comme dans l’export texte de PRONOTE. Le tableau copié se colle directement dans un tableur.'),
+    h('div', { class: 'row' }, tSel, sep, h('label', { style: 'min-width:0;font-weight:400' }, header, ' Ligne de titres')),
+    h('fieldset', {}, h('legend', {}, 'Champs à exporter'), boxes.map(b => h('label', { style: 'display:inline-block;margin:3px 14px 3px 0;font-weight:400' }, b.el, ' ', b.l))),
+    warn, msg, h('p', { class: 'muted', style: 'font-size:12px' }, 'Le fichier enregistré n’est pas chiffré (UTF-8).')),
+    close => [
+      h('button', { onclick: close }, 'Fermer'), h('span', { class: 'spacer' }),
+      h('button', { onclick: async () => { const r = build(); if (r) { await copyText(r.text); msg.textContent = `✓ Copié (${c.eleves.length} lignes). Collez avec Ctrl+V.`; } } }, 'Copier dans le presse-papiers'),
+      h('button', { class: 'primary', onclick: async () => {
+        const r = build(); if (!r) return;
+        const ext = sep.value === '\t' ? 'txt' : 'csv';
+        const p = await window.api.exportFile(`${c.nom}-T${tSel.value}.${ext}`, '﻿' + r.text, [{ name: 'Fichier texte', extensions: [ext] }]);
+        if (p) msg.textContent = '✓ Enregistré : ' + p;
+      } }, 'Enregistrer un fichier…')]);
+  document.querySelector('.modal:last-of-type').classList.add('wide');
 }
 
 /* ---------- archives ---------- */

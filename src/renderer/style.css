@@ -83,3 +83,10 @@ legend { font-weight: 600; padding: 0 6px; }
 .pref label { flex: 1; margin: 0; font-weight: 400; }
 .modal .pref input { width: 80px; text-align: center; }
 .modal.prefs { max-height: 85vh; overflow: auto; }
+
+.modal.wide { width: min(900px, 96vw); max-height: 90vh; overflow: auto; top: 5vh; }
+input.comm.over, .over { background: var(--bad); color: #8a1c14; }
+.modal select { max-width: 100%; }
+th select { font-size: 11px; max-width: 150px; text-transform: none; letter-spacing: 0; }
+.modal input[type=checkbox] { width: auto; margin-right: 4px; vertical-align: middle; }
+.modal .row label { display: inline-block; margin: 0; }

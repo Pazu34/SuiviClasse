@@ -105,7 +105,10 @@ handle('file:export', async (suggestedName, content, filters) => {
 handle('file:import', async filters => {
   const r = await dialog.showOpenDialog(win, { properties: ['openFile'], filters });
   if (r.canceled) return null;
-  return fs.readFileSync(r.filePaths[0], 'utf8');
+  // Les exports texte de PRONOTE / Excel sont en UTF-8 ou en Windows-1252 selon les réglages.
+  const buf = fs.readFileSync(r.filePaths[0]);
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); }
+  catch { return new TextDecoder('windows-1252').decode(buf); }
 });
 
 const lock = app.requestSingleInstanceLock();

@@ -8,7 +8,19 @@ Application de suivi quotidien des élèves, remplaçant le classeur Excel « Su
 - **implication en séance** (boutons +0,5 / +1 / −0,5 / −1), **travail non fait** et **oublis de matériel**, comptés **par trimestre**, avec couleurs d'alerte (seuils réglables) ;
 - **fiche élève** avec journal daté de chaque événement (et possibilité de le supprimer) ;
 - **export CSV** par classe (ouvrable dans Excel) pour préparer les bulletins ;
-- ajout d'élèves par copier‑coller depuis Excel ou import CSV.
+- **échanges avec PRONOTE et les tableurs** (voir ci-dessous).
+
+## Échanges avec PRONOTE
+
+Basés sur la documentation PRONOTE 2026 de l'éditeur (fiches « Exporter au format texte », « Comment importer les données d'un tableur dans une liste ? », « Comment exporter les notes dans un tableur ? », « Créer un devoir et saisir les notes », « Comment augmenter la taille maximale des appréciations ? »).
+
+**Importer** (bouton « ⭳ Importer / ajouter des élèves… ») : dans PRONOTE, le bouton de copie en haut à droite d'une liste (liste d'élèves, tableau de notes, moyennes…) place les données en colonnes séparées par des tabulations ; collez-les dans la fenêtre d'import (ou ouvrez un fichier texte/CSV exporté, UTF‑8 ou Windows‑1252). Comme dans PRONOTE : séparateur détecté ou choisi, « ne pas importer les x premières lignes », association de chaque colonne à une rubrique (Nom, Prénom, Nom et prénom, Classe, Infos, Note T1‑T3, Appréciation T1‑T3 ; les titres de colonnes sont reconnus automatiquement).
+- Les élèves sont reconnus par nom + prénom (accents, majuscules, tirets ignorés) ; ceux qui existent sont mis à jour, les autres créés si la case est cochée. Une colonne « Classe » répartit les élèves et crée les classes manquantes.
+- Les notes acceptent la virgule décimale et les annotations PRONOTE : `A D N I R` / `Abs Disp N.Not Inap N.Rdu` (non comptées, la note n'est pas modifiée) et `Z W` / `Abs* N.Rdu*` (comptées 0).
+
+**Exporter** (bouton « ⭱ Exporter (PRONOTE, tableur)… ») : choix du trimestre, des champs (nom, prénom, classe, infos, note, appréciation, séance +/−, travail, oublis), ligne de titres facultative, séparateur tabulation ou point‑virgule ; « Copier » place le tableau dans le presse‑papiers, « Enregistrer » crée un fichier texte UTF‑8.
+
+À savoir : d'après la documentation, l'import de listes dans PRONOTE est réservé au mode administratif ; côté professeur, les appréciations se saisissent dans *Bulletins > Saisie des appréciations*. Je n'ai trouvé dans la documentation aucune fonction d'import des appréciations depuis un fichier pour les professeurs : l'export est donc prévu pour un copier‑coller ou une saisie assistée, à vérifier dans votre PRONOTE. La longueur maximale d'une appréciation (255 caractères par défaut dans PRONOTE, réglable par l'administration) est réglable dans les préférences ; les appréciations trop longues sont signalées en rouge et à l'export.
 
 ## Préférences
 

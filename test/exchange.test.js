@@ -15,7 +15,8 @@ test('rôles des colonnes d\'après les titres', () => {
   assert.equal(X.guessRole('Moyenne T2'), 'note2');
   assert.equal(X.guessRole('Appréciation 3e trimestre'.replace('3e trimestre', 'Trimestre 3')), 'comm3');
   assert.equal(X.guessRole('Moyenne', 2), 'note2');
-  assert.equal(X.guessRole('Né(e) le'), 'ignore');
+  assert.equal(X.guessRole('Né(e) le'), 'naissance');
+  assert.equal(X.guessRole('Délégué'), 'ignore');
   assert.ok(X.looksLikeHeader(['Nom', 'Prénom']));
   assert.ok(!X.looksLikeHeader(['DUPONT', '14,5']));
 });
@@ -32,7 +33,7 @@ test('notes PRONOTE : virgule, annotations', () => {
   assert.equal(X.parseNote('bof').kind, 'invalid');
 });
 
-const mk = (nom, prenom) => ({ id: nom, nom, prenom, infos: '', notes: { 1: null, 2: null, 3: null }, comms: { 1: '', 2: '', 3: '' }, events: [] });
+const mk = (nom, prenom) => ({ id: nom, nom, prenom, naissance: '', infos: '', notes: { 1: null, 2: null, 3: null }, comms: { 1: '', 2: '', 3: '' }, events: [] });
 const base = { newStudent: (n, p, i) => ({ ...mk(n, p), infos: i }), newClass: nom => ({ id: nom, nom, eleves: [] }) };
 
 test('import : mise à jour des élèves existants, accents/casse ignorés, création de classes', () => {
@@ -61,4 +62,22 @@ test('export : champs choisis, ligne de titres, séparateur, appréciations trop
   assert.deepEqual(r.tooLong, ['DUPONT Marie (300)']);
   const r2 = X.buildExport(cls, { fields: ['nom', 'comm'], t: 2, header: false, delim: ';' }, st);
   assert.equal(r2.text.split('\r\n')[1], 'MARTIN;"Dit ""ok""; bien"');
+});
+
+test('liste d\'élèves copiée depuis PRONOTE (Élève / Né(e) le / Classe)', () => {
+  const txt = 'Élève\t"Né(e) le"\tClasse\n"NOM1 Prénom1"\t09/08/2015\t6G\n"NOM2 Prénom2"\t22/07/2015\t6E\n"NOM3 Prénom Composé"\t25/07/2015\t6G\n"NOM4 Prénom4"\t22/08/2015\t6F';
+  const rows = X.parseTable(txt);
+  assert.deepEqual(rows[0].map(h => X.guessRole(h)), ['nomprenom', 'naissance', 'classe']);
+  const classes = [];
+  const rep = X.applyTable(classes, rows, { ...base, roles: rows[0].map(h => X.guessRole(h)), skip: 1, classId: null, createStudents: true });
+  assert.deepEqual(classes.map(c => c.nom).sort(), ['6E', '6F', '6G']);
+  assert.deepEqual(rep.classes, { '6G': 2, '6E': 1, '6F': 1 });
+  const g = classes.find(c => c.nom === '6G').eleves;
+  assert.deepEqual(g.map(e => [e.nom, e.prenom, e.naissance]), [['NOM1', 'Prénom1', '09/08/2015'], ['NOM3', 'Prénom Composé', '25/07/2015']]);
+  // réimporter la même liste ne crée rien
+  const rep2 = X.applyTable(classes, rows, { ...base, roles: rows[0].map(h => X.guessRole(h)), skip: 1, classId: null, createStudents: true });
+  assert.equal(rep2.created, 0); assert.equal(rep2.unchanged, 4);
+  // homonymes : date de naissance différente = autre élève
+  const h = X.parseTable('Élève\tNé(e) le\tClasse\nNOM1 Prénom1\t01/01/2014\t6G');
+  assert.equal(X.applyTable(classes, h, { ...base, roles: ['nomprenom', 'naissance', 'classe'], skip: 1, classId: null, createStudents: true }).created, 1);
 });

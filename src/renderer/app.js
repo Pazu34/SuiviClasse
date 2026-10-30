@@ -40,7 +40,7 @@ const seance = (s, t) => s.events.filter(e => e.type === 'seance' && e.t === t).
 const moyenne = s => { const v = [1, 2, 3].map(t => s.notes[t]).filter(n => n != null); return v.length ? v.reduce((a, b) => a + b) / v.length : null; };
 
 function newStudent(nom, prenom = '', infos = '') {
-  return { id: uid(), nom: nom.trim(), prenom: prenom.trim(), infos, notes: { 1: null, 2: null, 3: null }, comms: { 1: '', 2: '', 3: '' }, events: [] };
+  return { id: uid(), nom: nom.trim(), prenom: prenom.trim(), naissance: '', infos, notes: { 1: null, 2: null, 3: null }, comms: { 1: '', 2: '', 3: '' }, events: [] };
 }
 function sortStudents(c) { c.eleves.sort((a, b) => collator.compare(a.nom, b.nom) || collator.compare(a.prenom, b.prenom)); }
 
@@ -123,6 +123,7 @@ function render() {
     h('div', { class: 'top' },
       h('div', { class: 'tabs' }, state.classes.map(k => h('button', { class: k.id === state.ui.classe ? 'active' : '', onclick: () => { state.ui.classe = k.id; render(); } }, k.nom)),
         h('button', { onclick: addClass, title: 'Ajouter une classe' }, '＋ Classe')),
+      h('button', { class: state.classes.length ? '' : 'primary', onclick: () => importDialog(cls()), title: 'Coller une liste d’élèves copiée depuis PRONOTE' }, '⭳ Importer une liste PRONOTE'),
       h('span', { class: 'spacer' }),
       h('div', { class: 'tri' }, [1, 2, 3].map(t => h('button', { class: t === tri() ? 'active' : '', onclick: () => { state.ui.trimestre = t; render(); } }, 'T' + t))),
       h('input', { type: 'search', placeholder: 'Rechercher un élève…', value: search, oninput: e => { search = e.target.value; renderTable(); } }),
@@ -131,7 +132,7 @@ function render() {
       h('button', { onclick: showArchives, title: 'Sauvegardes et retour en arrière' }, '🕘 Archives'),
       h('button', { onclick: showSettings }, '🗂 Données'),
       h('button', { onclick: lockApp }, '🔒 Verrouiller')),
-    h('div', { class: 'main' }, c ? classView(c) : h('div', { class: 'empty' }, 'Aucune classe. Cliquez sur « ＋ Classe » pour commencer.')));
+    h('div', { class: 'main' }, c ? classView(c) : h('div', { class: 'empty' }, 'Aucune classe. Cliquez sur « ⭳ Importer une liste PRONOTE » (les classes sont créées automatiquement) ou sur « ＋ Classe ».')));
   if (c) renderTable();
   if (openStudent) showStudent();
 }
@@ -263,9 +264,10 @@ function importDialog(c) {
   const ta = h('textarea', { rows: 5, placeholder: 'Collez ici (Ctrl+V) des colonnes copiées depuis PRONOTE ou un tableur…\nUne simple liste « NOM Prénom » (une ligne par élève) fonctionne aussi.' });
   const delimSel = h('select', {}, [['', 'Séparateur : automatique'], ['\t', 'Tabulation'], [';', 'Point-virgule'], [',', 'Virgule']].map(([v, l]) => h('option', { value: v }, l)));
   const skip = h('input', { type: 'number', min: 0, value: 0, style: 'width:64px' });
-  const create = h('input', { type: 'checkbox', checked: c.eleves.length === 0 });
+  const create = h('input', { type: 'checkbox', checked: !c || c.eleves.length === 0 });
   const preview = h('div', { class: 'wrap', style: 'max-height:260px;margin-top:8px' });
   const info = h('div', { class: 'muted', style: 'margin-top:6px' });
+  const summary = h('div', { style: 'margin-top:6px;font-weight:600' });
   const err = h('div', { class: 'error' });
 
   const drawPreview = () => {
@@ -274,12 +276,24 @@ function importDialog(c) {
     if (!rows.length) { preview.replaceChildren(); info.textContent = ''; return; }
     const head = h('tr', {}, Array.from({ length: n }, (_, i) => {
       const sel = h('select', {}, X.ROLES.map(([v, l]) => h('option', { value: v }, l)));
-      sel.value = roleSelects[i]?.value || guessed[i] || 'ignore'; roleSelects.push(sel); return h('th', {}, sel);
+      sel.value = roleSelects[i]?.value || guessed[i] || 'ignore'; sel.addEventListener('change', summarize); roleSelects.push(sel); return h('th', {}, sel);
     }));
     preview.replaceChildren(h('table', {}, h('thead', {}, head), h('tbody', {}, rows.slice(0, 8).map((r, ri) =>
       h('tr', { style: ri < k ? 'opacity:.45' : '' }, Array.from({ length: n }, (_, i) => h('td', {}, r[i] || '')))))));
     info.textContent = `${Math.max(0, rows.length - k)} ligne(s) à importer sur ${rows.length}. Associez chaque colonne à une rubrique ; les lignes grisées (titres) sont ignorées.`;
+    summarize();
   };
+  // Aperçu du résultat sur une copie des données : classes concernées, élèves nouveaux / mis à jour.
+  const summarize = () => {
+    if (!roleSelects.length) { summary.textContent = ''; return; }
+    const roles = roleSelects.map(x => x.value);
+    if (!roles.includes('nom') && !roles.includes('nomprenom')) { summary.textContent = ''; return; }
+    const rep = X.applyTable(JSON.parse(JSON.stringify(state.classes)), rows, importOpts(roles));
+    const cl = Object.entries(rep.classes).map(([n, k]) => `${n} (${k})`).join(', ');
+    summary.textContent = `Résultat attendu : ${rep.created} élève(s) à créer, ${rep.updated} à mettre à jour` + (rep.createdClasses ? `, ${rep.createdClasses} classe(s) à créer` : '') + (cl ? ` — classes : ${cl}` : '') + (rep.unmatched.length ? ` — ${rep.unmatched.length} ligne(s) sans classe ou élève inconnu(e), ignorée(s)` : '') + '.';
+  };
+  const importOpts = roles => ({ roles, skip: parseInt(skip.value) || 0, classId: c ? c.id : null, createStudents: create.checked,
+    newStudent, newClass: nom => ({ id: uid(), nom, eleves: [] }) });
   let guessed = [];
   const analyse = () => {
     err.textContent = '';
@@ -292,24 +306,26 @@ function importDialog(c) {
     while (guessed.length < n) guessed.push('ignore');
     drawPreview();
   };
-  ta.addEventListener('input', analyse); delimSel.addEventListener('change', analyse); skip.addEventListener('input', drawPreview);
+  ta.addEventListener('input', analyse); delimSel.addEventListener('change', analyse); skip.addEventListener('input', drawPreview); create.addEventListener('change', summarize);
 
-  const close = modal(`Importer dans ${c.nom}`, h('div', {},
+  const close = modal(c ? `Importer dans ${c.nom}` : 'Importer une liste PRONOTE', h('div', {},
     h('p', { class: 'muted' }, 'Dans PRONOTE, le bouton de copie en haut à droite d’une liste (ou du tableau de notes) place les données dans le presse-papiers : collez-les ici. Un fichier texte exporté de PRONOTE ou d’Excel convient aussi.'),
     ta,
     h('div', { class: 'row' }, h('button', { onclick: async () => {
       try { const t = await window.api.importFile([{ name: 'Texte / CSV', extensions: ['txt', 'csv', 'tsv'] }]); if (t != null) { ta.value = t; analyse(); } } catch (e) { err.textContent = e.message; }
     } }, 'Ouvrir un fichier…'), delimSel, h('label', { style: 'min-width:0;font-weight:400' }, 'Ne pas importer les ', skip, ' premières lignes')),
-    preview, info,
+    preview, info, summary,
     h('label', { style: 'font-weight:400' }, create, ' Créer les élèves absents de la classe (sinon, seuls les élèves existants sont mis à jour)'),
     err), close => [
       h('button', { onclick: close }, 'Annuler'),
       h('button', { class: 'primary', onclick: () => {
         const roles = roleSelects.map(x => x.value);
+        if (!c && !roles.includes('classe')) { err.textContent = 'Aucune classe n’est ouverte : associez une colonne à « Classe » (ou créez d’abord une classe).'; return; }
         if (!roles.includes('nom') && !roles.includes('nomprenom')) { err.textContent = 'Associez au moins une colonne à « Nom » ou « Nom et prénom ».'; return; }
-        const rep = X.applyTable(state.classes, rows, { roles, skip: parseInt(skip.value) || 0, classId: c.id, createStudents: create.checked,
-          newStudent, newClass: nom => ({ id: uid(), nom, eleves: [] }) });
-        state.classes.forEach(sortStudents); commit(); close(); render();
+        const rep = X.applyTable(state.classes, rows, importOpts(roles));
+        state.classes.forEach(sortStudents);
+        if (!cls() && state.classes.length) state.ui.classe = state.classes[0].id;
+        commit(); close(); render();
         const lines = [`${rep.created} élève(s) créé(s), ${rep.updated} mis à jour, ${rep.unchanged} inchangé(s)` + (rep.createdClasses ? `, ${rep.createdClasses} classe(s) créée(s)` : '') + '.'];
         if (rep.unmatched.length) lines.push(`Non trouvés (ignorés) : ${rep.unmatched.slice(0, 15).join(', ')}${rep.unmatched.length > 15 ? '…' : ''}`);
         if (rep.invalid.length) lines.push(`Valeurs de note non reconnues (ignorées) : ${rep.invalid.slice(0, 10).join(' ; ')}`);
@@ -334,7 +350,7 @@ function showStudent() {
   const drawer = h('div', { class: 'drawer' },
     h('div', { class: 'row' }, h('h2', { style: 'margin:0;flex:1' }, `${s.nom} ${s.prenom}`), h('button', { onclick: closeDrawer }, '✕ Fermer')),
     h('p', { class: 'muted' }, `Classe ${c.nom}`),
-    field('Nom', 'nom'), field('Prénom', 'prenom'),
+    field('Nom', 'nom'), field('Prénom', 'prenom'), field('Né(e) le', 'naissance'),
     h('h3', {}, 'Informations particulières (handicap, PAI, situation…)'),
     h('textarea', { rows: 4, onchange: e => { s.infos = e.target.value; commit(); renderTable(); } }, s.infos),
     h('h3', {}, 'Notes et commentaires de bulletin'),

@@ -29,7 +29,7 @@
   }
 
   const ROLES = [
-    ['ignore', 'Champ ignoré'], ['nom', 'Nom'], ['prenom', 'Prénom'], ['nomprenom', 'Nom et prénom'], ['classe', 'Classe'], ['infos', 'Infos (PAI…)'],
+    ['ignore', 'Champ ignoré'], ['nom', 'Nom'], ['prenom', 'Prénom'], ['nomprenom', 'Nom et prénom'], ['classe', 'Classe'], ['naissance', 'Date de naissance'], ['infos', 'Infos (PAI…)'],
     ['note1', 'Note T1'], ['note2', 'Note T2'], ['note3', 'Note T3'],
     ['comm1', 'Appréciation T1'], ['comm2', 'Appréciation T2'], ['comm3', 'Appréciation T3'],
   ];
@@ -42,6 +42,7 @@
     if (/^nom( de famille| usuel)?$/.test(h)) return 'nom';
     if (/prenom/.test(h)) return 'prenom';
     if (/^classe/.test(h)) return 'classe';
+    if (/^ne\(e\) le|^ne le|naissance/.test(h)) return 'naissance';
     if (/appreciation|commentaire|observation/.test(h)) return 'comm' + t;
     if (/moyenne|^note|^moy/.test(h)) return 'note' + t;
     if (/pai|handicap|^info|amenagement|particular/.test(h)) return 'infos';
@@ -82,7 +83,7 @@
    * Modifie `classes` en place ; retourne un compte rendu.
    */
   function applyTable(classes, rows, opts) {
-    const rep = { created: 0, updated: 0, unchanged: 0, createdClasses: 0, unmatched: [], invalid: [], toolong: 0 };
+    const rep = { classes: {}, created: 0, updated: 0, unchanged: 0, createdClasses: 0, unmatched: [], invalid: [], toolong: 0 };
     const col = r => opts.roles.indexOf(r);
     const get = (row, r) => { const i = col(r); return i < 0 ? '' : (row[i] ?? ''); };
     const current = classes.find(c => c.id === opts.classId);
@@ -97,13 +98,16 @@
         if (!cls && opts.createStudents) { cls = opts.newClass(cname); classes.push(cls); rep.createdClasses++; }
       }
       if (!cls) { rep.unmatched.push(`${nom} ${prenom}`.trim()); continue; }
-      let s = cls.eleves.find(e => keyOf(e.nom, e.prenom) === keyOf(nom, prenom));
+      const naiss = get(row, 'naissance');
+      // deux homonymes se distinguent par leur date de naissance (si elle est connue des deux côtés)
+      let s = cls.eleves.find(e => keyOf(e.nom, e.prenom) === keyOf(nom, prenom) && !(naiss && e.naissance && e.naissance !== naiss));
       let isNew = false;
       if (!s) {
         if (!opts.createStudents) { rep.unmatched.push(`${nom} ${prenom}`.trim()); continue; }
         s = opts.newStudent(nom, prenom, ''); cls.eleves.push(s); isNew = true; rep.created++;
       }
       let changed = false;
+      if (naiss && naiss !== s.naissance) { s.naissance = naiss; changed = !isNew || changed; }
       const infos = get(row, 'infos');
       if (infos && infos !== s.infos) { s.infos = infos; changed = true; }
       for (const t of [1, 2, 3]) {
@@ -117,6 +121,7 @@
           if (c && c !== s.comms[t]) { s.comms[t] = c; changed = true; }
         }
       }
+      rep.classes[cls.nom] = (rep.classes[cls.nom] || 0) + 1;
       if (!isNew) rep[changed ? 'updated' : 'unchanged']++;
     }
     return rep;

@@ -128,6 +128,7 @@ function render() {
       h('input', { type: 'search', placeholder: 'Rechercher un élève…', value: search, oninput: e => { search = e.target.value; renderTable(); } }),
       h('span', { id: 'saved' }, dirty ? 'Modifié…' : 'Enregistré ✓'),
       h('button', { onclick: showPrefs, title: 'Préférences (Ctrl+,)' }, '⚙ Préférences'),
+      h('button', { onclick: showArchives, title: 'Sauvegardes et retour en arrière' }, '🕘 Archives'),
       h('button', { onclick: showSettings }, '🗂 Données'),
       h('button', { onclick: lockApp }, '🔒 Verrouiller')),
     h('div', { class: 'main' }, c ? classView(c) : h('div', { class: 'empty' }, 'Aucune classe. Cliquez sur « ＋ Classe » pour commencer.')));
@@ -375,5 +376,58 @@ function exportClass(c) {
     .then(p => { if (p) alert('Fichier enregistré :\n' + p + '\n\nAttention : il n’est pas chiffré.'); });
 }
 
+/* ---------- archives ---------- */
+const REASONS = { auto: 'automatique', manuel: 'manuelle', demarrage: 'à l’ouverture', fermeture: 'à la fermeture', restauration: 'avant restauration', mdp: 'avant changement de mot de passe' };
+
+function askOldPassword(tryPw) {
+  const inp = h('input', { type: 'password', autocomplete: 'off' }), err = h('div', { class: 'error' });
+  modal('Mot de passe de l’archive', h('div', {}, h('p', { class: 'muted' }, 'Cette archive date d’un autre mot de passe. Entrez celui qui était utilisé à ce moment-là.'), inp, err),
+    close => [h('button', { onclick: close }, 'Annuler'), h('button', { class: 'primary', onclick: async () => { const m = await tryPw(inp.value); if (m) err.textContent = m; else close(); } }, 'Restaurer')]);
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') document.querySelector('.modal:last-of-type .primary').click(); });
+}
+
+async function showArchives() {
+  if (document.querySelector('.modal.archives')) return;
+  await flush();
+  const list = h('div', { class: 'journal', style: 'max-height:50vh' });
+  const msg = h('div', { class: 'error' });
+  const refresh = async () => {
+    const items = await window.api.listArchives();
+    list.replaceChildren(...(items.length ? items.map(a => h('div', {},
+      h('span', { class: 'd', style: 'min-width:130px' }, fmtDate(a.date)),
+      h('span', { class: 'n' }, REASONS[a.reason] || a.reason || '—', h('span', { class: 'muted' }, ` · ${Math.max(1, Math.round(a.size / 1024))} Ko`)),
+      h('button', { onclick: () => restore(a) }, 'Restaurer'),
+      h('button', { title: 'Supprimer cette archive', onclick: async () => { if (confirm('Supprimer cette archive ?')) { await window.api.deleteArchive(a.name); refresh(); } } }, '🗑')))
+      : [h('div', { class: 'muted' }, 'Aucune archive pour le moment.')]));
+  };
+  const apply = data => {
+    state = data; state.ui = state.ui || { classe: null, trimestre: 1 };
+    if (!cls()) state.ui.classe = state.classes[0]?.id || null;
+    openStudent = null; dirty = false; document.querySelectorAll('.modal,.backdrop').forEach(x => x.remove()); render(); setSaved('Archive restaurée ✓');
+  };
+  const restore = async a => {
+    if (!confirm(`Restaurer les données du ${fmtDate(a.date)} ?\n\nLes données actuelles seront remplacées (une archive de l’état actuel est créée juste avant, vous pourrez y revenir).`)) return;
+    msg.textContent = '';
+    try { apply(await window.api.restoreArchive(a.name)); }
+    catch (e) {
+      if (e.code !== 'NEED_PASSWORD' && e.code !== 'WRONG_PASSWORD') { msg.textContent = e.message; return; }
+      askOldPassword(async pw => { try { apply(await window.api.restoreArchive(a.name, pw)); return null; } catch (e2) { return e2.message; } });
+    }
+  };
+  const p = prefs.values;
+  modal('Archives des données', h('div', {},
+    h('p', { class: 'muted' }, p.backupMinutes > 0
+      ? `Une archive chiffrée est créée toutes les ${p.backupMinutes} min si les données ont changé, ainsi qu’à l’ouverture et à la fermeture. Les modifications sont par ailleurs enregistrées en continu dans le fichier principal.`
+      : 'Les archives automatiques périodiques sont désactivées (voir Préférences). Les modifications restent enregistrées en continu.'),
+    list, msg),
+    close => [
+      h('button', { onclick: async () => { try { await window.api.archiveNow(); refresh(); } catch (e) { msg.textContent = e.message; } } }, 'Archiver maintenant'),
+      h('button', { onclick: () => window.api.openDir() }, 'Ouvrir le dossier'),
+      h('span', { class: 'spacer' }), h('button', { onclick: close }, 'Fermer')]);
+  list.closest('.modal').classList.add('archives');
+  refresh();
+}
+
+window.api.onBeforeClose(flush);
 window.addEventListener('beforeunload', () => { if (dirty) flush(); });
 showLogin();

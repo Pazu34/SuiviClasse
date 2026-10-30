@@ -25,6 +25,22 @@ let vault = new Vault(dataDir());
 let prefs = new Prefs(dataDir());
 let win;
 
+// ---- archives automatiques ----
+let lastArchiveAt = Date.now();
+function archive(reason) {
+  if (!vault.exists()) return null;
+  const name = vault.snapshot(reason);
+  vault.prune(prefs.values.backupKeepRecent, prefs.values.backupKeepDays);
+  lastArchiveAt = Date.now();
+  return name;
+}
+setInterval(() => {
+  const min = prefs.values.backupMinutes;
+  if (vault.unlocked && min > 0 && Date.now() - lastArchiveAt >= min * 60000) {
+    try { archive('auto'); } catch (e) { console.error('archive auto:', e.message); }
+  }
+}, 30000);
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1280, height: 820, minWidth: 900, minHeight: 600,
@@ -34,6 +50,16 @@ function createWindow() {
   Menu.setApplicationMenu(null);
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', e => e.preventDefault());
+  // Avant de fermer : demander à l'interface d'écrire les dernières modifications.
+  let closing = false;
+  win.on('close', e => {
+    if (closing || !vault.unlocked) return;
+    e.preventDefault(); closing = true;
+    const done = () => { try { archive('fermeture'); } catch { /* sans importance */ } vault.lock(); win.destroy(); };
+    ipcMain.once('app:flushed', done);
+    win.webContents.send('app:before-close');
+    setTimeout(done, 4000);
+  });
   win.loadFile(path.join(__dirname, 'src', 'renderer', 'index.html'));
 }
 
@@ -44,9 +70,9 @@ const handle = (name, fn) => ipcMain.handle(name, async (_e, ...args) => {
 
 handle('vault:status', () => ({ exists: vault.exists(), unlocked: vault.unlocked, dir: vault.dir }));
 handle('vault:create', (pw, data) => { vault.create(pw, data); return data; });
-handle('vault:unlock', pw => vault.unlock(pw));
+handle('vault:unlock', pw => { const d = vault.unlock(pw); archive('demarrage'); return d; });
 handle('vault:save', data => { vault.save(data); return true; });
-handle('vault:lock', () => { vault.lock(); return true; });
+handle('vault:lock', () => { archive('fermeture'); vault.lock(); return true; });
 handle('vault:changePassword', (oldPw, newPw, data) => { vault.changePassword(oldPw, newPw, data); return true; });
 handle('vault:openDir', () => shell.openPath(vault.dir));
 handle('vault:chooseDir', async () => {
@@ -59,8 +85,17 @@ handle('vault:chooseDir', async () => {
   return { exists: vault.exists(), dir: vault.dir };
 });
 handle('prefs:get', () => prefs.describe());
-handle('prefs:set', values => { prefs.set(values); return prefs.describe(); });
+handle('prefs:set', values => { prefs.set(values); if (vault.exists()) vault.prune(prefs.values.backupKeepRecent, prefs.values.backupKeepDays); return prefs.describe(); });
 handle('prefs:reset', () => { prefs.reset(); return prefs.describe(); });
+handle('archives:list', () => vault.listArchives());
+handle('archives:now', () => archive('manuel'));
+handle('archives:delete', name => { vault.deleteArchive(name); return true; });
+handle('archives:restore', (name, password) => {
+  const data = vault.readArchive(name, password);   // peut demander le mot de passe de l'archive
+  archive('restauration');                          // l'état actuel reste récupérable
+  vault.save(data);
+  return data;
+});
 handle('file:export', async (suggestedName, content, filters) => {
   const r = await dialog.showSaveDialog(win, { defaultPath: suggestedName, filters });
   if (r.canceled || !r.filePath) return null;

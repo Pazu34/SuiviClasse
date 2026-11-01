@@ -5,6 +5,7 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from .. import exchange, model
 from ..vault import NeedPasswordError, WrongPasswordError
+from .theme import P
 
 REASONS = {"suppression": "avant suppression d’une classe", "auto": "automatique", "manuel": "manuelle", "demarrage": "à l’ouverture", "fermeture": "à la fermeture",
            "restauration": "avant restauration", "mdp": "avant changement de mot de passe"}
@@ -53,14 +54,14 @@ class Dialog(tk.Toplevel):
 class StudentWindow(Dialog):
     def __init__(self, app, cls, student):
         app.close_student_window()
-        super().__init__(app, f"{student['nom']} {student['prenom']}", modal=False, size="660x760")
+        super().__init__(app, f"{student['nom']} {student['prenom']}", modal=False, size="660x700")
         app.student_window = self
         self.cls, self.s = cls, student
         self.protocol("WM_DELETE_WINDOW", self.close)
         t = app.t
         pad = dict(padx=10, pady=3)
         ttk.Label(self, text=f"{student['nom']} {student['prenom']}", font=("TkDefaultFont", 14, "bold")).pack(anchor="w", **pad)
-        ttk.Label(self, text=f"Classe {cls['nom']}", foreground="#6b7385").pack(anchor="w", padx=10)
+        ttk.Label(self, text=f"Classe {cls['nom']}", foreground=P["muted"]).pack(anchor="w", padx=10)
         ident = ttk.Frame(self)
         ident.pack(fill="x", **pad)
         self.vars = {}
@@ -91,9 +92,9 @@ class StudentWindow(Dialog):
             e.bind("<FocusOut>", lambda ev, k=k: self.commit_note(k))
             e.bind("<Return>", lambda ev, k=k: self.commit_note(k))
             self.notes[k] = var
-            self.stats[k] = ttk.Label(row, foreground="#6b7385")
+            self.stats[k] = ttk.Label(row, foreground=P["muted"])
             self.stats[k].pack(side="left", padx=8)
-            self.counters[k] = ttk.Label(row, foreground="#6b7385")
+            self.counters[k] = ttk.Label(row, foreground=P["muted"])
             self.counters[k].pack(side="right")
             txt = tk.Text(self, height=3, wrap="word", undo=True)
             txt.pack(fill="x", padx=10)
@@ -139,7 +140,7 @@ class StudentWindow(Dialog):
 
     def update_counter(self, k):
         n, mx = len(self.comms[k].get("1.0", "end-1c")), self.app.values["appreciationMax"]
-        self.counters[k].configure(text=f"{n} / {mx}", foreground="#b3261e" if n > mx else "#6b7385")
+        self.counters[k].configure(text=f"{n} / {mx}", foreground=P["bad_text"] if n > mx else P["muted"])
 
     # ---------- enregistrement des champs ----------
     def changed(self):
@@ -235,7 +236,7 @@ class ImportDialog(Dialog):
         super().__init__(app, f"Importer dans {cls['nom']}" if cls else "Importer une liste PRONOTE", size="980x640")
         self.cls = cls
         self.rows, self.guessed, self.role_boxes = [], [], []
-        ttk.Label(self, wraplength=940, foreground="#6b7385", padding=(10, 8), text=(
+        ttk.Label(self, wraplength=940, foreground=P["muted"], padding=(10, 8), text=(
             "Dans PRONOTE, le bouton de copie en haut à droite d’une liste (ou du tableau de notes) place les données dans le "
             "presse-papiers : collez-les ici (Ctrl+V). Un fichier texte exporté de PRONOTE ou d’Excel convient aussi.")).pack(anchor="w")
         self.text = tk.Text(self, height=6, wrap="none", undo=True)
@@ -257,14 +258,14 @@ class ImportDialog(Dialog):
         ttk.Label(opts, text="premières lignes").pack(side="left")
         self.preview = ttk.Frame(self, padding=(10, 0))
         self.preview.pack(fill="both", expand=True)
-        self.info = ttk.Label(self, foreground="#6b7385", padding=(10, 0))
+        self.info = ttk.Label(self, foreground=P["muted"], padding=(10, 0))
         self.info.pack(anchor="w")
         self.summary = ttk.Label(self, font=("TkDefaultFont", 9, "bold"), wraplength=940, padding=(10, 2))
         self.summary.pack(anchor="w")
         self.create = tk.BooleanVar(value=cls is None or not cls["eleves"])
         ttk.Checkbutton(self, variable=self.create, command=self.summarize, padding=(10, 0),
                         text="Créer les élèves absents de la classe (sinon, seuls les élèves existants sont mis à jour)").pack(anchor="w")
-        self.error = ttk.Label(self, foreground="#b3261e", padding=(10, 0))
+        self.error = ttk.Label(self, foreground=P["bad_text"], padding=(10, 0))
         self.error.pack(anchor="w")
         self.buttons(("Importer", self.do_import, "right"), ("Annuler", self.destroy, "right"))
         self.text.focus_set()
@@ -324,7 +325,7 @@ class ImportDialog(Dialog):
             self.preview.columnconfigure(i, weight=1)
         for ri, row in enumerate(self.rows[:self.PREVIEW_ROWS]):
             for i in range(n):
-                ttk.Label(self.preview, text=row[i] if i < len(row) else "", foreground="#9aa1b0" if ri < k else "#000000"
+                ttk.Label(self.preview, text=row[i] if i < len(row) else "", foreground=P["muted"] if ri < k else P["text"]
                           ).grid(row=ri + 1, column=i, sticky="w", padx=4)
         self.info.configure(text=f"{max(0, len(self.rows) - k)} ligne(s) à importer sur {len(self.rows)}. Associez chaque colonne à une "
                                  "rubrique ; les lignes grisées (titres) sont ignorées.")
@@ -386,7 +387,7 @@ class ExportDialog(Dialog):
     def __init__(self, app, cls):
         super().__init__(app, f"Exporter {cls['nom']}")
         self.cls = cls
-        ttk.Label(self, wraplength=620, foreground="#6b7385", padding=10, text=(
+        ttk.Label(self, wraplength=620, foreground=P["muted"], padding=10, text=(
             "Choisissez les champs, comme dans l’export texte de PRONOTE. Le tableau copié se colle directement dans un tableur.")).pack(anchor="w")
         top = ttk.Frame(self, padding=(10, 0))
         top.pack(fill="x")
@@ -405,11 +406,11 @@ class ExportDialog(Dialog):
             var = tk.BooleanVar(value=key in ("nom", "prenom", "note", "comm"))
             ttk.Checkbutton(box, text=label, variable=var).grid(row=i // 3, column=i % 3, sticky="w", padx=8, pady=2)
             self.fields[key] = var
-        self.warn = ttk.Label(self, foreground="#b3261e", wraplength=620, padding=(10, 0))
+        self.warn = ttk.Label(self, foreground=P["bad_text"], wraplength=620, padding=(10, 0))
         self.warn.pack(anchor="w")
-        self.msg = ttk.Label(self, foreground="#6b7385", wraplength=620, padding=(10, 0))
+        self.msg = ttk.Label(self, foreground=P["muted"], wraplength=620, padding=(10, 0))
         self.msg.pack(anchor="w")
-        ttk.Label(self, foreground="#6b7385", font=("TkDefaultFont", 8), padding=(10, 4),
+        ttk.Label(self, foreground=P["muted"], font=("TkDefaultFont", 8), padding=(10, 4),
                   text="Le fichier enregistré n’est pas chiffré (UTF-8).").pack(anchor="w")
         self.buttons(("Enregistrer un fichier…", self.save, "right"), ("Copier dans le presse-papiers", self.copy, "right"),
                      ("Fermer", self.destroy, "left"))
@@ -453,7 +454,7 @@ class ArchivesDialog(Dialog):
         super().__init__(app, "Archives des données", size="640x460")
         app.flush()
         v = app.values
-        ttk.Label(self, wraplength=600, foreground="#6b7385", padding=10, text=(
+        ttk.Label(self, wraplength=600, foreground=P["muted"], padding=10, text=(
             f"Une archive chiffrée est créée toutes les {v['backupMinutes']} min si les données ont changé, ainsi qu’à l’ouverture et à la "
             "fermeture. Les modifications sont par ailleurs enregistrées en continu dans le fichier principal." if v["backupMinutes"] > 0 else
             "Les archives automatiques périodiques sont désactivées (voir Préférences). Les modifications restent enregistrées en continu.")).pack(anchor="w")
@@ -462,7 +463,7 @@ class ArchivesDialog(Dialog):
             self.tree.heading(col, text=text)
             self.tree.column(col, width=w)
         self.tree.pack(fill="both", expand=True, padx=10)
-        self.err = ttk.Label(self, foreground="#b3261e", padding=(10, 2))
+        self.err = ttk.Label(self, foreground=P["bad_text"], padding=(10, 2))
         self.err.pack(anchor="w")
         self.buttons(("Fermer", self.destroy, "right"), ("Restaurer", self.restore, "left"), ("Supprimer", self.delete, "left"),
                      ("Archiver maintenant", self.now, "left"), ("Ouvrir le dossier", self.open_dir, "left"))
@@ -537,9 +538,12 @@ class PrefsDialog(Dialog):
         super().__init__(app, "Préférences")
         from ..prefs import SCHEMA
         self.schema, self.vars = SCHEMA, {}
-        for group in dict.fromkeys(f["group"] for f in SCHEMA):
-            box = ttk.LabelFrame(self, text=group, padding=8)
-            box.pack(fill="x", padx=10, pady=5)
+        grid = ttk.Frame(self, padding=(8, 8, 8, 0))  # groupes sur deux colonnes : la fenêtre reste basse
+        grid.pack(fill="both", expand=True)
+        grid.columnconfigure((0, 1), weight=1, uniform="g")
+        for i, group in enumerate(dict.fromkeys(f["group"] for f in SCHEMA)):
+            box = ttk.LabelFrame(grid, text=group, padding=8)
+            box.grid(row=i // 2, column=i % 2, sticky="nsew", padx=5, pady=5)
             box.columnconfigure(0, weight=1)
             for r, f in enumerate(x for x in SCHEMA if x["group"] == group):
                 ttk.Label(box, text=f["label"]).grid(row=r, column=0, sticky="w")
@@ -553,9 +557,9 @@ class PrefsDialog(Dialog):
                 var = tk.StringVar(value=str(app.values[f["key"]]).replace(".", ","))
                 ttk.Spinbox(box, from_=f["min"], to=f["max"], increment=1 if f["type"] == "int" else 0.5, width=7,
                             textvariable=var, justify="center").grid(row=r, column=1, padx=8, pady=2)
-                ttk.Label(box, text=f["unit"], foreground="#6b7385").grid(row=r, column=2, sticky="w")
+                ttk.Label(box, text=f["unit"], foreground=P["muted"]).grid(row=r, column=2, sticky="w")
                 self.vars[f["key"]] = var
-        ttk.Label(self, foreground="#6b7385", font=("TkDefaultFont", 8), padding=(10, 2),
+        ttk.Label(self, foreground=P["muted"], font=("TkDefaultFont", 8), padding=(10, 2),
                   text="Réglages enregistrés dans : " + str(app.prefs.file)).pack(anchor="w")
         self.buttons(("Enregistrer", self.save, "right"), ("Annuler", self.destroy, "right"), ("Valeurs par défaut", self.reset, "left"))
 
@@ -564,13 +568,13 @@ class PrefsDialog(Dialog):
         app.prefs.set({k: v.get() for k, v in self.vars.items()})
         app.vault.prune(app.values["backupKeepRecent"], app.values["backupKeepDays"])
         self.destroy()
-        app.render()
+        app.restyle()
 
     def reset(self):
         if messagebox.askyesno("Préférences", "Revenir aux réglages par défaut ?", parent=self):
             self.app.prefs.reset()
             self.destroy()
-            self.app.render()
+            self.app.restyle()
 
 
 # ---------------------------------------------------------------- données et mot de passe
@@ -587,9 +591,9 @@ class DataDialog(Dialog):
         for i, (label, var) in enumerate((("Mot de passe actuel", self.cur), ("Nouveau mot de passe", self.n1), ("Confirmer", self.n2))):
             ttk.Label(f, text=label).grid(row=2 + i, column=0, sticky="w")
             ttk.Entry(f, textvariable=var, show="•", width=26).grid(row=2 + i, column=1, pady=2, padx=8)
-        self.err = ttk.Label(f, foreground="#b3261e", wraplength=360)
+        self.err = ttk.Label(f, foreground=P["bad_text"], wraplength=360)
         self.err.grid(row=5, column=0, columnspan=2, sticky="w")
-        ttk.Label(f, foreground="#6b7385", wraplength=360, text=f"Dossier : {app.vault.dir}\nArchives chiffrées dans le sous-dossier « sauvegardes ».").grid(
+        ttk.Label(f, foreground=P["muted"], wraplength=360, text=f"Dossier : {app.vault.dir}\nArchives chiffrées dans le sous-dossier « sauvegardes ».").grid(
             row=6, column=0, columnspan=2, sticky="w", pady=(8, 0))
         self.buttons(("Enregistrer", self.save, "right"), ("Fermer", self.destroy, "right"), ("Ouvrir le dossier des données", self.open_dir, "left"),
                      ("Ajouter la classe Test", self.add_demo, "left"))

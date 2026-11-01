@@ -4,8 +4,8 @@ from tkinter import font as tkfont
 from tkinter import messagebox, ttk
 
 from .. import exchange, model
+from .theme import P
 
-COLORS = {"ok": "#d9f2e1", "warn": "#ffe9c7", "bad": "#fbd5d5", "": "#ffffff"}
 # Largeurs des colonnes en pixels, dans l'ordre : n°, nom, prénom, infos, T1, T2, T3, moyenne,
 # séance +, séance −, travail non fait, oubli de matériel, commentaire.
 LAYOUTS = {
@@ -43,8 +43,8 @@ class ClassTable(ttk.Frame):
         size = base.actual("size")
         size = size + 1 if size < 0 else size - 1  # un point de moins que la police par défaut
         self.font, self.bold = (base.actual("family"), size), (base.actual("family"), size, "bold")
-        self.hdr = tk.Canvas(self, height=self.row_h, highlightthickness=0, bg="#eef1f7")
-        self.body = tk.Canvas(self, highlightthickness=0, bg="#ffffff")
+        self.hdr = tk.Canvas(self, height=self.row_h, highlightthickness=0, bg=P["surface2"])
+        self.body = tk.Canvas(self, highlightthickness=0, bg=P["surface"])
         self.vsb = ttk.Scrollbar(self, orient="vertical", command=self.body.yview)
         self.hsb = ttk.Scrollbar(self, orient="horizontal", command=self._xview)
         self.body.configure(yscrollcommand=self.vsb.set, xscrollcommand=self._xset)
@@ -54,8 +54,8 @@ class ClassTable(ttk.Frame):
         self.hsb.grid(row=2, column=0, sticky="ew")
         self.rowconfigure(1, weight=1)
         self.columnconfigure(0, weight=1)
-        self.hf = tk.Frame(self.hdr, bg="#eef1f7")
-        self.bf = tk.Frame(self.body, bg="#ffffff")
+        self.hf = tk.Frame(self.hdr, bg=P["surface2"])
+        self.bf = tk.Frame(self.body, bg=P["surface"])
         self.hdr.create_window(0, 0, window=self.hf, anchor="nw")
         self.body.create_window(0, 0, window=self.bf, anchor="nw")
         self.bf.bind("<Configure>", lambda e: self.body.configure(scrollregion=(0, 0, self.total_w, self.bf.winfo_reqheight())))
@@ -64,9 +64,9 @@ class ClassTable(ttk.Frame):
         self.body.bind("<Leave>", lambda e: self._bind_wheel(False))
         self.build()
 
-    def cell(self, parent, row, col, bg="#ffffff"):
+    def cell(self, parent, row, col, bg=None):
         """Case de largeur fixe : garantit l'alignement des en-têtes avec les lignes."""
-        f = tk.Frame(parent, width=self.widths[col], height=self.row_h, bg=bg, highlightthickness=0)
+        f = tk.Frame(parent, width=self.widths[col], height=self.row_h, bg=bg or P["surface"], highlightthickness=0)
         f.grid(row=row, column=col)
         f.pack_propagate(False)
         return f
@@ -104,8 +104,8 @@ class ClassTable(ttk.Frame):
             titles[i] += f" (T{t})"
         titles[12] += f" T{t}"
         for i, title in enumerate(titles):
-            c = self.cell(self.hf, 0, i, "#eef1f7")
-            tk.Label(c, text=title.upper(), bg="#eef1f7", font=(self.font[0], self.font[1] - 1, "bold"), anchor="w").pack(fill="both", padx=3)
+            c = self.cell(self.hf, 0, i, P["surface2"])
+            tk.Label(c, text=title.upper(), bg=P["surface2"], fg=P["muted"], font=(self.font[0], self.font[1] - 1, "bold"), anchor="w").pack(fill="both", padx=4)
         q = exchange.norm(self.app.search.get())
         r = 0
         for i, s in enumerate(self.cls["eleves"]):
@@ -115,11 +115,11 @@ class ClassTable(ttk.Frame):
             r += 1
         if not self.rows:
             msg = "Aucun élève ne correspond à la recherche." if self.cls["eleves"] else "Aucun élève. Utilisez « Importer / ajouter des élèves… »."
-            tk.Label(self.bf, text=msg, bg="#ffffff", fg="#6b7385", pady=30).grid(row=0, column=0, columnspan=len(self.widths), sticky="w", padx=20)
+            tk.Label(self.bf, text=msg, bg=P["surface"], fg=P["muted"], pady=30).grid(row=0, column=0, columnspan=len(self.widths), sticky="w", padx=20)
             r = 1
-        self.footer = [self.cell(self.bf, r, i, "#f5f6fa") for i in range(len(self.widths))]
-        tk.Label(self.footer[1], text="Moy. classe" if self.mode == "compact" else "Moyenne de la classe", bg="#f5f6fa", font=self.bold).pack(side="left", padx=4)
-        self.footer_labels = [tk.Label(self.footer[4 + k], bg="#f5f6fa", font=self.bold) for k in range(3)]
+        self.footer = [self.cell(self.bf, r, i, P["surface2"]) for i in range(len(self.widths))]
+        tk.Label(self.footer[1], text="Moy. classe" if self.mode == "compact" else "Moyenne de la classe", bg=P["surface2"], fg=P["text"], font=self.bold).pack(side="left", padx=4)
+        self.footer_labels = [tk.Label(self.footer[4 + k], bg=P["surface2"], fg=P["text"], font=self.bold) for k in range(3)]
         for lab in self.footer_labels:
             lab.pack(expand=True)
         self.refresh_footer()
@@ -143,24 +143,28 @@ class Row:
     def __init__(self, table, s, number, r):
         self.table, self.s, self.app = table, s, table.app
         t = self.app.t
-        bf, cell, f, b = table.bf, table.cell, table.font, table.bold
-        tk.Label(cell(bf, r, 0), text=str(number), fg="#6b7385", bg="#ffffff", font=f).pack(fill="both")
-        name = tk.Label(cell(bf, r, 1), text=s["nom"], font=b, anchor="w", bg="#ffffff", fg="#1d2433", cursor="hand2")
+        bf, f, b = table.bf, table.font, table.bold
+        self.bg = P["surface"] if r % 2 == 0 else P["zebra"]  # lignes alternées
+        cell = lambda parent, row, col: table.cell(parent, row, col, self.bg)
+        tk.Label(cell(bf, r, 0), text=str(number), fg=P["muted"], bg=self.bg, font=f).pack(fill="both")
+        name = tk.Label(cell(bf, r, 1), text=s["nom"], font=b, anchor="w", bg=self.bg, fg=P["text"], cursor="hand2")
         name.pack(fill="both", padx=4)
         name.bind("<Button-1>", lambda e: self.open())
-        tk.Label(cell(bf, r, 2), text=s["prenom"], anchor="w", bg="#ffffff", font=f).pack(fill="both", padx=4)
+        name.bind("<Enter>", lambda e: name.configure(fg=P["accent"]))
+        name.bind("<Leave>", lambda e: name.configure(fg=P["text"]))
+        tk.Label(cell(bf, r, 2), text=s["prenom"], anchor="w", bg=self.bg, fg=P["text"], font=f).pack(fill="both", padx=4)
         self.infos_cell = cell(bf, r, 3)
-        self.infos = tk.Label(self.infos_cell, anchor="w", font=(f[0], f[1] - 1), bg="#ffffff")
+        self.infos = tk.Label(self.infos_cell, anchor="w", font=(f[0], f[1] - 1), bg=self.bg, fg=P["text"])
         self.infos.pack(fill="x", padx=3, pady=4)
         self.note_vars = {}
         for k in "123":
             var = tk.StringVar(value="" if s["notes"][k] is None else exchange.fmt_num(s["notes"][k]))
-            e = ttk.Entry(cell(bf, r, 3 + int(k)), textvariable=var, justify="center", font=f)
+            e = ttk.Entry(cell(bf, r, 3 + int(k)), textvariable=var, justify="center", font=f, style="Cell.TEntry")
             e.pack(fill="both", padx=2, pady=2)
             e.bind("<FocusOut>", lambda ev, k=k: self.commit_note(k))
             e.bind("<Return>", lambda ev, k=k: self.commit_note(k))
             self.note_vars[k] = var
-        self.moy = tk.Label(cell(bf, r, 7), bg="#ffffff", font=f)
+        self.moy = tk.Label(cell(bf, r, 7), bg=self.bg, fg=P["text"], font=f)
         self.moy.pack(fill="both")
         # séance + / séance −
         self.seance = []
@@ -169,7 +173,7 @@ class Row:
             for d in deltas:
                 label = ("+" if d > 0 else "−") + exchange.fmt_num(abs(d))
                 ttk.Button(c, text=label, style="Mini.TButton", command=lambda d=d: self.add("seance", d)).pack(side="left", padx=1, pady=2)
-            total = tk.Label(c, font=b)
+            total = tk.Label(c, font=b, fg=P["text"])
             total.pack(side="left", fill="both", expand=True, padx=(2, 1), pady=2)
             self.seance.append(total)
         self.counters = {}
@@ -177,10 +181,10 @@ class Row:
             c = cell(bf, r, col)
             ttk.Button(c, text="−", style="Mini.TButton", command=lambda k=kind: self.remove(k)).pack(side="left", padx=1, pady=2)
             ttk.Button(c, text="+", style="Mini.TButton", command=lambda k=kind: self.add(k, 1)).pack(side="right", padx=1, pady=2)
-            lab = tk.Label(c, font=b)
+            lab = tk.Label(c, font=b, fg=P["text"])
             lab.pack(fill="both", expand=True)
             self.counters[kind] = (c, lab)
-        self.comm = tk.Entry(cell(bf, r, 12), relief="solid", bd=1, font=f)
+        self.comm = tk.Entry(cell(bf, r, 12), font=f)
         self.comm.pack(fill="both", padx=2, pady=2)
         self.comm.insert(0, s["comms"][str(t)])
         self.comm.bind("<KeyRelease>", lambda e: self.color_comment())
@@ -188,6 +192,10 @@ class Row:
         self.comm.bind("<Return>", lambda e: self.commit_comment())
         self.refresh()
         self.color_comment()
+
+    def color(self, level):
+        """Couleur de fond d'un compteur selon son niveau d'alerte ('ok', 'warn', 'bad' ou '' = couleur de la ligne)."""
+        return P[level] if level else self.bg
 
     def open(self):
         from .dialogs import StudentWindow
@@ -197,22 +205,22 @@ class Row:
     def refresh(self):
         s, t, v = self.s, self.app.t, self.app.values
         first = s["infos"].splitlines()[0][:40] if s["infos"] else ""
-        self.infos.configure(text=first, bg="#fbd5d5" if first else "#ffffff")
+        self.infos.configure(text=first, bg=P["bad"] if first else self.bg, fg=P["text"])
         m = model.moyenne(s)
         self.moy.configure(text="" if m is None else exchange.fmt_num(m))
         plus, moins = model.seance(s, t)
-        self.seance[0].configure(text=exchange.fmt_num(plus), bg=COLORS["ok" if plus >= v["seancePlusVert"] else ""])
+        self.seance[0].configure(text=exchange.fmt_num(plus), bg=self.color("ok" if plus >= v["seancePlusVert"] else ""))
         lv = "bad" if moins <= -v["seanceMoinsRouge"] else "warn" if moins < 0 else ""
-        self.seance[1].configure(text=exchange.fmt_num(moins), bg=COLORS[lv])
+        self.seance[1].configure(text=exchange.fmt_num(moins), bg=self.color(lv))
         for kind, (c, lab) in self.counters.items():
             n = model.count(s, kind, t)
-            color = COLORS[model.level(n, v[kind + "Orange"], v[kind + "Rouge"])]
+            color = self.color(model.level(n, v[kind + "Orange"], v[kind + "Rouge"]))
             c.configure(bg=color)
             lab.configure(text=str(n), bg=color)
 
     def color_comment(self):
         n, mx = len(self.comm.get()), self.app.values["appreciationMax"]
-        self.comm.configure(bg="#fbd5d5" if n > mx else "#ffffff", fg="#8a1c14" if n > mx else "#000000")
+        self.comm.configure(bg=P["bad"] if n > mx else P["surface"], fg=P["bad_text"] if n > mx else P["text"])
 
     # ---------- actions ----------
     def add(self, kind, value):

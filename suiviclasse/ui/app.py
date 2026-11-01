@@ -5,13 +5,13 @@ import sys
 import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-from tkinter import font as tkfont
 
 from .. import model, paths
 from ..prefs import Prefs
 from ..vault import Vault, WrongPasswordError
-from . import dialogs
+from . import dialogs, theme
 from .table import ClassTable
+from .theme import P
 
 MIN_PW = 8
 TICK_MS = 5000          # vérification des archives automatiques et du verrouillage
@@ -45,16 +45,7 @@ class App:
         self.status = tk.StringVar()
         self.frame = None
         self.search.trace_add("write", lambda *a: self.table and self.table.build())
-        style = ttk.Style()
-        if "vista" in style.theme_names():
-            style.theme_use("vista")
-        elif "clam" in style.theme_names():
-            style.theme_use("clam")
-        base = tkfont.nametofont("TkDefaultFont")
-        size = base.actual("size")
-        small = (base.actual("family"), size + 1 if size < 0 else size - 1)  # un point de moins que la police par défaut
-        # width=0 : largeur du texte (par défaut, ttk impose environ 11 caractères minimum)
-        style.configure("Mini.TButton", padding=(3, 0), font=small, width=0)
+        theme.apply(root, self.values["theme"])
         for ev in ("<Key>", "<Button>", "<Motion>"):
             root.bind_all(ev, self._activity, add="+")
         root.bind_all("<Control-comma>", lambda e: self.show_prefs())
@@ -89,9 +80,9 @@ class App:
         creating = not self.vault.exists()
         f = self._swap_frame()
         box = ttk.Frame(f, padding=28)
-        box.place(relx=0.5, rely=0.4, anchor="center")
-        ttk.Label(box, text="SuiviClasse", font=("TkDefaultFont", 20, "bold")).grid(row=0, column=0, columnspan=2, sticky="w")
-        ttk.Label(box, wraplength=380, foreground="#6b7385", text=(
+        box.place(relx=0.5, rely=0.42, anchor="center")
+        ttk.Label(box, text="SuiviClasse", style="Title.TLabel").grid(row=0, column=0, columnspan=2, sticky="w")
+        ttk.Label(box, wraplength=380, style="Muted.TLabel", text=(
             "Aucune donnée dans ce dossier : créez votre coffre protégé par mot de passe." if creating
             else "Entrez votre mot de passe pour déverrouiller les données.")).grid(row=1, column=0, columnspan=2, sticky="w", pady=(4, 12))
         pw, pw2 = tk.StringVar(), tk.StringVar()
@@ -103,10 +94,10 @@ class App:
             e2 = ttk.Entry(box, textvariable=pw2, show="•", width=34)
             e2.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(2, 8))
             e2.bind("<Return>", lambda e: submit())
-            tk.Label(box, wraplength=380, justify="left", bg="#ffe9c7", padx=8, pady=6,
+            tk.Label(box, wraplength=380, justify="left", bg=P["warn"], fg=P["text"], padx=10, pady=8,
                      text="⚠ Il n’existe aucun moyen de récupérer les données si le mot de passe est perdu."
                      ).grid(row=6, column=0, columnspan=2, sticky="ew", pady=(0, 6))
-        err = ttk.Label(box, text=message, foreground="#b3261e", wraplength=380)
+        err = ttk.Label(box, text=message, style="Error.TLabel", wraplength=380)
         err.grid(row=7, column=0, columnspan=2, sticky="w")
 
         def submit():
@@ -136,9 +127,9 @@ class App:
         e1.bind("<Return>", lambda e: submit())
         row = ttk.Frame(box)
         row.grid(row=8, column=0, columnspan=2, sticky="ew", pady=(10, 0))
-        ttk.Button(row, text="Créer" if creating else "Déverrouiller", command=submit).pack(side="left")
+        ttk.Button(row, text="Créer le coffre" if creating else "Déverrouiller", style="Accent.TButton", command=submit).pack(side="left")
         ttk.Button(row, text="Autre dossier…", command=self.choose_dir).pack(side="right")
-        ttk.Label(box, foreground="#6b7385", wraplength=380, text=f"Dossier de données : {self.vault.dir}"
+        ttk.Label(box, style="Muted.TLabel", wraplength=380, text=f"Dossier de données : {self.vault.dir}"
                   ).grid(row=9, column=0, columnspan=2, sticky="w", pady=(12, 0))
         e1.focus_set()
 
@@ -147,6 +138,7 @@ class App:
         if d:
             paths.remember_data_dir(d)
             self.vault, self.prefs = Vault(d), Prefs(d)
+            theme.apply(self.root, self.values["theme"])
             self.show_login()
 
     # ---------- vue principale ----------
@@ -154,21 +146,23 @@ class App:
         """Reconstruit toute la fenêtre principale."""
         s = self.state
         f = self._swap_frame()
-        top = ttk.Frame(f, padding=(8, 6))
+        top = ttk.Frame(f, style="Bar.TFrame", padding=(14, 9))
         top.pack(fill="x")
+        ttk.Label(top, text="SuiviClasse", style="BarTitle.TLabel").pack(side="left", padx=(0, 16))
         for c in s["classes"]:
-            ttk.Radiobutton(top, text=c["nom"], style="Toolbutton", value=c["id"], variable=self._class_var(),
-                            command=lambda: self.select_class()).pack(side="left", padx=1)
-        ttk.Button(top, text="＋ Classe", command=self.add_class).pack(side="left", padx=(6, 6))
-        ttk.Button(top, text="⭳ Importer une liste PRONOTE", command=lambda: dialogs.ImportDialog(self, None)
-                   ).pack(side="left")
-        ttk.Button(top, text="🔒 Verrouiller", command=self.lock).pack(side="right")
-        ttk.Button(top, text="🗂 Données", command=lambda: dialogs.DataDialog(self)).pack(side="right", padx=3)
-        ttk.Button(top, text="🕘 Archives", command=lambda: dialogs.ArchivesDialog(self)).pack(side="right")
-        ttk.Button(top, text="⚙ Préférences", command=self.show_prefs).pack(side="right", padx=3)
-        ttk.Label(top, textvariable=self.status, foreground="#6b7385").pack(side="right", padx=8)
+            ttk.Radiobutton(top, text=c["nom"], style="Pill.Toolbutton", value=c["id"], variable=self._class_var(),
+                            command=lambda: self.select_class()).pack(side="left", padx=2)
+        ttk.Button(top, text="+ Classe", command=self.add_class).pack(side="left", padx=(8, 4))
+        ttk.Button(top, text="Importer une liste PRONOTE", command=lambda: dialogs.ImportDialog(self, None),
+                   style="TButton" if s["classes"] else "Accent.TButton").pack(side="left", padx=4)
+        ttk.Button(top, text="Verrouiller", command=self.lock).pack(side="right")
+        ttk.Button(top, text="Données", command=lambda: dialogs.DataDialog(self)).pack(side="right", padx=4)
+        ttk.Button(top, text="Archives", command=lambda: dialogs.ArchivesDialog(self)).pack(side="right")
+        ttk.Button(top, text="Préférences", command=self.show_prefs).pack(side="right", padx=4)
+        ttk.Label(top, textvariable=self.status, style="Bar.TLabel").pack(side="right", padx=12)
+        ttk.Separator(f).pack(fill="x")
         self.status.set("Enregistré ✓" if not self.dirty else "Modifié…")
-        self.body = ttk.Frame(f, padding=(8, 0, 8, 8))
+        self.body = ttk.Frame(f, padding=(14, 12, 14, 12))
         self.body.pack(fill="both", expand=True)
         self.show_class()
 
@@ -193,22 +187,22 @@ class App:
         self.table = None
         c = self.current_class
         if c is None:
-            ttk.Label(self.body, foreground="#6b7385", justify="center", text=(
-                "Aucune classe.\nCliquez sur « ⭳ Importer une liste PRONOTE » (les classes sont créées "
-                "automatiquement) ou sur « ＋ Classe »."), padding=60).pack()
+            ttk.Label(self.body, style="Muted.TLabel", justify="center", text=(
+                "Aucune classe.\nCliquez sur « Importer une liste PRONOTE » (les classes sont créées "
+                "automatiquement) ou sur « + Classe »."), padding=60).pack()
             return
         bar = ttk.Frame(self.body)
-        bar.pack(fill="x", pady=(0, 6))
-        ttk.Label(bar, text=c["nom"], font=("TkDefaultFont", 14, "bold")).pack(side="left")
-        ttk.Label(bar, text=f"  — {len(c['eleves'])} élèves", foreground="#6b7385").pack(side="left")
-        ttk.Button(bar, text="⭳ Importer / ajouter des élèves…", command=lambda: dialogs.ImportDialog(self, c)).pack(side="left", padx=(14, 4))
-        ttk.Button(bar, text="⭱ Exporter (PRONOTE, tableur)…", command=lambda: dialogs.ExportDialog(self, c)).pack(side="left", padx=4)
+        bar.pack(fill="x", pady=(0, 10))
+        ttk.Label(bar, text=c["nom"], style="H1.TLabel").pack(side="left")
+        ttk.Label(bar, text=f"   {len(c['eleves'])} élèves", style="Muted.TLabel").pack(side="left")
+        ttk.Button(bar, text="Importer des élèves…", command=lambda: dialogs.ImportDialog(self, c)).pack(side="left", padx=(18, 4))
+        ttk.Button(bar, text="Exporter (PRONOTE, tableur)…", command=lambda: dialogs.ExportDialog(self, c)).pack(side="left", padx=4)
         ttk.Button(bar, text="Renommer", command=lambda: self.rename_class(c)).pack(side="left", padx=4)
-        ttk.Button(bar, text="Supprimer la classe", command=lambda: self.delete_class(c)).pack(side="left", padx=4)
+        ttk.Button(bar, text="Supprimer la classe", style="Danger.TButton", command=lambda: self.delete_class(c)).pack(side="left", padx=4)
         for t in (3, 2, 1):
-            ttk.Radiobutton(bar, text=f"T{t}", style="Toolbutton", value=t, variable=self.trimestre, command=self.on_trimestre).pack(side="right")
-        ttk.Entry(bar, textvariable=self.search, width=16).pack(side="right", padx=(2, 12))
-        ttk.Label(bar, text="Rechercher :").pack(side="right")
+            ttk.Radiobutton(bar, text=f"T{t}", style="Pill.Toolbutton", value=t, variable=self.trimestre, command=self.on_trimestre).pack(side="right", padx=1)
+        ttk.Entry(bar, textvariable=self.search, width=16).pack(side="right", padx=(2, 14))
+        ttk.Label(bar, text="Rechercher", style="Muted.TLabel").pack(side="right", padx=(0, 4))
         self.table = ClassTable(self.body, self, c)
         self.table.pack(fill="both", expand=True)
 
@@ -230,7 +224,7 @@ class App:
 
     def delete_class(self, c):
         """Supprime une classe (la classe Test comme les autres). Une archive de l'état précédent est créée
-        juste avant : « 🕘 Archives » permet de revenir en arrière."""
+        juste avant : « Archives » permet de revenir en arrière."""
         if messagebox.askyesno("Supprimer la classe", f"Supprimer la classe {c['nom']} et ses {len(c['eleves'])} élèves ?\n\n"
                                "Une archive des données actuelles est créée juste avant, vous pourrez la restaurer "
                                "depuis « Archives » en cas d’erreur.", parent=self.root):
@@ -240,6 +234,12 @@ class App:
             self.state["ui"]["classe"] = self.state["classes"][0]["id"] if self.state["classes"] else None
             self.commit()
             self.render()
+
+    def restyle(self):
+        """Réapplique le thème (clair/sombre) puis reconstruit la fenêtre ; les fenêtres annexes sont fermées."""
+        theme.apply(self.root, self.values["theme"])
+        self.close_student_window()
+        self.render()
 
     def show_prefs(self):
         if self.state:

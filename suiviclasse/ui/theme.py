@@ -76,7 +76,8 @@ def apply(root, mode="clair"):
 
     # boutons : plats, discrets ; « Accent » pour l'action principale
     style.configure("TButton", background=p["surface2"], foreground=p["text"], padding=(11, 5), width=0, relief="flat", borderwidth=1, **flat)  # width=0 : largeur du texte
-    style.map("TButton", background=[("pressed", p["hover"]), ("active", p["hover"])], bordercolor=[("focus", p["accent"])])
+    style.map("TButton", background=[("pressed", p["hover"]), ("active", p["hover"])], bordercolor=[("focus", p["accent"])],
+              foreground=[("disabled", p["muted"])])
     style.configure("Accent.TButton", background=p["accent"], foreground=p["accent_fg"], bordercolor=p["accent"],
                     lightcolor=p["accent"], darkcolor=p["accent"], font=(family, 10, "bold"))
     style.map("Accent.TButton", background=[("pressed", p["accent_hover"]), ("active", p["accent_hover"])])

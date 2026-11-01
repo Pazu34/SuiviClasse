@@ -205,7 +205,7 @@ def apply_table(classes, rows, roles, skip, class_id, create_students, new_stude
 
 
 EXPORT_FIELDS = [
-    ("nom", "Nom"), ("prenom", "Prénom"), ("classe", "Classe"), ("infos", "Infos (PAI…)"),
+    ("numero", "N°"), ("nom", "Nom"), ("prenom", "Prénom"), ("classe", "Classe"), ("infos", "Infos (PAI…)"),
     ("note", "Note du trimestre"), ("comm", "Appréciation du trimestre"),
     ("seancePlus", "Séance +"), ("seanceMoins", "Séance −"), ("travail", "Travail non fait"), ("oubli", "Oublis de matériel"),
 ]
@@ -234,7 +234,7 @@ def build_export(cls, fields, t, header, delim, max_len, stats):
         plus, moins, travail, oubli = stats(s, int(t))
         note = s["notes"][str(t)]
         comm = s["comms"][str(t)]
-        v = {"nom": s["nom"], "prenom": s["prenom"], "classe": cls["nom"], "infos": s["infos"],
+        v = {"numero": s.get("numero") or "", "nom": s["nom"], "prenom": s["prenom"], "classe": cls["nom"], "infos": s["infos"],
              "note": "" if note is None else fmt_num(note), "comm": comm,
              "seancePlus": fmt_num(plus), "seanceMoins": fmt_num(moins), "travail": travail, "oubli": oubli}
         if max_len and "comm" in fields and len(comm) > max_len:

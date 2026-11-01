@@ -3,7 +3,7 @@ et quelques fonctions de calcul.
 
     {"version": 1, "settings": {"annee": ""}, "classes": [classe, …], "ui": {"classe": id, "trimestre": 1}}
     classe = {"id", "nom", "eleves": [eleve, …]}
-    eleve  = {"id", "nom", "prenom", "naissance", "infos",
+    eleve  = {"id", "nom", "prenom", "numero", "naissance", "infos",
               "notes": {"1": 14.5 | None, "2": …, "3": …}, "comms": {"1": "", …}, "events": [evenement, …]}
     evenement = {"id", "type": "seance" | "travail" | "oubli", "t": 1..3, "v": ±0.5, ±1 (séance) ou 1,
                  "date": ISO 8601 UTC, "note": ""}
@@ -35,7 +35,7 @@ def new_class(nom):
 
 
 def new_student(nom, prenom="", infos=""):
-    return {"id": uid(), "nom": nom.strip(), "prenom": prenom.strip(), "naissance": "", "infos": infos,
+    return {"id": uid(), "nom": nom.strip(), "prenom": prenom.strip(), "numero": None, "naissance": "", "infos": infos,
             "notes": {"1": None, "2": None, "3": None}, "comms": {"1": "", "2": "", "3": ""}, "events": []}
 
 
@@ -67,11 +67,32 @@ def demo_class():
             add_event(s, "seance", 1, v)
         cls["eleves"].append(s)
     sort_students(cls)
+    ensure_numbers(cls)
     return cls
 
 
 def sort_students(cls):
     cls["eleves"].sort(key=lambda s: (norm(s["nom"]), norm(s["prenom"])))
+
+
+def ensure_numbers(cls):
+    """Donne un n° aux élèves qui n'en ont pas (dans l'ordre de la liste), sans toucher à ceux qui en ont un."""
+    used = [s["numero"] for s in cls["eleves"] if isinstance(s.get("numero"), int)]
+    nxt = max(used, default=0) + 1
+    for s in cls["eleves"]:
+        if not isinstance(s.get("numero"), int):
+            s["numero"] = nxt
+            nxt += 1
+
+
+def duplicate_numbers(cls):
+    """Ensemble des n° utilisés par plusieurs élèves de la classe."""
+    seen, dups = set(), set()
+    for s in cls["eleves"]:
+        n = s.get("numero")
+        if n is not None:
+            (dups if n in seen else seen).add(n)
+    return dups
 
 
 def sort_classes(data):
@@ -101,6 +122,40 @@ def moyenne(student):
 def add_event(student, type_, t, v, note=""):
     student["events"].append({"id": uid(), "type": type_, "t": t, "v": v, "note": note,
                               "date": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")})
+
+
+def set_count(student, type_, t, target):
+    """Amène le compteur (travail non fait, oublis) du trimestre à `target` : ajoute ou retire les dernières entrées."""
+    cur = count(student, type_, t)
+    for _ in range(max(0, target - cur)):
+        add_event(student, type_, t, 1, "Ajustement manuel")
+    for _ in range(max(0, cur - target)):
+        remove_last(student, type_, t)
+
+
+def set_seance_total(student, t, bucket, target):
+    """Amène le total de séance « plus » ou « moins » (valeur absolue) à `target`.
+    Pour monter : une entrée d'ajustement. Pour descendre : on retire les dernières entrées du même signe
+    et, si on a retiré trop, on remet la différence."""
+    sign = 1 if bucket == "plus" else -1
+    plus, moins = seance(student, t)
+    cur = plus if sign > 0 else -moins
+    target = round(float(target), 2)
+    if abs(target - cur) < 1e-9:
+        return
+    if target > cur:
+        add_event(student, "seance", t, sign * round(target - cur, 2), "Ajustement manuel")
+        return
+    need, removed = round(cur - target, 2), 0.0
+    for i in range(len(student["events"]) - 1, -1, -1):
+        if removed >= need - 1e-9:
+            break
+        e = student["events"][i]
+        if e["type"] == "seance" and e["t"] == t and e["v"] * sign > 0:
+            removed += abs(e["v"])
+            del student["events"][i]
+    if removed > need + 1e-9:
+        add_event(student, "seance", t, sign * round(removed - need, 2), "Ajustement manuel")
 
 
 def remove_last(student, type_, t):

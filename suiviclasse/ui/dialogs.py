@@ -366,6 +366,7 @@ class ImportDialog(Dialog):
         rep = self.apply(app.state["classes"])
         for c in app.state["classes"]:
             model.sort_students(c)
+            model.ensure_numbers(c)
         if rep["createdClasses"]:
             model.sort_classes(app.state)
         if app.current_class is None and app.state["classes"]:

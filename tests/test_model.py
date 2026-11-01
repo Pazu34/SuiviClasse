@@ -30,3 +30,54 @@ class ModelTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SaisieManuelleTest(unittest.TestCase):
+    def student(self):
+        return model.new_student("DUPONT", "Marie")
+
+    def test_numeros(self):
+        c = model.new_class("6A")
+        for nom in ("A", "B", "C"):
+            c["eleves"].append(model.new_student(nom))
+        model.ensure_numbers(c)
+        self.assertEqual([s["numero"] for s in c["eleves"]], [1, 2, 3])
+        c["eleves"].append(model.new_student("D"))
+        c["eleves"][0]["numero"] = 9
+        model.ensure_numbers(c)  # les n° existants ne changent pas, le nouveau prend le suivant
+        self.assertEqual([s["numero"] for s in c["eleves"]], [9, 2, 3, 10])
+        self.assertEqual(model.duplicate_numbers(c), set())
+        c["eleves"][1]["numero"] = 3
+        self.assertEqual(model.duplicate_numbers(c), {3})
+        # anciennes données sans n°
+        old = model.new_class("6B")
+        old["eleves"] = [{"nom": "X"}, {"nom": "Y"}]
+        model.ensure_numbers(old)
+        self.assertEqual([s["numero"] for s in old["eleves"]], [1, 2])
+
+    def test_compteurs(self):
+        s = self.student()
+        model.set_count(s, "oubli", 1, 3)
+        self.assertEqual(model.count(s, "oubli", 1), 3)
+        model.set_count(s, "oubli", 1, 1)
+        self.assertEqual(model.count(s, "oubli", 1), 1)
+        model.set_count(s, "oubli", 1, 1)
+        self.assertEqual(model.count(s, "oubli", 1), 1)
+        self.assertEqual(model.count(s, "oubli", 2), 0, "un autre trimestre n'est pas touché")
+
+    def test_totaux_de_seance(self):
+        s = self.student()
+        for v in (1, 0.5, 1, -0.5, -1):
+            model.add_event(s, "seance", 1, v)
+        self.assertEqual(model.seance(s, 1), (2.5, -1.5))
+        model.set_seance_total(s, 1, "plus", 4)       # monter
+        self.assertEqual(model.seance(s, 1), (4, -1.5))
+        model.set_seance_total(s, 1, "plus", 1.5)     # descendre : retire des entrées entières
+        self.assertEqual(model.seance(s, 1)[0], 1.5)
+        model.set_seance_total(s, 1, "plus", 0.25)    # descendre d'une valeur qui ne tombe pas juste
+        self.assertEqual(model.seance(s, 1)[0], 0.25)
+        model.set_seance_total(s, 1, "moins", 3)
+        self.assertEqual(model.seance(s, 1)[1], -3)
+        model.set_seance_total(s, 1, "moins", 0)
+        self.assertEqual(model.seance(s, 1), (0.25, 0))
+        self.assertEqual(model.seance(s, 2), (0, 0))

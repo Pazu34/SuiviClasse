@@ -101,6 +101,8 @@ class ExchangeTest(unittest.TestCase):
         c = cls("6A", s, m)
         st = lambda e, t: (1, -0.5, 2, 0)
         text, long = X.build_export(c, ["nom", "prenom", "note", "comm"], 2, True, "\t", 255, st)
+        s["numero"] = 7
+        self.assertEqual(X.build_export(c, ["numero", "nom"], 2, True, ";", 0, st)[0].split("\r\n")[:2], ["N°;Nom", "7;DUPONT"])
         lines = text.split("\r\n")
         self.assertEqual(lines[0], "Nom\tPrénom\tNote du trimestre T2\tAppréciation du trimestre T2")
         self.assertTrue(lines[1].startswith("DUPONT\tMarie\t14,5\t"))

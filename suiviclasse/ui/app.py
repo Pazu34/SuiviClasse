@@ -1,4 +1,5 @@
 """Fenêtre principale : connexion, barre du haut, enregistrement automatique, archives, verrouillage."""
+import copy
 import os
 import subprocess
 import sys
@@ -16,6 +17,7 @@ from .theme import P
 MIN_PW = 8
 TICK_MS = 5000          # vérification des archives automatiques et du verrouillage
 SAVE_DELAY_MS = 500     # enregistrement une demi-seconde après la dernière modification
+UNDO_MAX = 100          # nombre de modifications que l'on peut annuler
 
 
 def open_folder(path):
@@ -44,11 +46,15 @@ class App:
         self.trimestre = tk.IntVar(value=1)
         self.status = tk.StringVar()
         self.frame = None
+        self.undo, self.redo, self._last = [], [], None  # historique des modifications (voir commit)
+        self.btn_undo = self.btn_redo = None
         self.search.trace_add("write", lambda *a: self.table and self.table.build())
         theme.apply(root, self.values["theme"])
         for ev in ("<Key>", "<Button>", "<Motion>"):
             root.bind_all(ev, self._activity, add="+")
         root.bind_all("<Control-comma>", lambda e: self.show_prefs())
+        for seq, fn in (("<Control-z>", self.undo_action), ("<Control-y>", self.redo_action), ("<Control-Shift-Z>", self.redo_action)):
+            root.bind_all(seq, lambda e, fn=fn: self._history_key(fn))
         root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.show_login()
         self.root.after(TICK_MS, self._tick)
@@ -118,8 +124,11 @@ class App:
                 return
             self.state.setdefault("ui", {"classe": None, "trimestre": 1})
             self.state["settings"].setdefault("annee", "")
+            for c in self.state["classes"]:
+                model.ensure_numbers(c)  # données créées avant l'ajout des n° d'élèves
             if self.current_class is None and self.state["classes"]:
                 self.state["ui"]["classe"] = self.state["classes"][0]["id"]
+            self.reset_history()
             self.trimestre.set(self.state["ui"].get("trimestre", 1))
             self._last_archive = self._last_activity = time.time()
             self.render()
@@ -160,6 +169,11 @@ class App:
         ttk.Button(top, text="Archives", command=lambda: dialogs.ArchivesDialog(self)).pack(side="right")
         ttk.Button(top, text="Préférences", command=self.show_prefs).pack(side="right", padx=4)
         ttk.Label(top, textvariable=self.status, style="Bar.TLabel").pack(side="right", padx=12)
+        self.btn_redo = ttk.Button(top, text="↷ Rétablir", command=self.redo_action)
+        self.btn_redo.pack(side="right", padx=(2, 4))
+        self.btn_undo = ttk.Button(top, text="↶ Annuler", command=self.undo_action)
+        self.btn_undo.pack(side="right", padx=2)
+        self.update_history_buttons()
         ttk.Separator(f).pack(fill="x")
         self.status.set("Enregistré ✓" if not self.dirty else "Modifié…")
         self.body = ttk.Frame(f, padding=(14, 12, 14, 12))
@@ -247,12 +261,75 @@ class App:
 
     # ---------- enregistrement ----------
     def commit(self):
-        """À appeler après toute modification : enregistrement différé et groupé."""
+        """À appeler après toute modification : l'enregistre (différé et groupé) et la range dans l'historique."""
+        self._push_history()
         self.dirty = True
         self.status.set("Modifié…")
         if self._save_job:
             self.root.after_cancel(self._save_job)
         self._save_job = self.root.after(SAVE_DELAY_MS, self.flush)
+
+    # ---------- annuler / rétablir ----------
+    def _snap(self):
+        """Copie des données (sans l'état de l'affichage : classe et trimestre choisis)."""
+        return copy.deepcopy({k: v for k, v in self.state.items() if k != "ui"})
+
+    def reset_history(self):
+        self.undo, self.redo, self._last = [], [], self._snap() if self.state else None
+        self.update_history_buttons()
+
+    def _push_history(self):
+        if self._last is None or not self.state:
+            return
+        snap = self._snap()
+        if snap != self._last:
+            self.undo.append(self._last)
+            del self.undo[:-UNDO_MAX]
+            self.redo.clear()
+            self._last = snap
+            self.update_history_buttons()
+
+    def update_history_buttons(self):
+        for btn, stack in ((self.btn_undo, self.undo), (self.btn_redo, self.redo)):
+            if btn is not None and btn.winfo_exists():
+                btn.state(["!disabled"] if stack else ["disabled"])
+
+    def _history_key(self, action):
+        """Ctrl+Z / Ctrl+Y : dans un champ de saisie, c'est l'annulation du texte qui s'applique, pas celle du tableau."""
+        w = self.root.focus_get()
+        if self.state and not isinstance(w, (tk.Entry, tk.Text, ttk.Entry, ttk.Combobox, ttk.Spinbox)):
+            action()
+
+    def undo_action(self):
+        self._travel(self.undo, self.redo, "Modification annulée")
+
+    def redo_action(self):
+        self._travel(self.redo, self.undo, "Modification rétablie")
+
+    def _travel(self, source, target, message):
+        if not self.state:
+            return
+        self.root.focus_set()  # valide d'abord ce qui est en cours de saisie
+        self.root.update_idletasks()
+        self._push_history()
+        if not source:
+            return
+        target.append(self._snap())
+        snap = source.pop()
+        y = self.table.body.yview()[0] if self.table else 0
+        self.state.update(copy.deepcopy(snap))
+        self._last = copy.deepcopy(snap)
+        if self.current_class is None:
+            self.state["ui"]["classe"] = self.state["classes"][0]["id"] if self.state["classes"] else None
+        self.close_student_window()
+        self.dirty = True
+        self.render()
+        if self.table:
+            self.table.update_idletasks()
+            self.table.body.yview_moveto(y)
+        self.flush()
+        self.update_history_buttons()
+        self.status.set(message + " ✓")
 
     def flush(self):
         if self._save_job:
@@ -314,10 +391,13 @@ class App:
         """Remplace toutes les données (restauration d'une archive)."""
         self.state = data
         self.state.setdefault("ui", {"classe": None, "trimestre": 1})
+        for c in self.state["classes"]:
+            model.ensure_numbers(c)
         if self.current_class is None:
             self.state["ui"]["classe"] = self.state["classes"][0]["id"] if self.state["classes"] else None
         self.close_student_window()
         self.dirty = False
+        self.reset_history()
         self.render()
 
     def on_close(self):

@@ -12,6 +12,8 @@ FILE = "preferences.json"
 SCHEMA = [
     dict(key="theme", group="Affichage", label="Thème", type="choice", default="clair",
          options=[("clair", "Clair"), ("sombre", "Sombre"), ("auto", "Automatique (suit Windows)")], unit=""),
+    dict(key="pictogrammes", group="Affichage", label="Pictogrammes dans les titres", type="choice", default="oui",
+         options=[("oui", "Oui"), ("non", "Non")], unit=""),
     dict(key="affichage", group="Affichage", label="Densité du tableau", type="choice", default="compact",
          options=[("compact", "Resserré (portable)"), ("normal", "Normal (grand écran)")], unit=""),
     dict(key="oubliOrange", group="Alertes — oublis de matériel", label="Orange à partir de", type="int", min=1, max=99, default=2, unit="par trimestre"),

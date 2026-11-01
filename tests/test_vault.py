@@ -1,3 +1,4 @@
+import base64
 import json
 import tempfile
 import unittest
@@ -13,13 +14,16 @@ def tmp():
 class VaultTest(unittest.TestCase):
     def test_creation_relecture_et_mauvais_mot_de_passe(self):
         d = tmp()
-        Vault(d).create("Pässwörd é", {"classes": [{"nom": "6A", "eleves": [{"nom": "Élève"}]}]})
+        secret = "Classe-confidentielle-6A"  # assez long pour qu'une rencontre par hasard dans du texte chiffré soit impossible
+        Vault(d).create("Pässwörd é", {"classes": [{"nom": secret, "eleves": [{"nom": "Élève Très Particulier"}]}]})
         raw = (d / "suivi.enc").read_text(encoding="utf-8")
-        self.assertNotIn("Élève", raw)
-        self.assertNotIn("6A", raw)
+        cipher = base64.b64decode(json.loads(raw)["data"])
+        for clair in (secret, "Élève Très Particulier"):
+            self.assertNotIn(clair, raw)
+            self.assertNotIn(clair.encode("utf-8"), cipher)
         with self.assertRaises(WrongPasswordError):
             Vault(d).unlock("mauvais")
-        self.assertEqual(Vault(d).unlock("Pässwörd é")["classes"][0]["eleves"][0]["nom"], "Élève")
+        self.assertEqual(Vault(d).unlock("Pässwörd é")["classes"][0]["nom"], secret)
 
     def test_sauvegarde_et_detection_de_modification(self):
         d = tmp()

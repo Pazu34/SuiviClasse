@@ -33,3 +33,10 @@ class PrefsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ChoixTest(unittest.TestCase):
+    def test_densite_du_tableau(self):
+        self.assertEqual(defaults()["affichage"], "compact")
+        self.assertEqual(sanitize({"affichage": "normal"})["affichage"], "normal")
+        self.assertEqual(sanitize({"affichage": "n'importe quoi"})["affichage"], "compact")

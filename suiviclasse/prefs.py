@@ -10,6 +10,8 @@ from pathlib import Path
 FILE = "preferences.json"
 
 SCHEMA = [
+    dict(key="affichage", group="Affichage", label="Densité du tableau", type="choice", default="compact",
+         options=[("compact", "Resserré (portable)"), ("normal", "Normal (grand écran)")], unit=""),
     dict(key="oubliOrange", group="Alertes — oublis de matériel", label="Orange à partir de", type="int", min=1, max=99, default=2, unit="oublis par trimestre"),
     dict(key="oubliRouge", group="Alertes — oublis de matériel", label="Rouge à partir de", type="int", min=1, max=99, default=3, unit="oublis par trimestre"),
     dict(key="travailOrange", group="Alertes — travail non fait", label="Orange à partir de", type="int", min=1, max=99, default=2, unit="fois par trimestre"),
@@ -33,6 +35,10 @@ def sanitize(src):
     src = src if isinstance(src, dict) else {}
     out = {}
     for f in SCHEMA:
+        if f["type"] == "choice":
+            v = src.get(f["key"])
+            out[f["key"]] = v if v in dict(f["options"]) else f["default"]
+            continue
         try:
             v = float(str(src.get(f["key"])).replace(",", "."))
             if v != v or v in (float("inf"), float("-inf")):

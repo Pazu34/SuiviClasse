@@ -5,6 +5,7 @@ import sys
 import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from tkinter import font as tkfont
 
 from .. import model, paths
 from ..prefs import Prefs
@@ -49,7 +50,11 @@ class App:
             style.theme_use("vista")
         elif "clam" in style.theme_names():
             style.theme_use("clam")
-        style.configure("Mini.TButton", padding=(3, 0))
+        base = tkfont.nametofont("TkDefaultFont")
+        size = base.actual("size")
+        small = (base.actual("family"), size + 1 if size < 0 else size - 1)  # un point de moins que la police par défaut
+        # width=0 : largeur du texte (par défaut, ttk impose environ 11 caractères minimum)
+        style.configure("Mini.TButton", padding=(3, 0), font=small, width=0)
         for ev in ("<Key>", "<Button>", "<Motion>"):
             root.bind_all(ev, self._activity, add="+")
         root.bind_all("<Control-comma>", lambda e: self.show_prefs())
@@ -202,7 +207,7 @@ class App:
         ttk.Button(bar, text="Supprimer la classe", command=lambda: self.delete_class(c)).pack(side="left", padx=4)
         for t in (3, 2, 1):
             ttk.Radiobutton(bar, text=f"T{t}", style="Toolbutton", value=t, variable=self.trimestre, command=self.on_trimestre).pack(side="right")
-        ttk.Entry(bar, textvariable=self.search, width=22).pack(side="right", padx=(2, 12))
+        ttk.Entry(bar, textvariable=self.search, width=16).pack(side="right", padx=(2, 12))
         ttk.Label(bar, text="Rechercher :").pack(side="right")
         self.table = ClassTable(self.body, self, c)
         self.table.pack(fill="both", expand=True)

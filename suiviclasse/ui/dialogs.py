@@ -520,6 +520,16 @@ class ArchivesDialog(Dialog):
 
 
 # ---------------------------------------------------------------- préférences
+class ChoiceVar:
+    """Donne à une liste déroulante la même interface .get() que les autres réglages (valeur, pas libellé)."""
+
+    def __init__(self, combo, options):
+        self.combo, self.options = combo, options
+
+    def get(self):
+        return next(value for value, label in self.options if label == self.combo.get())
+
+
 class PrefsDialog(Dialog):
     def __init__(self, app):
         super().__init__(app, "Préférences")
@@ -531,6 +541,13 @@ class PrefsDialog(Dialog):
             box.columnconfigure(0, weight=1)
             for r, f in enumerate(x for x in SCHEMA if x["group"] == group):
                 ttk.Label(box, text=f["label"]).grid(row=r, column=0, sticky="w")
+                if f["type"] == "choice":
+                    labels = dict(f["options"])
+                    combo = ttk.Combobox(box, state="readonly", width=22, values=list(labels.values()))
+                    combo.set(labels[app.values[f["key"]]])
+                    combo.grid(row=r, column=1, columnspan=2, padx=8, pady=2, sticky="w")
+                    self.vars[f["key"]] = ChoiceVar(combo, f["options"])
+                    continue
                 var = tk.StringVar(value=str(app.values[f["key"]]).replace(".", ","))
                 ttk.Spinbox(box, from_=f["min"], to=f["max"], increment=1 if f["type"] == "int" else 0.5, width=7,
                             textvariable=var, justify="center").grid(row=r, column=1, padx=8, pady=2)

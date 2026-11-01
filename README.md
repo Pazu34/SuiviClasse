@@ -19,7 +19,7 @@ Application de suivi quotidien des élèves, qui remplace un classeur Excel de s
 - **n°** : le n° de chaque élève est libre. Si un n° est déjà pris dans la classe, une fenêtre le signale et demande s'il faut garder le doublon ; les n° en double sont surlignés en rouge. L'ordre du tableau reste alphabétique.
 - Quand on saisit directement un total (séance, travail, oublis), le programme ajoute ou retire des entrées du journal pour que le total corresponde (entrées « Ajustement manuel »).
 - Le pictogramme **📝** en bout de ligne ouvre la fiche de l'élève (identité, infos, notes, commentaires des 3 trimestres, journal daté). Sans pictogrammes (Préférences), il devient un bouton « Fiche ».
-- **↶ Annuler / ↷ Rétablir** (ou `Ctrl+Z` / `Ctrl+Y` hors d'un champ de saisie) : jusqu'à 100 modifications du tableau, des fiches, des imports et des suppressions de classe. L'historique est conservé tant que le programme est ouvert ; les **archives** couvrent le reste.
+- **Annuler / Rétablir** (boutons à icône en haut à gauche) (ou `Ctrl+Z` / `Ctrl+Y` hors d'un champ de saisie) : jusqu'à 100 modifications du tableau, des fiches, des imports et des suppressions de classe. L'historique est conservé tant que le programme est ouvert ; les **archives** couvrent le reste.
 - Les colonnes à compteur ont un pictogramme (👍 👎 📝 🎒) ; il se désactive dans Préférences → Affichage → Pictogrammes.
 
 ## Colonnes personnalisables

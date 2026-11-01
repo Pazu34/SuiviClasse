@@ -10,7 +10,7 @@ from tkinter import filedialog, messagebox, ttk
 from .. import model, paths
 from ..prefs import Prefs
 from ..vault import Vault, WrongPasswordError
-from . import dialogs, theme
+from . import dialogs, icons, theme
 from .table import ClassTable
 from .theme import P
 
@@ -200,9 +200,9 @@ class App:
         # 1re ligne : annuler / rétablir à gauche, accès aux fenêtres à droite
         top = ttk.Frame(f, style="Bar.TFrame", padding=(14, 9, 14, 3))
         top.pack(fill="x")
-        self.btn_undo = ttk.Button(top, text="↶ Annuler", command=self.undo_action)
+        self.btn_undo = self._history_button(top, "Annuler", False, self.undo_action)
         self.btn_undo.pack(side="left", padx=(0, 4))
-        self.btn_redo = ttk.Button(top, text="↷ Rétablir", command=self.redo_action)
+        self.btn_redo = self._history_button(top, "Rétablir", True, self.redo_action)
         self.btn_redo.pack(side="left", padx=4)
         ttk.Label(top, textvariable=self.status, style="Bar.TLabel").pack(side="left", padx=12)
         ttk.Button(top, text="Verrouiller", command=self.lock).pack(side="right")
@@ -380,6 +380,14 @@ class App:
         self._save_job = self.root.after(SAVE_DELAY_MS, self.flush)
 
     # ---------- annuler / rétablir ----------
+    def _history_button(self, parent, text, redo, command):
+        """Bouton avec une icône (flèche courbe) à la couleur du thème ; grisée quand le bouton est inactif."""
+        normal = icons.arrow_image(self.root, P["text"], flip=redo)
+        grey = icons.arrow_image(self.root, P["muted"], flip=redo)
+        btn = ttk.Button(parent, text=text, image=(normal, "disabled", grey), compound="left", command=command)
+        btn._icons = (normal, grey)  # Tk n'affiche une image que tant que Python la garde en mémoire
+        return btn
+
     def _snap(self):
         """Copie des données (sans l'état de l'affichage : classe et trimestre choisis)."""
         return copy.deepcopy({k: v for k, v in self.state.items() if k != "ui"})

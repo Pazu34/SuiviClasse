@@ -171,3 +171,25 @@ class ChangementDeTypeTest(unittest.TestCase):
         self.assertEqual(model.extra_value(s, {"id": "c", "type": "note"}, 1), 7.5)
         self.assertEqual(model.extra_value(s, {"id": "c", "type": "texte"}, 1), "7,5")
         self.assertIsNone(model.extra_value(s, {"id": "c", "type": "coche"}, 1))
+
+
+class IconesTest(unittest.TestCase):
+    def test_png_valide_et_couleur(self):
+        import struct
+        import zlib
+
+        from suiviclasse.ui import icons
+        data = icons.arrow_png("#336699", 16)
+        self.assertEqual(data[:8], b"\x89PNG\r\n\x1a\n")
+        w, h = struct.unpack(">II", data[16:24])
+        self.assertEqual((w, h), (16, 16))
+        idat = data[data.index(b"IDAT") + 4:data.index(b"IEND") - 8]
+        raw = zlib.decompress(idat)
+        rows = [raw[i * (1 + 64) + 1:(i + 1) * (1 + 64)] for i in range(16)]
+        alphas = [row[k + 3] for row in rows for k in range(0, 64, 4)]
+        self.assertTrue(any(a > 200 for a in alphas), "la flèche est dessinée")
+        self.assertTrue(any(a == 0 for a in alphas), "le fond reste transparent")
+        self.assertTrue(any(0 < a < 255 for a in alphas), "les bords sont lissés")
+        px = next(row[k:k + 4] for row in rows for k in range(0, 64, 4) if row[k + 3] > 200)
+        self.assertEqual(tuple(px[:3]), (0x33, 0x66, 0x99))
+        self.assertNotEqual(icons.arrow_png("#336699", 16, flip=True), data, "« rétablir » est le symétrique de « annuler »")

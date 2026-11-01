@@ -5,7 +5,6 @@ elle suit donc le thème clair ou sombre."""
 import base64
 import math
 import struct
-import tkinter
 import zlib
 
 SUPER = 4  # sous-échantillonnage pour lisser les bords
@@ -58,4 +57,5 @@ def arrow_png(color, size=18, flip=False):
 
 def arrow_image(master, color, flip=False, size=18):
     """Image Tk de l'icône (à garder référencée tant qu'elle est affichée)."""
+    import tkinter  # importé ici : fabriquer le PNG (et le tester) ne demande pas Tkinter
     return tkinter.PhotoImage(master=master, data=base64.b64encode(arrow_png(color, size, flip)))

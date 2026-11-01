@@ -10,6 +10,10 @@ Application de suivi quotidien des élèves, qui remplace un classeur Excel de s
 - **échanges avec PRONOTE et les tableurs** (voir plus bas) ;
 - **données chiffrées par mot de passe**, **archives automatiques** pour revenir en arrière, **version portable** pour clé USB.
 
+## Classe « Test »
+
+À la création d'un nouveau coffre, le programme contient une classe **Test** (8 élèves fictifs avec notes, commentaires, infos, oublis et séances) pour essayer toutes les fonctions sans toucher à vos vraies données. Elle se supprime comme n'importe quelle classe (bouton **Supprimer la classe** ; une archive des données est créée juste avant, donc **🕘 Archives** permet de revenir en arrière). Pour la retrouver plus tard : **🗂 Données → Ajouter la classe Test**.
+
 ## Lancer le programme
 
 Prérequis : [Python](https://www.python.org/downloads/) 3.9 ou plus (sous Windows, cocher « Add python.exe to PATH » et laisser « tcl/tk » coché à l'installation).

@@ -160,7 +160,7 @@ class App:
             ttk.Radiobutton(top, text=c["nom"], style="Toolbutton", value=c["id"], variable=self._class_var(),
                             command=lambda: self.select_class()).pack(side="left", padx=1)
         ttk.Button(top, text="＋ Classe", command=self.add_class).pack(side="left", padx=(6, 6))
-        ttk.Button(top, text="⭳ Importer une liste PRONOTE", command=lambda: dialogs.ImportDialog(self, self.current_class)
+        ttk.Button(top, text="⭳ Importer une liste PRONOTE", command=lambda: dialogs.ImportDialog(self, None)
                    ).pack(side="left")
         ttk.Button(top, text="🔒 Verrouiller", command=self.lock).pack(side="right")
         ttk.Button(top, text="🗂 Données", command=lambda: dialogs.DataDialog(self)).pack(side="right", padx=3)
@@ -229,7 +229,13 @@ class App:
             self.render()
 
     def delete_class(self, c):
-        if messagebox.askyesno("Supprimer", f"Supprimer définitivement la classe {c['nom']} et ses {len(c['eleves'])} élèves ?", parent=self.root):
+        """Supprime une classe (la classe Test comme les autres). Une archive de l'état précédent est créée
+        juste avant : « 🕘 Archives » permet de revenir en arrière."""
+        if messagebox.askyesno("Supprimer la classe", f"Supprimer la classe {c['nom']} et ses {len(c['eleves'])} élèves ?\n\n"
+                               "Une archive des données actuelles est créée juste avant, vous pourrez la restaurer "
+                               "depuis « Archives » en cas d’erreur.", parent=self.root):
+            self.flush()
+            self.archive("suppression")
             self.state["classes"].remove(c)
             self.state["ui"]["classe"] = self.state["classes"][0]["id"] if self.state["classes"] else None
             self.commit()

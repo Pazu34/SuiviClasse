@@ -21,8 +21,13 @@ def uid():
     return secrets.token_hex(5)
 
 
+DEMO_NAME = "Test"
+
+
 def new_data():
-    return {"version": 1, "settings": {"annee": ""}, "classes": [], "ui": {"classe": None, "trimestre": 1}}
+    """Données d'un nouveau coffre : une classe d'essai (voir demo_class) pour découvrir le programme."""
+    demo = demo_class()
+    return {"version": 1, "settings": {"annee": ""}, "classes": [demo], "ui": {"classe": demo["id"], "trimestre": 1}}
 
 
 def new_class(nom):
@@ -32,6 +37,37 @@ def new_class(nom):
 def new_student(nom, prenom="", infos=""):
     return {"id": uid(), "nom": nom.strip(), "prenom": prenom.strip(), "naissance": "", "infos": infos,
             "notes": {"1": None, "2": None, "3": None}, "comms": {"1": "", "2": "", "3": ""}, "events": []}
+
+
+# (nom, prénom, infos, note T1, commentaire T1, oublis, travail non fait, points de séance)
+_DEMO = [
+    ("ANDRÉ", "Léa", "PAI asthme (exemple)", 14.5, "Bon début de trimestre, élève sérieuse.", 0, 0, [1, 0.5, 1]),
+    ("BERNARD", "Zoé", "", 11, "Participe volontiers, doit soigner la présentation.", 2, 1, [0.5, -0.5]),
+    ("CHARPENTIER", "Lucas", "Dyslexie, tiers temps (exemple)", 9.5, "Des difficultés à rester concentré, à encourager.", 3, 3, [-1, -0.5, 0.5]),
+    ("DUBOIS", "Emma", "", 17, "Très bon travail.", 0, 0, [1, 1, 1, 0.5]),
+    ("FONTAINE", "Jules", "", 12, "Peut mieux faire : manque de régularité.", 1, 2, [0.5, -0.5, -0.5]),
+    ("GARCIA", "Inès", "Suivi PAP (exemple)", 13, "", 1, 0, [1, 0.5]),
+    ("HENRY", "Noah", "", None, "", 4, 2, [-1]),
+    ("LAMBERT", "Chloé", "", 19, "Excellente élève, très impliquée.", 0, 0, [1, 1, 1]),
+]
+
+
+def demo_class():
+    """Classe « Test » avec des élèves fictifs et quelques données, pour essayer le programme.
+    Elle se supprime comme n'importe quelle classe (bouton « Supprimer la classe »)."""
+    cls = new_class(DEMO_NAME)
+    for nom, prenom, infos, note, comm, oublis, travail, seance in _DEMO:
+        s = new_student(nom, prenom, infos)
+        s["notes"]["1"], s["comms"]["1"] = note, comm
+        for _ in range(oublis):
+            add_event(s, "oubli", 1, 1)
+        for _ in range(travail):
+            add_event(s, "travail", 1, 1)
+        for v in seance:
+            add_event(s, "seance", 1, v)
+        cls["eleves"].append(s)
+    sort_students(cls)
+    return cls
 
 
 def sort_students(cls):

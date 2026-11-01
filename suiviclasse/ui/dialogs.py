@@ -6,7 +6,7 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from .. import exchange, model
 from ..vault import NeedPasswordError, WrongPasswordError
 
-REASONS = {"auto": "automatique", "manuel": "manuelle", "demarrage": "à l’ouverture", "fermeture": "à la fermeture",
+REASONS = {"suppression": "avant suppression d’une classe", "auto": "automatique", "manuel": "manuelle", "demarrage": "à l’ouverture", "fermeture": "à la fermeture",
            "restauration": "avant restauration", "mdp": "avant changement de mot de passe"}
 
 
@@ -293,6 +293,8 @@ class ImportDialog(Dialog):
             self.guessed = ([exchange.guess_role(x, self.app.t) for x in self.rows[0]] if has_header
                             else ["nomprenom"] if n == 1 else [["nom", "prenom", "infos"][i] if i < 3 else "ignore" for i in range(n)])
             self.guessed += ["ignore"] * (n - len(self.guessed))
+            if "classe" in self.guessed:  # la liste indique les classes : on peut les créer
+                self.create.set(True)
         self.draw()
 
     def skip_count(self):
@@ -589,7 +591,21 @@ class DataDialog(Dialog):
         self.err.grid(row=5, column=0, columnspan=2, sticky="w")
         ttk.Label(f, foreground="#6b7385", wraplength=360, text=f"Dossier : {app.vault.dir}\nArchives chiffrées dans le sous-dossier « sauvegardes ».").grid(
             row=6, column=0, columnspan=2, sticky="w", pady=(8, 0))
-        self.buttons(("Enregistrer", self.save, "right"), ("Fermer", self.destroy, "right"), ("Ouvrir le dossier des données", self.open_dir, "left"))
+        self.buttons(("Enregistrer", self.save, "right"), ("Fermer", self.destroy, "right"), ("Ouvrir le dossier des données", self.open_dir, "left"),
+                     ("Ajouter la classe Test", self.add_demo, "left"))
+
+    def add_demo(self):
+        app = self.app
+        if any(model.norm(c["nom"]) == model.norm(model.DEMO_NAME) for c in app.state["classes"]):
+            self.err.configure(text=f"Une classe « {model.DEMO_NAME} » existe déjà (supprimez-la d’abord si vous voulez la recréer).")
+            return
+        demo = model.demo_class()
+        app.state["classes"].append(demo)
+        model.sort_classes(app.state)
+        app.state["ui"]["classe"] = demo["id"]
+        app.commit()
+        self.destroy()
+        app.render()
 
     def open_dir(self):
         from .app import open_folder

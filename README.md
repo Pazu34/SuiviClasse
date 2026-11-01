@@ -21,7 +21,7 @@ py -m pip install -r requirements.txt
 py suiviclasse
 ```
 
-(`py -m suiviclasse` fonctionne aussi.) Au premier lancement, choisissez un mot de passe.
+(`py -m suiviclasse` fonctionne aussi, ainsi qu'un double‑clic sur `lancer.pyw` sous Windows.) Au premier lancement, choisissez un mot de passe.
 
 ## Version portable (clé USB, Windows)
 

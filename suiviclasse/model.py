@@ -103,8 +103,25 @@ def duplicate_numbers(cls):
     return dups
 
 
-def sort_classes(data):
-    data["classes"].sort(key=lambda c: norm(c["nom"]))
+def place_new_classes(data, known_ids):
+    """Les classes créées depuis `known_ids` (import) se rangent à la fin, par ordre alphabétique entre elles :
+    l'ordre que l'utilisateur a donné aux classes existantes n'est pas modifié."""
+    old = [c for c in data["classes"] if c["id"] in known_ids]
+    new = sorted((c for c in data["classes"] if c["id"] not in known_ids), key=lambda c: norm(c["nom"]))
+    data["classes"][:] = old + new
+
+
+def move_class(data, class_id, index):
+    """Déplace une classe pour qu'elle soit insérée avant la position `index` de la liste actuelle (len = à la fin)."""
+    classes = data["classes"]
+    i = next((n for n, c in enumerate(classes) if c["id"] == class_id), None)
+    if i is None:
+        return False
+    index = index - 1 if index > i else index  # la classe déplacée libère sa place
+    if index == i:
+        return False
+    classes.insert(index, classes.pop(i))
+    return True
 
 
 def _clean(x):

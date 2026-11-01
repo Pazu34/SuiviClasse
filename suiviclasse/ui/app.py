@@ -216,9 +216,13 @@ class App:
         ttk.Label(row, text="Classes :", style="BarStrong.TLabel").pack(side="left", padx=(0, 8), anchor="n", pady=6)
         flow = FlowFrame(row)
         flow.pack(side="left", fill="x", expand=True)
+        self._pills = []  # (bouton, id de la classe), dans l'ordre : sert au glisser-déposer
         for c in s["classes"]:
-            flow.add(ttk.Radiobutton(flow, text=c["nom"], style="Pill.Toolbutton", value=c["id"], variable=self._class_var(),
-                                     command=lambda: self.select_class()), padx=(2, 2))
+            pill = ttk.Radiobutton(flow, text=c["nom"], style="Pill.Toolbutton", value=c["id"], variable=self._class_var(),
+                                   command=lambda: self.select_class())
+            flow.add(pill, padx=(2, 2))
+            self._pills.append((pill, c["id"]))
+            self._make_draggable(pill, flow, c["id"])
         flow.add(ttk.Button(flow, text="+", style="Plus.TButton", command=self.add_class), padx=(4, 4))
         flow.add(ttk.Button(flow, text="Importer une liste PRONOTE", command=lambda: dialogs.ImportDialog(self, None),
                             style="TButton" if s["classes"] else "Accent.TButton"), padx=(4, 4))
@@ -227,6 +231,64 @@ class App:
         self.body = ttk.Frame(f, padding=(14, 12, 14, 12))
         self.body.pack(fill="both", expand=True)
         self.show_class()
+
+    # ---------- ordre des classes : glisser-déposer des boutons ----------
+    def _make_draggable(self, pill, flow, class_id):
+        """Glisser un bouton de classe vers un autre endroit de la rangée change l'ordre ; un simple clic la sélectionne."""
+        st = {"x": 0, "y": 0, "drag": False}
+
+        def press(e):
+            st.update(x=e.x_root, y=e.y_root, drag=False)
+
+        def motion(e):
+            if not st["drag"] and abs(e.x_root - st["x"]) + abs(e.y_root - st["y"]) > 6:
+                st["drag"] = True
+                pill.configure(cursor="fleur")
+            if st["drag"]:
+                self._show_drop_marker(flow, self.drop_index(e.x_root, e.y_root))
+
+        def release(e):
+            if not st["drag"]:
+                return None  # simple clic : le bouton se comporte normalement
+            st["drag"] = False
+            pill.configure(cursor="")
+            pill.state(["!pressed"])
+            self._hide_drop_marker()
+            self.move_class(class_id, self.drop_index(e.x_root, e.y_root))
+            return "break"  # pas de sélection de la classe à la fin d'un glissement
+
+        pill.bind("<ButtonPress-1>", press, add="+")
+        pill.bind("<B1-Motion>", motion, add="+")
+        pill.bind("<ButtonRelease-1>", release)
+
+    def drop_index(self, x_root, y_root):
+        """Position d'insertion (0 à nombre de classes) correspondant au pointeur : avant le premier bouton qui le suit."""
+        for i, (pill, _) in enumerate(self._pills):
+            x0, y0 = pill.winfo_rootx(), pill.winfo_rooty()
+            if y_root < y0:  # le pointeur est au-dessus de ce bouton, donc sur une rangée précédente
+                return i
+            if y_root <= y0 + pill.winfo_height() and x_root < x0 + pill.winfo_width() // 2:
+                return i
+        return len(self._pills)
+
+    def _show_drop_marker(self, flow, index):
+        if not self._pills:
+            return
+        if not hasattr(self, "_marker") or not self._marker.winfo_exists():
+            self._marker = tk.Frame(flow, width=3, bg=P["text"])
+        pill = self._pills[min(index, len(self._pills) - 1)][0]
+        x = pill.winfo_rootx() - flow.winfo_rootx() - 3 if index < len(self._pills) else pill.winfo_rootx() - flow.winfo_rootx() + pill.winfo_width() + 1
+        self._marker.place(x=x, y=pill.winfo_rooty() - flow.winfo_rooty(), width=3, height=pill.winfo_height())
+        self._marker.lift()
+
+    def _hide_drop_marker(self):
+        if hasattr(self, "_marker") and self._marker.winfo_exists():
+            self._marker.place_forget()
+
+    def move_class(self, class_id, index):
+        if model.move_class(self.state, class_id, index):
+            self.commit()
+            self.render()
 
     def _class_var(self):
         if not hasattr(self, "_cv"):

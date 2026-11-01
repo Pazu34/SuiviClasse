@@ -467,12 +467,13 @@ class ImportDialog(Dialog):
             self.error.configure(text="Aucune classe n’est ouverte : associez une colonne à « Classe » (ou créez d’abord une classe).")
             return
         app = self.app
+        known = {c["id"] for c in app.state["classes"]}
         rep = self.apply(app.state["classes"])
         for c in app.state["classes"]:
             model.sort_students(c)
             model.ensure_numbers(c)
         if rep["createdClasses"]:
-            model.sort_classes(app.state)
+            model.place_new_classes(app.state, known)
         if app.current_class is None and app.state["classes"]:
             app.state["ui"]["classe"] = app.state["classes"][0]["id"]
         app.commit()
@@ -755,7 +756,6 @@ class DataDialog(Dialog):
             return
         demo = model.demo_class()
         app.state["classes"].append(demo)
-        model.sort_classes(app.state)
         app.state["ui"]["classe"] = demo["id"]
         app.commit()
         self.destroy()

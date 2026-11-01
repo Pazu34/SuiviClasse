@@ -88,3 +88,30 @@ class PeriodesTest(unittest.TestCase):
         self.assertEqual((t["n"], t["prefix"], t["word"], t["keys"]), (3, "T", "trimestre", ["1", "2", "3"]))
         self.assertEqual((s["n"], s["prefix"], s["word"], s["keys"]), (2, "S", "semestre", ["1", "2"]))
         self.assertEqual(model.periods("n'importe quoi")["mode"], "trimestres")
+
+
+class OrdreDesClassesTest(unittest.TestCase):
+    def data(self, *noms):
+        d = {"classes": [model.new_class(n) for n in noms]}
+        return d, [c["id"] for c in d["classes"]]
+
+    def noms(self, d):
+        return [c["nom"] for c in d["classes"]]
+
+    def test_deplacement(self):
+        d, ids = self.data("A", "B", "C", "D")
+        self.assertTrue(model.move_class(d, ids[0], 3))             # A avant D (position 3) : B C A D
+        self.assertEqual(self.noms(d), ["B", "C", "A", "D"])
+        self.assertTrue(model.move_class(d, ids[3], 0))             # D en tête
+        self.assertEqual(self.noms(d), ["D", "B", "C", "A"])
+        self.assertTrue(model.move_class(d, ids[1], 4))             # B à la fin
+        self.assertEqual(self.noms(d), ["D", "C", "A", "B"])
+        self.assertFalse(model.move_class(d, ids[1], 4))            # déjà à la fin
+        self.assertFalse(model.move_class(d, ids[2], 2))            # C (2e) devant son voisin de droite : même place
+        self.assertFalse(model.move_class(d, "inconnue", 0))
+
+    def test_nouvelles_classes_a_la_fin_sans_toucher_a_l_ordre(self):
+        d, ids = self.data("6C", "6A", "Test")                       # ordre choisi par l'utilisateur
+        d["classes"] += [model.new_class("5B"), model.new_class("5A")]
+        model.place_new_classes(d, set(ids))
+        self.assertEqual(self.noms(d), ["6C", "6A", "Test", "5A", "5B"])

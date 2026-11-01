@@ -209,14 +209,14 @@ class App:
         bar.pack(fill="x", pady=(0, 10))
         ttk.Label(bar, text=c["nom"], style="H1.TLabel").pack(side="left")
         ttk.Label(bar, text=f"   {len(c['eleves'])} élèves", style="Muted.TLabel").pack(side="left")
+        for t in (1, 2, 3):
+            ttk.Radiobutton(bar, text=f"T{t}", style="Pill.Toolbutton", value=t, variable=self.trimestre, command=self.on_trimestre).pack(side="left", padx=(14 if t == 1 else 1, 1))
         ttk.Button(bar, text="Importer des élèves…", command=lambda: dialogs.ImportDialog(self, c)).pack(side="left", padx=(18, 4))
         ttk.Button(bar, text="Exporter (PRONOTE, tableur)…", command=lambda: dialogs.ExportDialog(self, c)).pack(side="left", padx=4)
         ttk.Button(bar, text="Renommer", command=lambda: self.rename_class(c)).pack(side="left", padx=4)
         ttk.Button(bar, text="Supprimer la classe", style="Danger.TButton", command=lambda: self.delete_class(c)).pack(side="left", padx=4)
-        for t in (3, 2, 1):
-            ttk.Radiobutton(bar, text=f"T{t}", style="Pill.Toolbutton", value=t, variable=self.trimestre, command=self.on_trimestre).pack(side="right", padx=1)
-        ttk.Entry(bar, textvariable=self.search, width=16).pack(side="right", padx=(2, 14))
-        ttk.Label(bar, text="Rechercher", style="Muted.TLabel").pack(side="right", padx=(0, 4))
+        ttk.Label(bar, text="Rechercher", style="Muted.TLabel").pack(side="left", padx=(4, 4))
+        ttk.Entry(bar, textvariable=self.search, width=16).pack(side="left")
         self.table = ClassTable(self.body, self, c)
         self.table.pack(fill="both", expand=True)
 

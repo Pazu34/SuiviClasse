@@ -1,15 +1,16 @@
-"""Tableau d'une classe : une ligne par élève, avec en-têtes fixes et défilement."""
+"""Tableau d'une classe : une ligne par élève, en-têtes fixes, colonnes redimensionnables, textes qui passent à la ligne."""
 import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import messagebox, ttk
 
 from .. import exchange, model
+from ..prefs import COLUMN_MIN
 from .theme import P
 
 # Largeurs des colonnes en pixels, dans l'ordre : n°, nom, prénom, infos, T1, T2, T3, moyenne,
 # séance +, séance −, travail non fait, oubli de matériel, commentaire.
 LAYOUTS = {
-    "compact": {"row_h": 26, "widths": [28, 112, 98, 104, 46, 46, 46, 40, 112, 112, 78, 78, 330]},
+    "compact": {"row_h": 26, "widths": [28, 112, 98, 104, 46, 46, 46, 48, 112, 112, 84, 84, 320]},
     "normal": {"row_h": 30, "widths": [36, 150, 125, 150, 64, 64, 64, 54, 140, 140, 125, 125, 360]},
 }
 TITLES = {
@@ -17,6 +18,25 @@ TITLES = {
     "normal": ["n°", "Nom", "Prénom", "Infos (PAI…)", "T1 /20", "T2 /20", "T3 /20", "Moy.", "Séance +", "Séance −",
                "Travail non fait", "Oubli matériel", "Commentaire"],
 }
+
+
+def wrapped_lines(text, font, width):
+    """Nombre de lignes qu'occupe `text` dans `width` pixels (retour à la ligne entre les mots, comme Tk)."""
+    space, total = font.measure(" "), 0
+    for paragraph in text.split("\n"):
+        lines, used = 1, 0
+        for word in paragraph.split(" "):
+            w = font.measure(word)
+            if used == 0:
+                used = w
+            elif used + space + w <= width:
+                used += space + w
+            else:
+                lines, used = lines + 1, w
+            if w > width:  # mot plus long que la colonne : Tk le coupe
+                lines, used = lines + w // width, w % width
+        total += lines
+    return total
 
 
 def parse_grade(text):
@@ -37,12 +57,18 @@ class ClassTable(ttk.Frame):
         self.rows = []
         self.mode = app.values["affichage"] if app.values["affichage"] in LAYOUTS else "compact"
         layout = LAYOUTS[self.mode]
-        self.widths, self.row_h = layout["widths"], layout["row_h"]
+        self.default_widths, self.row_h = layout["widths"], layout["row_h"]
+        self.widths = app.prefs.columns(self.mode, self.default_widths)  # largeurs réglées à la souris, sinon défaut
         self.total_w = sum(self.widths)
+        self.head_h = self.row_h
+        self._drag = None
         base = tkfont.nametofont("TkDefaultFont")
         size = base.actual("size")
         size = size + 1 if size < 0 else size - 1  # un point de moins que la police par défaut
         self.font, self.bold = (base.actual("family"), size), (base.actual("family"), size, "bold")
+        self.measure = tkfont.Font(font=self.font)
+        self.linespace = self.measure.metrics("linespace")
+        self.guide = tk.Frame(self, width=2, bg=P["accent"])  # repère affiché pendant le redimensionnement d'une colonne
         self.hdr = tk.Canvas(self, height=self.row_h, highlightthickness=0, bg=P["surface2"])
         self.body = tk.Canvas(self, highlightthickness=0, bg=P["surface"])
         self.vsb = ttk.Scrollbar(self, orient="vertical", command=self.body.yview)
@@ -103,9 +129,23 @@ class ClassTable(ttk.Frame):
         for i in range(8, 12):
             titles[i] += f" (T{t})"
         titles[12] += f" T{t}"
+        self.total_w = sum(self.widths)
+        heads, labels = [], []
+        head_font = tkfont.Font(family=self.font[0], size=self.font[1] - 1, weight="bold")
         for i, title in enumerate(titles):
             c = self.cell(self.hf, 0, i, P["surface2"])
-            tk.Label(c, text=title.upper(), bg=P["surface2"], fg=P["muted"], font=(self.font[0], self.font[1] - 1, "bold"), anchor="w").pack(fill="both", padx=4)
+            text = title.upper()
+            fits = head_font.measure(text) <= self.widths[i] - 12
+            lab = tk.Label(c, text=text, bg=P["surface2"], fg=P["muted"], font=head_font, justify="center", anchor="center",
+                           wraplength=0 if fits else max(10, self.widths[i] - 10))  # titre centré, à la ligne s'il est trop long
+            lab.pack(fill="both", expand=True, padx=2)
+            self._add_handle(c, i)
+            heads.append(c)
+            labels.append(lab)
+        self.head_h = max(self.row_h, max(lab.winfo_reqheight() for lab in labels) + 8)
+        for c in heads:
+            c.configure(height=self.head_h)
+        self.hdr.configure(height=self.head_h, scrollregion=(0, 0, self.total_w, self.head_h))
         q = exchange.norm(self.app.search.get())
         r = 0
         for i, s in enumerate(self.cls["eleves"]):
@@ -126,6 +166,45 @@ class ClassTable(ttk.Frame):
         self.update_idletasks()
         self.body.yview_moveto(y)
 
+    # ---------- redimensionnement des colonnes ----------
+    def _add_handle(self, cell, i):
+        """Poignée sur le bord droit d'un titre : glisser pour élargir/rétrécir, double-clic pour la largeur par défaut."""
+        handle = tk.Frame(cell, width=6, bg=P["surface2"], cursor="sb_h_double_arrow")
+        handle.place(relx=1.0, x=-6, y=0, relheight=1.0)
+        line = tk.Frame(handle, width=1, bg=P["border"])
+        line.place(relx=1.0, x=-1, rely=0.2, relheight=0.6)
+        for w in (handle, line):
+            w.bind("<ButtonPress-1>", lambda e, i=i: self._drag_start(i, e))
+            w.bind("<B1-Motion>", self._drag_move)
+            w.bind("<ButtonRelease-1>", self._drag_end)
+            w.bind("<Double-Button-1>", lambda e, i=i: self.set_width(i, self.default_widths[i]))
+        handle.bind("<Enter>", lambda e: handle.configure(bg=P["border"]))
+        handle.bind("<Leave>", lambda e: handle.configure(bg=P["surface2"]))
+
+    def _drag_start(self, i, e):
+        self._drag = {"i": i, "x0": e.x_root, "w0": self.widths[i], "w": self.widths[i]}
+
+    def _drag_move(self, e):
+        d = self._drag
+        if not d:
+            return
+        d["w"] = max(COLUMN_MIN, d["w0"] + e.x_root - d["x0"])
+        x = sum(self.widths[:d["i"]]) + d["w"] - self.hdr.canvasx(0) + self.hdr.winfo_x()
+        self.guide.place(x=x, y=0, relheight=1.0)
+        self.guide.lift()
+
+    def _drag_end(self, e):
+        d, self._drag = self._drag, None
+        self.guide.place_forget()
+        if d and d["w"] != self.widths[d["i"]]:
+            self.set_width(d["i"], d["w"])
+
+    def set_width(self, i, width):
+        if width != self.widths[i]:
+            self.widths[i] = width
+            self.app.prefs.set_columns(self.mode, self.widths)
+            self.build()
+
     def refresh_footer(self):
         for k, lab in enumerate(self.footer_labels):
             vals = [s["notes"][str(k + 1)] for s in self.cls["eleves"] if s["notes"][str(k + 1)] is not None]
@@ -145,27 +224,37 @@ class Row:
         t = self.app.t
         bf, f, b = table.bf, table.font, table.bold
         self.bg = P["surface"] if r % 2 == 0 else P["zebra"]  # lignes alternées
-        cell = lambda parent, row, col: table.cell(parent, row, col, self.bg)
-        tk.Label(cell(bf, r, 0), text=str(number), fg=P["muted"], bg=self.bg, font=f).pack(fill="both")
-        name = tk.Label(cell(bf, r, 1), text=s["nom"], font=b, anchor="w", bg=self.bg, fg=P["text"], cursor="hand2")
-        name.pack(fill="both", padx=4)
+        self.cells = []
+        self.height = table.row_h
+
+        def cell(parent, row, col):
+            c = table.cell(parent, row, col, self.bg)
+            self.cells.append(c)
+            return c
+
+        w = table.widths
+        tk.Label(cell(bf, r, 0), text=str(number), fg=P["muted"], bg=self.bg, font=f).pack(fill="both", expand=True)
+        name = self.name = tk.Label(cell(bf, r, 1), text=s["nom"], font=b, anchor="w", justify="left", wraplength=max(10, w[1] - 10),
+                                    bg=self.bg, fg=P["text"], cursor="hand2")
+        name.pack(fill="both", expand=True, padx=4)
         name.bind("<Button-1>", lambda e: self.open())
         name.bind("<Enter>", lambda e: name.configure(fg=P["accent"]))
         name.bind("<Leave>", lambda e: name.configure(fg=P["text"]))
-        tk.Label(cell(bf, r, 2), text=s["prenom"], anchor="w", bg=self.bg, fg=P["text"], font=f).pack(fill="both", padx=4)
-        self.infos_cell = cell(bf, r, 3)
-        self.infos = tk.Label(self.infos_cell, anchor="w", font=(f[0], f[1] - 1), bg=self.bg, fg=P["text"])
-        self.infos.pack(fill="x", padx=3, pady=4)
+        self.prenom = tk.Label(cell(bf, r, 2), text=s["prenom"], anchor="w", justify="left", wraplength=max(10, w[2] - 10),
+                               bg=self.bg, fg=P["text"], font=f)
+        self.prenom.pack(fill="both", expand=True, padx=4)
+        self.infos = tk.Label(cell(bf, r, 3), anchor="w", justify="left", wraplength=max(10, w[3] - 10), font=(f[0], f[1] - 1), bg=self.bg, fg=P["text"])
+        self.infos.pack(fill="x", expand=True, padx=3, pady=3)
         self.note_vars = {}
         for k in "123":
             var = tk.StringVar(value="" if s["notes"][k] is None else exchange.fmt_num(s["notes"][k]))
             e = ttk.Entry(cell(bf, r, 3 + int(k)), textvariable=var, justify="center", font=f, style="Cell.TEntry")
-            e.pack(fill="both", padx=2, pady=2)
+            e.pack(fill="x", expand=True, padx=2, pady=2)
             e.bind("<FocusOut>", lambda ev, k=k: self.commit_note(k))
             e.bind("<Return>", lambda ev, k=k: self.commit_note(k))
             self.note_vars[k] = var
         self.moy = tk.Label(cell(bf, r, 7), bg=self.bg, fg=P["text"], font=f)
-        self.moy.pack(fill="both")
+        self.moy.pack(fill="both", expand=True)
         # séance + / séance −
         self.seance = []
         for col, deltas in ((8, (0.5, 1)), (9, (-0.5, -1))):
@@ -184,14 +273,29 @@ class Row:
             lab = tk.Label(c, font=b, fg=P["text"])
             lab.pack(fill="both", expand=True)
             self.counters[kind] = (c, lab)
-        self.comm = tk.Entry(cell(bf, r, 12), font=f)
-        self.comm.pack(fill="both", padx=2, pady=2)
-        self.comm.insert(0, s["comms"][str(t)])
-        self.comm.bind("<KeyRelease>", lambda e: self.color_comment())
+        # commentaire : zone de texte qui passe à la ligne ; la ligne du tableau grandit avec elle
+        self.comm = tk.Text(cell(bf, r, 12), font=f, wrap="word", height=1, padx=3, pady=2)
+        self.comm.pack(fill="both", expand=True, padx=2, pady=2)
+        self.comm.insert("1.0", s["comms"][str(t)])
+        self.comm.bind("<KeyRelease>", lambda e: (self.color_comment(), self.fit()))
         self.comm.bind("<FocusOut>", lambda e: self.commit_comment())
-        self.comm.bind("<Return>", lambda e: self.commit_comment())
+        self.comm.bind("<Return>", lambda e: (self.commit_comment(), "break")[1])  # une appréciation tient sur un paragraphe
+        self.comm.bind("<Tab>", lambda e: (e.widget.tk_focusNext().focus_set(), "break")[1])
         self.refresh()
         self.color_comment()
+
+    def fit(self):
+        """Hauteur de la ligne : celle du contenu le plus haut (noms, infos ou commentaire à la ligne)."""
+        tb = self.table
+        need = tb.row_h
+        for widget in (self.name, self.prenom, self.infos):
+            need = max(need, widget.winfo_reqheight() + 6)
+        text = self.comm.get("1.0", "end-1c")
+        need = max(need, wrapped_lines(text, tb.measure, max(10, tb.widths[12] - 18)) * tb.linespace + 12)
+        if need != self.height:
+            self.height = need
+            for c in self.cells:
+                c.configure(height=need)
 
     def color(self, level):
         """Couleur de fond d'un compteur selon son niveau d'alerte ('ok', 'warn', 'bad' ou '' = couleur de la ligne)."""
@@ -204,8 +308,8 @@ class Row:
     # ---------- affichage ----------
     def refresh(self):
         s, t, v = self.s, self.app.t, self.app.values
-        first = s["infos"].splitlines()[0][:40] if s["infos"] else ""
-        self.infos.configure(text=first, bg=P["bad"] if first else self.bg, fg=P["text"])
+        infos = " · ".join(x.strip() for x in s["infos"].splitlines() if x.strip())
+        self.infos.configure(text=infos, bg=P["bad"] if infos else self.bg, fg=P["text"])
         m = model.moyenne(s)
         self.moy.configure(text="" if m is None else exchange.fmt_num(m))
         plus, moins = model.seance(s, t)
@@ -217,9 +321,10 @@ class Row:
             color = self.color(model.level(n, v[kind + "Orange"], v[kind + "Rouge"]))
             c.configure(bg=color)
             lab.configure(text=str(n), bg=color)
+        self.fit()
 
     def color_comment(self):
-        n, mx = len(self.comm.get()), self.app.values["appreciationMax"]
+        n, mx = len(self.comm.get("1.0", "end-1c")), self.app.values["appreciationMax"]
         self.comm.configure(bg=P["bad"] if n > mx else P["surface"], fg=P["bad_text"] if n > mx else P["text"])
 
     # ---------- actions ----------
@@ -257,7 +362,7 @@ class Row:
         var.set("" if value is None else exchange.fmt_num(value))
 
     def commit_comment(self):
-        text, t = self.comm.get(), str(self.app.t)
+        text, t = " ".join(self.comm.get("1.0", "end-1c").split()), str(self.app.t)
         if text != self.s["comms"][t]:
             self.s["comms"][t] = text
             self.app.commit()

@@ -40,3 +40,22 @@ class ChoixTest(unittest.TestCase):
         self.assertEqual(defaults()["affichage"], "compact")
         self.assertEqual(sanitize({"affichage": "normal"})["affichage"], "normal")
         self.assertEqual(sanitize({"affichage": "n'importe quoi"})["affichage"], "compact")
+
+
+class ColonnesTest(unittest.TestCase):
+    def test_largeurs_de_colonnes(self):
+        d = Path(tempfile.mkdtemp())
+        p = Prefs(d)
+        self.assertEqual(p.columns("compact", [30, 40]), [30, 40])           # par défaut
+        p.set_columns("compact", [30, 999, 5])
+        self.assertEqual(Prefs(d).columns("compact", [1, 2, 3]), [30, 900, 24])  # bornées, relues
+        self.assertEqual(Prefs(d).columns("normal", [1, 2, 3]), [1, 2, 3])       # un mode à la fois
+        self.assertEqual(Prefs(d).columns("compact", [1, 2]), [1, 2])            # nombre de colonnes changé : défaut
+        p.set({"oubliRouge": 7})                                                  # un réglage ne perd pas les colonnes
+        self.assertEqual(Prefs(d).columns("compact", [1, 2, 3]), [30, 900, 24])
+        p.reset_columns()
+        self.assertEqual(Prefs(d).columns("compact", [1, 2, 3]), [1, 2, 3])
+        p.set_columns("normal", [50, 60]); p.reset()
+        self.assertEqual(Prefs(d).columns("normal", [50, 60]), [50, 60])
+        (d / "preferences.json").write_text(json.dumps({"colonnes": {"compact": "n'importe quoi", "x": [1, "a"]}}))
+        self.assertEqual(Prefs(d).columns("compact", [1, 2]), [1, 2])

@@ -561,7 +561,8 @@ class PrefsDialog(Dialog):
                 self.vars[f["key"]] = var
         ttk.Label(self, foreground=P["muted"], font=("TkDefaultFont", 8), padding=(10, 2),
                   text="Réglages enregistrés dans : " + str(app.prefs.file)).pack(anchor="w")
-        self.buttons(("Enregistrer", self.save, "right"), ("Annuler", self.destroy, "right"), ("Valeurs par défaut", self.reset, "left"))
+        self.buttons(("Enregistrer", self.save, "right"), ("Annuler", self.destroy, "right"), ("Valeurs par défaut", self.reset, "left"),
+                     ("Rétablir les largeurs de colonnes", self.reset_columns, "left"))
 
     def save(self):
         app = self.app
@@ -569,6 +570,11 @@ class PrefsDialog(Dialog):
         app.vault.prune(app.values["backupKeepRecent"], app.values["backupKeepDays"])
         self.destroy()
         app.restyle()
+
+    def reset_columns(self):
+        self.app.prefs.reset_columns()
+        self.destroy()
+        self.app.restyle()
 
     def reset(self):
         if messagebox.askyesno("Préférences", "Revenir aux réglages par défaut ?", parent=self):

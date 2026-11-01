@@ -148,11 +148,11 @@ class App:
         f = self._swap_frame()
         top = ttk.Frame(f, style="Bar.TFrame", padding=(14, 9))
         top.pack(fill="x")
-        ttk.Label(top, text="SuiviClasse", style="BarTitle.TLabel").pack(side="left", padx=(0, 16))
+        ttk.Label(top, text="Classes :", style="BarStrong.TLabel").pack(side="left", padx=(0, 8))
         for c in s["classes"]:
             ttk.Radiobutton(top, text=c["nom"], style="Pill.Toolbutton", value=c["id"], variable=self._class_var(),
                             command=lambda: self.select_class()).pack(side="left", padx=2)
-        ttk.Button(top, text="+ Classe", command=self.add_class).pack(side="left", padx=(8, 4))
+        ttk.Button(top, text="+", style="Plus.TButton", command=self.add_class).pack(side="left", padx=(4, 4))
         ttk.Button(top, text="Importer une liste PRONOTE", command=lambda: dialogs.ImportDialog(self, None),
                    style="TButton" if s["classes"] else "Accent.TButton").pack(side="left", padx=4)
         ttk.Button(top, text="Verrouiller", command=self.lock).pack(side="right")

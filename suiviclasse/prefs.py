@@ -57,22 +57,59 @@ def sanitize(src):
     return out
 
 
+COLUMN_MIN, COLUMN_MAX = 24, 900  # largeur d'une colonne du tableau, en pixels
+
+
+def sanitize_columns(raw):
+    """{"compact": [28, 112, …], "normal": […]} -> même forme, largeurs bornées ; le reste est ignoré."""
+    out = {}
+    if isinstance(raw, dict):
+        for mode, widths in raw.items():
+            if isinstance(widths, list) and widths and all(isinstance(w, (int, float)) and not isinstance(w, bool) for w in widths):
+                out[str(mode)] = [int(min(COLUMN_MAX, max(COLUMN_MIN, w))) for w in widths]
+    return out
+
+
 class Prefs:
     def __init__(self, directory):
         self.file = Path(directory) / FILE
+        self.saved_columns = {}
         self.values = self.load()
 
     def load(self):
         try:
-            return sanitize(json.loads(self.file.read_text(encoding="utf-8")))
+            raw = json.loads(self.file.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return defaults()
+        self.saved_columns = sanitize_columns(raw.get("colonnes") if isinstance(raw, dict) else None)
+        return sanitize(raw)
+
+    def _write(self):
+        self.file.parent.mkdir(parents=True, exist_ok=True)
+        data = dict(self.values)
+        if self.saved_columns:
+            data["colonnes"] = self.saved_columns
+        self.file.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     def set(self, values):
         self.values = sanitize({**self.values, **values})
-        self.file.parent.mkdir(parents=True, exist_ok=True)
-        self.file.write_text(json.dumps(self.values, indent=2), encoding="utf-8")
+        self._write()
         return self.values
 
     def reset(self):
+        """Valeurs par défaut pour tous les réglages, largeurs de colonnes comprises."""
+        self.saved_columns = {}
         return self.set(defaults())
+
+    # ---------- largeurs de colonnes (réglées à la souris dans le tableau) ----------
+    def columns(self, mode, default):
+        saved = self.saved_columns.get(mode)
+        return list(saved) if saved and len(saved) == len(default) else list(default)
+
+    def set_columns(self, mode, widths):
+        self.saved_columns[mode] = sanitize_columns({mode: list(widths)})[mode]
+        self._write()
+
+    def reset_columns(self):
+        self.saved_columns = {}
+        self._write()

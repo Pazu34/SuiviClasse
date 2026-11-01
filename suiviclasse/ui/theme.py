@@ -70,16 +70,18 @@ def apply(root, mode="clair"):
     style.configure("Error.TLabel", foreground=p["bad_text"])
     style.configure("Bar.TFrame", background=p["surface"])
     style.configure("Bar.TLabel", background=p["surface"], foreground=p["muted"])
+    style.configure("BarStrong.TLabel", background=p["surface"], foreground=p["text"], font=(family, 10, "bold"))
     style.configure("BarTitle.TLabel", background=p["surface"], foreground=p["accent"], font=(family, 12, "bold"))
     style.configure("TSeparator", background=p["border"])
 
     # boutons : plats, discrets ; « Accent » pour l'action principale
-    style.configure("TButton", background=p["surface2"], foreground=p["text"], padding=(11, 5), relief="flat", borderwidth=1, **flat)
+    style.configure("TButton", background=p["surface2"], foreground=p["text"], padding=(11, 5), width=0, relief="flat", borderwidth=1, **flat)  # width=0 : largeur du texte
     style.map("TButton", background=[("pressed", p["hover"]), ("active", p["hover"])], bordercolor=[("focus", p["accent"])])
     style.configure("Accent.TButton", background=p["accent"], foreground=p["accent_fg"], bordercolor=p["accent"],
                     lightcolor=p["accent"], darkcolor=p["accent"], font=(family, 10, "bold"))
     style.map("Accent.TButton", background=[("pressed", p["accent_hover"]), ("active", p["accent_hover"])])
     style.configure("Danger.TButton", foreground=p["danger"])
+    style.configure("Plus.TButton", padding=(9, 4), font=(family, 11, "bold"))
     style.configure("Mini.TButton", padding=(4, 1), font=small, width=0)
     # onglets / sélecteurs en « pilules »
     style.configure("Pill.Toolbutton", background=p["surface2"], foreground=p["text"], padding=(12, 5), relief="flat", borderwidth=0, **{**flat, "bordercolor": p["surface2"]})

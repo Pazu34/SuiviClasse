@@ -10,6 +10,12 @@ Application de suivi quotidien des élèves, qui remplace un classeur Excel de s
 - **échanges avec PRONOTE et les tableurs** (voir plus bas) ;
 - **données chiffrées par mot de passe**, **archives automatiques** pour revenir en arrière, **version portable** pour clé USB.
 
+## Le tableau
+
+- **Colonnes redimensionnables** : glissez le bord droit d'un titre de colonne ; **double-clic** sur ce bord pour revenir à la largeur par défaut. Les largeurs sont mémorisées (par densité de tableau) dans `preferences.json` ; **Préférences → Rétablir les largeurs de colonnes** les remet toutes à zéro.
+- **Retour à la ligne automatique** : les titres trop longs, les noms, les infos et les appréciations passent à la ligne dans leur colonne et la hauteur de la ligne s'adapte.
+- Cliquez sur un nom pour ouvrir la fiche de l'élève ; les compteurs (séance, travail non fait, oublis) se règlent avec les boutons **+ / −**.
+
 ## Classe « Test »
 
 À la création d'un nouveau coffre, le programme contient une classe **Test** (8 élèves fictifs avec notes, commentaires, infos, oublis et séances) pour essayer toutes les fonctions sans toucher à vos vraies données. Elle se supprime comme n'importe quelle classe (bouton **Supprimer la classe** ; une archive des données est créée juste avant, donc **🕘 Archives** permet de revenir en arrière). Pour la retrouver plus tard : **🗂 Données → Ajouter la classe Test**.

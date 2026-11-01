@@ -8,18 +8,19 @@ from ..prefs import COLUMN_MIN
 from .theme import P
 
 # Largeurs des colonnes en pixels, dans l'ordre : n°, nom, prénom, infos, T1, T2, T3, moyenne,
-# séance +, séance −, travail non fait, oubli de matériel, commentaire, bouton « Fiche ».
+# séance +, séance −, travail non fait, oubli de matériel, commentaire, accès à la fiche (pictogramme).
 LAYOUTS = {
-    "compact": {"row_h": 26, "widths": [30, 108, 94, 104, 46, 46, 46, 48, 112, 112, 68, 68, 280, 46]},
-    "normal": {"row_h": 30, "widths": [40, 150, 125, 150, 64, 64, 64, 54, 140, 140, 96, 96, 340, 56]},
+    "compact": {"row_h": 26, "widths": [30, 108, 94, 104, 46, 46, 46, 48, 112, 112, 68, 68, 280, 34]},
+    "normal": {"row_h": 30, "widths": [40, 150, 125, 150, 64, 64, 64, 54, 140, 140, 96, 96, 340, 40]},
 }
 TITLES = {
-    "compact": ["n°", "Nom", "Prénom", "Infos", "T1", "T2", "T3", "Moy.", "Séance +", "Séance −", "Travail", "Oublis", "Commentaire", "Fiche"],
+    "compact": ["n°", "Nom", "Prénom", "Infos", "T1", "T2", "T3", "Moy.", "Séance +", "Séance −", "Travail", "Oublis", "Commentaire", ""],
     "normal": ["n°", "Nom", "Prénom", "Infos (PAI…)", "T1 /20", "T2 /20", "T3 /20", "Moy.", "Séance +", "Séance −",
-               "Travail non fait", "Oubli matériel", "Commentaire", "Fiche"],
+               "Travail non fait", "Oubli matériel", "Commentaire", ""],
 }
 # Pictogrammes des colonnes à compteur (indice de colonne -> pictogramme)
 ICONS = {8: "👍", 9: "👎", 10: "📝", 11: "🎒"}
+FICHE_ICON = "📝"  # en bout de ligne : ouvre la fiche de l'élève
 
 
 def wrapped_lines(text, font, width):
@@ -69,6 +70,7 @@ class ClassTable(ttk.Frame):
         size = size + 1 if size < 0 else size - 1  # un point de moins que la police par défaut
         self.font, self.bold = (base.actual("family"), size), (base.actual("family"), size, "bold")
         self.measure = tkfont.Font(font=self.font)
+        self.icon_font = tkfont.Font(family="Segoe UI Emoji" if "Segoe UI Emoji" in tkfont.families() else self.font[0], size=self.font[1] + 4)
         self.linespace = self.measure.metrics("linespace")
         self.guide = tk.Frame(self, width=2, bg=P["accent"])  # repère affiché pendant le redimensionnement d'une colonne
         self.hdr = tk.Canvas(self, height=self.row_h, highlightthickness=0, bg=P["surface2"])
@@ -133,8 +135,8 @@ class ClassTable(ttk.Frame):
         titles[12] += f" T{t}"
         self.total_w = sum(self.widths)
         heads, labels = [], []
+        icon_font = self.icon_font
         head_font = tkfont.Font(family=self.font[0], size=self.font[1] - 1, weight="bold")
-        icon_font = tkfont.Font(family="Segoe UI Emoji" if "Segoe UI Emoji" in tkfont.families() else self.font[0], size=self.font[1] + 4)
         icons = self.app.values["pictogrammes"] == "oui"
         for i, title in enumerate(titles):
             c = self.cell(self.hf, 0, i, P["surface2"])
@@ -145,7 +147,8 @@ class ClassTable(ttk.Frame):
             lab = tk.Label(c, text=text, bg=P["surface2"], fg=P["muted"], font=head_font, justify="center", anchor="center",
                            wraplength=0 if fits else max(10, self.widths[i] - 10))  # titre centré, à la ligne s'il est trop long
             lab.pack(fill="both", expand=True, padx=2)
-            self._add_handle(c, i)
+            if i < len(titles) - 1:
+                self._add_handle(c, i)
             heads.append(c)
             labels.append(lab)
         # hauteur de l'en-tête : celle du titre le plus haut (pictogramme + titre sur plusieurs lignes)
@@ -277,6 +280,7 @@ class Row:
             self.note_vars[k] = var
         self.moy = tk.Label(cell(bf, r, 7), bg=self.bg, fg=P["text"], font=f)  # calculée : pas modifiable
         self.moy.pack(fill="both", expand=True)
+
         # séance + / séance −
         self.seance = []
         for col, deltas, bucket in ((8, (0.5, 1), "plus"), (9, (-0.5, -1), "moins")):
@@ -305,10 +309,22 @@ class Row:
         self.comm.bind("<FocusOut>", lambda e: self.commit_comment())
         self.comm.bind("<Return>", lambda e: (self.commit_comment(), "break")[1])  # une appréciation tient sur un paragraphe
         self.comm.bind("<Tab>", lambda e: (e.widget.tk_focusNext().focus_set(), "break")[1])
-        ttk.Button(cell(bf, r, 13), text="Fiche", style="Mini.TButton", command=self.open).pack(expand=True)
+        self._add_fiche_button(cell(bf, r, 13))
         self.refresh()
         self.color_comment()
         self.paint_number(model.duplicate_numbers(table.cls))
+
+    def _add_fiche_button(self, parent):
+        """En bout de ligne : un pictogramme (clic) qui ouvre la fiche de l'élève."""
+        if self.app.values["pictogrammes"] == "oui":
+            icon = tk.Label(parent, text=FICHE_ICON, bg=self.bg, fg=P["text"], cursor="hand2",
+                            font=self.table.icon_font)
+            icon.pack(fill="both", expand=True)
+            icon.bind("<Button-1>", lambda e: self.open())
+            icon.bind("<Enter>", lambda e: icon.configure(bg=P["hover"]))
+            icon.bind("<Leave>", lambda e: icon.configure(bg=self.bg))
+        else:
+            ttk.Button(parent, text="Fiche", style="Mini.TButton", command=self.open).pack(expand=True)
 
     # ---------- affichage ----------
     def color(self, level):

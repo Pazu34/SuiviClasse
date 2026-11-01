@@ -3,7 +3,7 @@
 Application de suivi quotidien des élèves, qui remplace un classeur Excel de suivi de classes. Écrite en **Python** (interface Tkinter, fournie avec Python), open source (GPL‑3.0).
 
 - une **classe par onglet**, liste d'élèves (n°, nom, prénom, date de naissance, infos PAI / handicap / situation) ;
-- **notes trimestrielles** T1, T2, T3 (/20) et moyenne ;
+- **notes de période** T1, T2, T3 (/20, ou S1 et S2, barème réglable) ;
 - **commentaires trimestriels** pour les bulletins (avec contrôle de la longueur maximale) ;
 - **implication en séance** (boutons +0,5 / +1 / −0,5 / −1), **travail non fait** et **oublis de matériel**, comptés **par trimestre**, avec couleurs d'alerte (seuils réglables) ;
 - **fiche élève** avec journal daté de chaque événement ;
@@ -14,7 +14,7 @@ Application de suivi quotidien des élèves, qui remplace un classeur Excel de s
 
 - **Colonnes redimensionnables** : glissez le bord droit d'un titre de colonne ; **double-clic** sur ce bord pour revenir à la largeur par défaut. Les largeurs sont mémorisées (par densité de tableau) dans `preferences.json` ; **Préférences → Rétablir les largeurs de colonnes** les remet toutes à zéro.
 - **Retour à la ligne automatique** : les titres trop longs, les noms, les infos et les appréciations passent à la ligne dans leur colonne et la hauteur de la ligne s'adapte.
-- **Tout se modifie en cliquant sur la valeur** : n°, nom, prénom, infos (Maj+Entrée pour un retour à la ligne), notes, totaux de séance + et −, travail non fait, oublis, commentaire. Entrée ou un clic ailleurs valide, Échap annule. Les boutons **+ / −** restent disponibles pour les corrections rapides. La moyenne est calculée : elle n'est pas modifiable.
+- **Tout se modifie en cliquant sur la valeur** : n°, nom, prénom, infos (Maj+Entrée pour un retour à la ligne), notes, totaux de séance + et −, travail non fait, oublis, commentaire. Entrée ou un clic ailleurs valide, Échap annule. Les boutons d'incrément restent disponibles pour les corrections rapides.
 - **n°** : le n° de chaque élève est libre. Si un n° est déjà pris dans la classe, une fenêtre le signale et demande s'il faut garder le doublon ; les n° en double sont surlignés en rouge. L'ordre du tableau reste alphabétique.
 - Quand on saisit directement un total (séance, travail, oublis), le programme ajoute ou retire des entrées du journal pour que le total corresponde (entrées « Ajustement manuel »).
 - Le pictogramme **📝** en bout de ligne ouvre la fiche de l'élève (identité, infos, notes, commentaires des 3 trimestres, journal daté). Sans pictogrammes (Préférences), il devient un bouton « Fiche ».
@@ -35,13 +35,14 @@ Application de suivi quotidien des élèves, qui remplace un classeur Excel de s
   - *Case à cocher*.
 - **Suggestions prêtes à l'emploi** (à cocher pour les activer) : Travail maison, Retards, Absences, Bavardages, Leçon non apprise, Devoir en retard, Participation orale, Comportement, Bonus, Punitions, Évaluation orale /10, Attitude en classe et Niveau de maîtrise (menus déroulants), Carnet signé, Matériel complet, Observation.
 - Le **type d'une colonne personnalisée peut être changé** avec « Modifier… » : les valeurs déjà saisies sont conservées et reprises quand elles sont compatibles (note ↔ texte ↔ menu ↔ case ; un compteur garde son journal), ainsi que les réglages de l'ancien type (choix du menu, boutons…).
-- Les colonnes s'affichent après « Oublis » ; **Monter / Descendre** règle leur ordre. Les valeurs saisies dans chaque colonne sont conservées même si la colonne est masquée ou supprimée (recréer une suggestion retrouve ses valeurs).
+- **Colonnes de base** (n°, nom, prénom, infos, notes, commentaire bulletin, fiche) : elles sont cachées de la liste par défaut ; décochez **« Cacher les colonnes de base »** pour changer leur titre ou leur pictogramme, les masquer (sauf le nom) ou les déplacer. **Monter / Descendre** règle l'ordre de *toutes* les colonnes, y compris les colonnes intégrées.
+- Les colonnes ajoutées se placent avant le commentaire. Les valeurs saisies dans chaque colonne sont conservées même si la colonne est masquée ou supprimée (recréer une suggestion retrouve ses valeurs).
 - Les colonnes personnalisées apparaissent aussi dans la **fiche élève** (boutons du journal, valeurs), dans l'**export** et l'**historique annuler/rétablir** ; la configuration est enregistrée dans les données chiffrées, avec le reste.
 - Le total d'un compteur est la somme de ses incréments au journal ; en cliquant sur le total, vous le saisissez directement (le programme ajoute une entrée « Ajustement manuel »).
 
 ## Trimestres ou semestres
 
-**Préférences → Affichage → Découpage de l'année** : *Trimestres (T1 à T3)* par défaut, ou *Semestres (S1 et S2)*. En semestres, les boutons, les titres du tableau, la fiche élève, l'import et l'export parlent de S1 et S2, et la colonne de la 3ᵉ note disparaît ; la moyenne porte sur S1 et S2. Les données gardent leur numéro de période (période 1 = T1 ou S1, période 2 = T2 ou S2) : choisissez le découpage en début d'année. Les données de la 3ᵉ période ne sont pas supprimées, elles réapparaissent si vous revenez aux trimestres. Les titres d'import « S1 », « Semestre 2 », « 1er semestre »… sont reconnus comme « T1 », « Trimestre 2 », etc.
+**Préférences → Affichage → Découpage de l'année** : *Trimestres (T1 à T3)* par défaut, ou *Semestres (S1 et S2)*. En semestres, les boutons, les titres du tableau, la fiche élève, l'import et l'export parlent de S1 et S2, et la colonne de la 3ᵉ note disparaît. Les données gardent leur numéro de période (période 1 = T1 ou S1, période 2 = T2 ou S2) : choisissez le découpage en début d'année. Les données de la 3ᵉ période ne sont pas supprimées, elles réapparaissent si vous revenez aux trimestres. Les titres d'import « S1 », « Semestre 2 », « 1er semestre »… sont reconnus comme « T1 », « Trimestre 2 », etc.
 
 ## Classe « Test »
 
@@ -104,7 +105,7 @@ Pour ajouter un réglage : ajouter une entrée au tableau `SCHEMA` de `suiviclas
 | `suiviclasse/vault.py` | coffre chiffré (scrypt + AES‑GCM), archives |
 | `suiviclasse/prefs.py` | préférences (schéma → validation → fenêtre) |
 | `suiviclasse/exchange.py` | import/export PRONOTE et tableurs (fonctions pures) |
-| `suiviclasse/model.py` | structure des données et calculs (compteurs, moyennes) |
+| `suiviclasse/model.py` | structure des données et calculs (compteurs, totaux) |
 | `suiviclasse/paths.py` | emplacement du dossier de données |
 | `suiviclasse/ui/app.py` | fenêtre principale, enregistrement, archives, verrouillage |
 | `suiviclasse/ui/theme.py` | apparence : palettes clair/sombre, style des widgets |

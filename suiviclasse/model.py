@@ -131,12 +131,6 @@ def stats(student, t):
     return plus, moins, count(student, "travail", t), count(student, "oubli", t)
 
 
-def moyenne(student, n=3):
-    """Moyenne des notes des n premières périodes (celles qui sont renseignées)."""
-    vals = [v for k, v in student["notes"].items() if v is not None and int(k) <= n]
-    return sum(vals) / len(vals) if vals else None
-
-
 def add_event(student, type_, t, v, note=""):
     student["events"].append({"id": uid(), "type": type_, "t": t, "v": v, "note": note,
                               "date": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")})

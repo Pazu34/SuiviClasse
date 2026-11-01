@@ -14,9 +14,8 @@ LAYOUTS = {
     "normal": {"row_h": 30, "char": 7, "pad": 14, "min_btn": 20, "total": 40, "gap": 8},
 }
 # Largeur par défaut (compact, normal) de chaque sorte de colonne
-WIDTHS = {"numero": (30, 40), "nom": (108, 150), "prenom": (94, 125), "infos": (104, 150), "note": (46, 64), "moy": (48, 54),
+WIDTHS = {"numero": (30, 40), "nom": (108, 150), "prenom": (94, 125), "infos": (104, 150), "note": (46, 64),
           "xnote": (52, 64), "xtext": (150, 200), "xlist": (110, 140), "xcheck": (46, 56), "comment": (280, 340), "fiche": (34, 40)}
-FICHE_ICON = "📝"  # en bout de ligne : ouvre la fiche de l'élève
 COUNTER_KINDS = ("seance", "counter")
 
 
@@ -39,20 +38,30 @@ def build_columns(app):
     compact = app.values["affichage"] == "compact"
     sc = columns.scale(settings)
     note_suffix = f" /{exchange.fmt_num(sc)}" if not compact else ""
-    cols = [Col("numero", "num", "n°"), Col("nom", "nom", "Nom"), Col("prenom", "prenom", "Prénom"),
-            Col("infos", "infos", "Infos" if compact else "Infos (PAI…)")]
-    cols += [Col(f"note{k}", "note", f"{per['prefix']}{k}{note_suffix}") for k in per["keys"]]
-    cols.append(Col("moy", "moy", "Moy."))
+    defs = {}  # clé de configuration -> colonnes qu'elle produit (« notes » : une colonne par période)
+    for key, kind in (("numero", "num"), ("nom", "nom"), ("prenom", "prenom"), ("infos", "infos")):
+        b = columns.base(settings, key, short=compact)
+        if b["visible"]:
+            defs[key] = [Col(key, kind, b["titre"], b["emoji"])]
+    b = columns.base(settings, "notes", short=compact)
+    if b["visible"]:
+        defs["notes"] = [Col(f"note{k}", "note", f"{per['prefix']}{k}{note_suffix}", b["emoji"]) for k in per["keys"]]
     for key in columns.BUILTIN_ORDER:
         cfg = columns.builtin(settings, key, short=compact)
         if cfg["visible"]:
             kind = "seance" if key.startswith("seance") else "counter"
-            cols.append(Col(key, kind, cfg["titre"], cfg["emoji"], cfg, event=columns.BUILTIN_EVENT[key], per_period=True))
-    for c in (c for c in columns.customs(settings) if c["visible"]):
+            defs[key] = [Col(key, kind, cfg["titre"], cfg["emoji"], cfg, event=columns.BUILTIN_EVENT[key], per_period=True)]
+    customs = columns.customs(settings)
+    for c in (c for c in customs if c["visible"]):
         kind = {"compteur": "counter", "note": "xnote", "texte": "xtext", "liste": "xlist", "coche": "xcheck"}[c["type"]]
-        cols.append(Col(c["id"], kind, c["titre"], c["emoji"], c, per_period=True))
-    cols += [Col("comm", "comment", "Commentaire"), Col("fiche", "fiche", "")]
-    return cols
+        defs[c["id"]] = [Col(c["id"], kind, c["titre"], c["emoji"], c, per_period=True)]
+    b = columns.base(settings, "comm", short=compact)
+    if b["visible"]:
+        defs["comm"] = [Col("comm", "comment", b["titre"], b["emoji"])]
+    b = columns.base(settings, "fiche", short=compact)
+    if b["visible"]:  # pour la fiche, le pictogramme est celui du bouton de chaque ligne (pas celui de l'en-tête)
+        defs["fiche"] = [Col("fiche", "fiche", b["titre"], cfg={"emoji": b["emoji"]})]
+    return [col for key in columns.order(settings, [c["id"] for c in customs]) for col in defs.get(key, [])]
 
 
 def wrapped_lines(text, font, width):
@@ -202,7 +211,7 @@ class ClassTable(ttk.Frame):
         head_font = self.head_font
         icons = self.app.values["pictogrammes"] == "oui"
         for i, col in enumerate(self.cols):
-            title = col.title + (f" ({pre}{t})" if col.per_period else f" {pre}{t}" if col.kind == "comment" else "")
+            title = col.title + (f" ({pre}{t})" if col.per_period else "")
             c = self.cell(self.hf, 0, i, P["surface2"])
             text = title.upper()
             fits = head_font.measure(text) <= self.widths[i] - 12
@@ -323,7 +332,7 @@ class Row:
         self.cells, self.height = [], table.row_h
         self.note_vars, self.xvars, self.seance, self.counters, self.checks = {}, {}, [], {}, {}
         self.texts = []  # zones de texte à hauteur variable : (colonne, widget)
-        self.comm = None
+        self.comm = self.num = self.name = self.prenom = self.infos = None  # restent None si la colonne est masquée
         for i, col in enumerate(table.cols):
             parent = self._cell(r, i)
             getattr(self, "_build_" + col.kind)(col, parent, i)
@@ -381,10 +390,6 @@ class Row:
         var = tk.StringVar(value="" if v is None else exchange.fmt_num(v))
         self._entry(parent, var, lambda k=k: self.commit_note(k))
         self.note_vars[k] = var
-
-    def _build_moy(self, col, parent, i):
-        self.moy = tk.Label(parent, bg=self.bg, fg=P["text"], font=self.font)  # calculée : pas modifiable
-        self.moy.pack(fill="both", expand=True)
 
     def _button(self, parent, text, command, side):
         ttk.Button(parent, text=text, style="Mini.TButton", command=command).pack(side=side, padx=1, pady=2)
@@ -460,7 +465,7 @@ class Row:
     def _build_fiche(self, col, parent, i):
         """En bout de ligne : un pictogramme (clic) qui ouvre la fiche de l'élève."""
         if self.app.values["pictogrammes"] == "oui":
-            icon = tk.Label(parent, text=FICHE_ICON, bg=self.bg, fg=P["text"], cursor="hand2", font=self.table.icon_font)
+            icon = tk.Label(parent, text=col.cfg.get("emoji") or "📝", bg=self.bg, fg=P["text"], cursor="hand2", font=self.table.icon_font)
             icon.pack(fill="both", expand=True)
             icon.bind("<Button-1>", lambda e: self.open())
             icon.bind("<Enter>", lambda e: icon.configure(bg=P["hover"]))
@@ -474,6 +479,8 @@ class Row:
         return P[level] if level else self.bg
 
     def paint_number(self, dups):
+        if self.num is None:
+            return
         n = self.s.get("numero")
         dup = n in dups
         self.num.configure(text="" if n is None else str(n), bg=P["bad"] if dup else self.bg,
@@ -485,7 +492,8 @@ class Row:
         tb = self.table
         need = tb.row_h
         for widget in (self.name, self.prenom, self.infos):
-            need = max(need, widget.winfo_reqheight() + 6)
+            if widget is not None:
+                need = max(need, widget.winfo_reqheight() + 6)
         for col, box in self.texts:
             width = tb.widths[tb.index[col.key]]
             need = max(need, wrapped_lines(box.get("1.0", "end-1c"), tb.measure, max(10, width - 18)) * tb.linespace + 12)
@@ -496,11 +504,10 @@ class Row:
 
     def refresh(self):
         s, t, v = self.s, self.app.t, self.app.values
-        infos = " · ".join(x.strip() for x in s["infos"].splitlines() if x.strip())
-        self.infos.configure(text=infos, bg=P["bad"] if infos else self.bg, fg=P["text"])
-        self.infos.master.configure(bg=self.bg)
-        m = model.moyenne(s, self.table.per["n"])
-        self.moy.configure(text="" if m is None else exchange.fmt_num(m))
+        if self.infos is not None:
+            infos = " · ".join(x.strip() for x in s["infos"].splitlines() if x.strip())
+            self.infos.configure(text=infos, bg=P["bad"] if infos else self.bg, fg=P["text"])
+            self.infos.master.configure(bg=self.bg)
         plus, moins = model.seance(s, t)
         for col in self.table.cols:
             if col.kind == "seance":
@@ -671,8 +678,6 @@ class Row:
         if value != old:
             self.s["notes"][k] = value
             self.app.commit()
-            m = model.moyenne(self.s, self.table.per["n"])
-            self.moy.configure(text="" if m is None else exchange.fmt_num(m))
             self.table.refresh_footer()
             self._refresh_window()
         var.set("" if value is None else exchange.fmt_num(value))

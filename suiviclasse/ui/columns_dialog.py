@@ -57,12 +57,12 @@ class ColumnEditor(Dialog):
     """Création ou modification d'une colonne. `data` : réglages actuels ; `builtin` : clé d'une colonne intégrée (titre,
     pictogramme et incréments seulement) ; `on_ok(dict)` reçoit le résultat."""
 
-    def __init__(self, app, parent, data, on_ok, builtin=None):
-        super().__init__(app, "Modifier la colonne" if data.get("id") or builtin else "Nouvelle colonne", parent=parent)
-        self.on_ok, self.builtin, self.data = on_ok, builtin, dict(data)
+    def __init__(self, app, parent, data, on_ok, builtin=None, base=None):
+        super().__init__(app, "Modifier la colonne" if data.get("id") or builtin or base else "Nouvelle colonne", parent=parent)
+        self.on_ok, self.builtin, self.base, self.data = on_ok, builtin, base, dict(data)
         self.var_title = tk.StringVar(value=data.get("titre", ""))
         self.emoji = data.get("emoji", "")
-        self.var_type = tk.StringVar(value=TYPE_LABELS[data.get("type", "compteur")])
+        self.var_type = tk.StringVar(value="Colonne de base" if base else TYPE_LABELS[data.get("type", "compteur")])
         self.var_incs = tk.StringVar(value=columns.format_increments(data.get("increments", [-1, 1])).replace("+", "+"))
         self.var_scale = tk.StringVar(value=exchange.fmt_num(data.get("echelle", 10)))
         self.var_orange = tk.StringVar(value="" if not data.get("orange") else exchange.fmt_num(data["orange"]))
@@ -73,6 +73,8 @@ class ColumnEditor(Dialog):
         ttk.Label(f, text="Titre").grid(row=0, column=0, sticky="w", pady=4)
         title = ttk.Entry(f, textvariable=self.var_title, width=34)
         title.grid(row=0, column=1, sticky="ew", padx=8)
+        if base == "notes":  # les titres des colonnes de notes sont T1, T2, T3 (ou S1, S2) : seul le pictogramme se choisit
+            title.state(["disabled"])
         ttk.Label(f, text="Pictogramme").grid(row=1, column=0, sticky="w", pady=4)
         self.btn_emoji = ttk.Button(f, command=self.choose_emoji, width=8)
         self.btn_emoji.grid(row=1, column=1, sticky="w", padx=8)
@@ -80,7 +82,7 @@ class ColumnEditor(Dialog):
         self.combo = ttk.Combobox(f, state="readonly", width=30, values=[l for _, l in columns.TYPES], textvariable=self.var_type)
         self.combo.grid(row=2, column=1, sticky="w", padx=8)
         self.combo.bind("<<ComboboxSelected>>", lambda e: self.show_fields())
-        if builtin:  # une colonne intégrée garde son type ; celui d'une colonne personnalisée peut changer
+        if builtin or base:  # une colonne intégrée ou de base garde son type ; celui d'une colonne personnalisée peut changer
             self.combo.state(["disabled"])
         self.first_type = data.get("type", "compteur")
         self.hint_type = ttk.Label(f, style="Muted.TLabel", wraplength=440, justify="left", text=(
@@ -110,7 +112,11 @@ class ColumnEditor(Dialog):
         ttk.Entry(self.f_alert, textvariable=self.var_rouge, width=6, justify="center").grid(row=0, column=3, padx=8)
         self.err = ttk.Label(f, style="Error.TLabel", wraplength=440)
         self.err.grid(row=9, column=0, columnspan=2, sticky="w", pady=(6, 0))
-        self.frames = (self.f_incs, self.f_scale, self.f_alert, self.f_choix, self.hint_type)
+        self.hint_base = ttk.Label(f, style="Muted.TLabel", wraplength=440, justify="left", text={
+            "fiche": "Le pictogramme est celui du bouton qui ouvre la fiche, en bout de ligne. Le titre peut rester vide.",
+            "notes": "Les colonnes de notes s'appellent T1, T2, T3 (S1, S2 en semestres) : leur titre ne se change pas ici.",
+            "nom": "Cette colonne ne peut pas être masquée : elle identifie l'élève."}.get(base, ""))
+        self.frames = (self.f_incs, self.f_scale, self.f_alert, self.f_choix, self.hint_type, self.hint_base)
         self.show_fields()
         self.buttons(("OK", self.ok, "right"), ("Annuler", self.destroy, "right"))
         title.focus_set()
@@ -121,10 +127,12 @@ class ColumnEditor(Dialog):
 
     def show_fields(self):
         """N'affiche que les réglages utiles au type de colonne choisi."""
-        typ = "compteur" if self.builtin else self.current_type()
+        typ = "compteur" if self.builtin else "base" if self.base else self.current_type()
         for fr in self.frames:
             fr.grid_forget()
-        if typ == "compteur":
+        if typ == "base":
+            self.hint_base.grid(row=3, column=0, columnspan=2, sticky="w", pady=(10, 0))
+        elif typ == "compteur":
             self.f_incs.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(10, 0))
             if not self.builtin:
                 self.f_alert.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(10, 0))
@@ -145,10 +153,14 @@ class ColumnEditor(Dialog):
 
     def ok(self):
         title = " ".join(self.var_title.get().split())
-        if not title:
+        if not title and self.base != "fiche":
             self.err.configure(text="Donnez un titre à la colonne.")
             return
         out = {**self.data, "titre": title, "emoji": self.emoji}
+        if self.base:
+            self.destroy()
+            self.on_ok(out)
+            return
         typ = "compteur" if self.builtin else self.current_type()
         out["type"] = typ
         try:
@@ -217,13 +229,13 @@ class PresetsDialog(Dialog):
             if col is not None:
                 col["visible"] = want
             elif want:
-                self.tab.customs.append(columns.from_preset(p))
+                self.tab.add_custom(columns.from_preset(p))
         self.destroy()
         self.tab.refresh()
 
 
 class ColumnsTab(ttk.Frame):
-    """Contenu de l'onglet « Colonnes »."""
+    """Contenu de l'onglet « Colonnes » : toutes les colonnes du tableau, dans leur ordre d'affichage."""
 
     def __init__(self, parent, dialog, app):
         super().__init__(parent, padding=10)
@@ -233,17 +245,24 @@ class ColumnsTab(ttk.Frame):
         self.orig_note_scales = {c["id"]: c["echelle"] for c in columns.customs(st) if c["type"] == "note"}
         self.var_scale = tk.StringVar(value=exchange.fmt_num(self.orig_scale))
         self.builtin = copy.deepcopy(st.get("builtin") or {})
+        self.base = copy.deepcopy(st.get("base") or {})
         self.customs = copy.deepcopy(columns.customs(st))
+        self.order = columns.order(st, [c["id"] for c in self.customs])
+        self.hide_base = tk.BooleanVar(value=True)
         top = ttk.Frame(self)
         top.pack(fill="x")
         per = app.per
         ttk.Label(top, text=f"Notes de {per['prefix']}1 à {per['prefix']}{per['n']} sur").pack(side="left")
         ttk.Entry(top, textvariable=self.var_scale, width=6, justify="center").pack(side="left", padx=6)
         ttk.Label(top, style="Muted.TLabel", text="(20 par défaut ; 10 pour des notes /10)").pack(side="left")
-        ttk.Label(self, text="Colonnes du tableau", style="Bold.TLabel").pack(anchor="w", pady=(12, 3))
+        head = ttk.Frame(self)
+        head.pack(fill="x", pady=(12, 3))
+        ttk.Label(head, text="Colonnes du tableau", style="Bold.TLabel").pack(side="left")
+        ttk.Checkbutton(head, text="Cacher les colonnes de base (n°, nom, prénom, infos, notes, commentaire, fiche)",
+                        variable=self.hide_base, command=self.refresh).pack(side="right")
         mid = ttk.Frame(self)
         mid.pack(fill="both", expand=True)
-        self.tree = ttk.Treeview(mid, columns=("etat", "emoji", "titre", "type", "detail"), show="headings", height=9, selectmode="browse")
+        self.tree = ttk.Treeview(mid, columns=("etat", "emoji", "titre", "type", "detail"), show="headings", height=10, selectmode="browse")
         for col, text, w, anchor in (("etat", "Affichée", 72, "center"), ("emoji", "", 40, "center"), ("titre", "Titre", 170, "w"),
                                      ("type", "Type", 135, "w"), ("detail", "Réglages", 190, "w")):
             self.tree.heading(col, text=text)
@@ -259,27 +278,47 @@ class ColumnsTab(ttk.Frame):
         self.err = ttk.Label(self, style="Error.TLabel", wraplength=640)
         self.err.pack(anchor="w", pady=(6, 0))
         ttk.Label(self, style="Muted.TLabel", wraplength=640, text=(
-            "Les colonnes personnalisées s’affichent après « Oublis » ; « Monter / Descendre » règle leur ordre. Séance +, séance −, travail non fait et "
-            "oublis sont toujours disponibles (réglez leurs boutons avec « Modifier… »).")).pack(anchor="w")
+            "« Monter / Descendre » règle l'ordre d'affichage de toutes les colonnes. Les colonnes ajoutées se placent avant le commentaire. "
+            "Décochez « Cacher les colonnes de base » pour changer leur titre, leur pictogramme, leur place ou les masquer (le nom reste toujours affiché).")).pack(anchor="w")
         self.refresh()
 
     # ---------- liste ----------
     def _builtin_cfg(self, key):
         return columns.builtin({"builtin": self.builtin}, key)  # titre complet (la présentation resserrée en utilise une forme courte)
 
+    def _base_cfg(self, key):
+        return columns.base({"base": self.base}, key)
+
+    def shown_keys(self):
+        """Clés des colonnes présentes dans la liste (les colonnes de base sont cachées par défaut)."""
+        return [k for k in self.order if not (k in columns.BASE and self.hide_base.get())]
+
     def refresh(self, select=None):
+        for c in self.customs:  # toute colonne personnalisée a sa place dans l'ordre d'affichage
+            if c["id"] not in self.order:
+                self.order.insert(self.order.index("comm") if "comm" in self.order else len(self.order), c["id"])
         self.tree.delete(*self.tree.get_children())
-        for key in columns.BUILTIN_ORDER:
-            c = self._builtin_cfg(key)
-            self.tree.insert("", "end", iid=key, values=("☑" if c["visible"] else "☐", c["emoji"], c["titre"], "Compteur (intégré)",
-                                                         columns.format_increments(c["increments"])))
-        for c in self.customs:
-            detail = (columns.format_increments(c["increments"]) if c["type"] == "compteur" else f"/{exchange.fmt_num(c['echelle'])}" if c["type"] == "note"
-                      else " · ".join(c["choix"]) if c["type"] == "liste" else "")
-            if c["type"] == "compteur" and (c.get("orange") or c.get("rouge")):
-                detail += f"  · alertes : {exchange.fmt_num(c.get('orange', 0)) if c.get('orange') else '–'} / {exchange.fmt_num(c['rouge']) if c.get('rouge') else '–'}"
-            self.tree.insert("", "end", iid=c["id"], values=("☑" if c.get("visible", True) else "☐", c["emoji"], c["titre"],
-                                                             TYPE_LABELS[c["type"]].split(" (")[0], detail))
+        per = self.app.per
+        for key in self.shown_keys():
+            if key in columns.BASE:
+                c = self._base_cfg(key)
+                detail = {"notes": f"Une colonne par période ({per['prefix']}1 à {per['prefix']}{per['n']})", "nom": "Toujours affichée",
+                          "fiche": "Bouton en bout de ligne", "comm": "Appréciation de la période"}.get(key, "")
+                self.tree.insert("", "end", iid=key, values=("☑" if c["visible"] else "☐", c["emoji"], c["titre"] or "(sans titre)", "Colonne de base", detail))
+            elif key in columns.BUILTINS:
+                c = self._builtin_cfg(key)
+                self.tree.insert("", "end", iid=key, values=("☑" if c["visible"] else "☐", c["emoji"], c["titre"], "Compteur (intégré)",
+                                                             columns.format_increments(c["increments"])))
+            else:
+                c = self.custom_of(key)
+                if c is None:
+                    continue
+                detail = (columns.format_increments(c["increments"]) if c["type"] == "compteur" else f"/{exchange.fmt_num(c['echelle'])}" if c["type"] == "note"
+                          else " · ".join(c["choix"]) if c["type"] == "liste" else "")
+                if c["type"] == "compteur" and (c.get("orange") or c.get("rouge")):
+                    detail += f"  · alertes : {exchange.fmt_num(c['orange']) if c.get('orange') else '–'} / {exchange.fmt_num(c['rouge']) if c.get('rouge') else '–'}"
+                self.tree.insert("", "end", iid=c["id"], values=("☑" if c.get("visible", True) else "☐", c["emoji"], c["titre"],
+                                                                 TYPE_LABELS[c["type"]].split(" (")[0], detail))
         if select and self.tree.exists(select):
             self.tree.selection_set(select)
 
@@ -295,11 +334,18 @@ class ColumnsTab(ttk.Frame):
         return next((c for c in self.customs if c["id"] == iid), None)
 
     # ---------- actions ----------
+    def add_custom(self, col):
+        """Ajoute une colonne personnalisée (avant le commentaire)."""
+        self.customs.append(col)
+        if col["id"] not in self.order:
+            self.order.insert(self.order.index("comm") if "comm" in self.order else len(self.order), col["id"])
+
     def add(self):
         def done(col):
             col["id"] = columns.new_id()
             col["visible"] = True
-            self.customs.append(columns.sanitize_column(col))
+            col = columns.sanitize_column(col)
+            self.add_custom(col)
             self.refresh(col["id"])
         ColumnEditor(self.app, self.dialog, {"type": "compteur", "increments": [-1, 1], "echelle": 10}, done)
 
@@ -310,7 +356,22 @@ class ColumnsTab(ttk.Frame):
         iid = self.selected()
         if iid is None:
             return
-        if iid in columns.BUILTINS:
+        if iid in columns.BASE:
+            cfg = self._base_cfg(iid)
+
+            def done_base(out, key=iid):
+                d = columns.BASE[key]
+                over = {}
+                if key != "notes" and out["titre"] != d["titre"]:
+                    over["titre"] = out["titre"]
+                if out["emoji"] != d["emoji"]:
+                    over["emoji"] = out["emoji"]
+                if not cfg["visible"]:
+                    over["visible"] = False
+                self.base[key] = over
+                self.refresh(key)
+            ColumnEditor(self.app, self.dialog, cfg, done_base, base=iid)
+        elif iid in columns.BUILTINS:
             cfg = self._builtin_cfg(iid)
 
             def done_builtin(out, key=iid):
@@ -340,8 +401,12 @@ class ColumnsTab(ttk.Frame):
         iid = self.selected()
         if iid is None:
             return
-        if iid in columns.BUILTINS:
-            over = self.builtin.setdefault(iid, {})
+        if iid in columns.ALWAYS_VISIBLE:
+            self.err.configure(text="La colonne « Nom » ne peut pas être masquée : elle identifie l'élève.")
+            return
+        if iid in columns.BASE or iid in columns.BUILTINS:
+            store = self.base if iid in columns.BASE else self.builtin
+            over = store.setdefault(iid, {})
             if over.get("visible", True) is False:
                 over.pop("visible", None)
             else:
@@ -353,16 +418,13 @@ class ColumnsTab(ttk.Frame):
 
     def move(self, step):
         iid = self.selected()
-        col = self.custom_of(iid) if iid else None
-        if iid and col is None:
-            self.err.configure(text="Les colonnes intégrées gardent leur place.")
+        if iid is None:
             return
-        if col is None:
-            return
-        i = self.customs.index(col)
-        j = i + step
-        if 0 <= j < len(self.customs):
-            self.customs[i], self.customs[j] = self.customs[j], self.customs[i]
+        shown = self.shown_keys()
+        j = shown.index(iid) + step
+        if 0 <= j < len(shown):  # on échange avec la colonne voisine de la liste (les colonnes cachées ne bougent pas)
+            a, b = self.order.index(iid), self.order.index(shown[j])
+            self.order[a], self.order[b] = self.order[b], self.order[a]
             self.refresh(iid)
 
     def delete(self):
@@ -371,12 +433,13 @@ class ColumnsTab(ttk.Frame):
             return
         col = self.custom_of(iid)
         if col is None:
-            self.err.configure(text="Une colonne intégrée ne se supprime pas : utilisez « Afficher / masquer ».")
+            self.err.configure(text="Une colonne de base ou intégrée ne se supprime pas : utilisez « Afficher / masquer ».")
             return
         if messagebox.askyesno("Supprimer la colonne", f"Supprimer la colonne « {col['titre']} » ?\n\nLes valeurs déjà saisies restent enregistrées : "
                                "si vous recréez la colonne à partir de la même suggestion, elles réapparaissent. "
                                "Pour simplement la cacher, utilisez « Afficher / masquer ».", parent=self.dialog):
             self.customs.remove(col)
+            self.order = [k for k in self.order if k != iid]
             self.refresh()
 
     # ---------- application aux données ----------
@@ -404,7 +467,9 @@ class ColumnsTab(ttk.Frame):
                     model.rescale_extra(app.state, c["id"], old, c["echelle"])
         st["echelle"] = new_scale
         st["builtin"] = {k: v for k, v in self.builtin.items() if v}
+        st["base"] = {k: v for k, v in self.base.items() if v}
         st["colonnes"] = copy.deepcopy(self.customs)
+        st["ordre"] = list(self.order)
         # la configuration est appliquée : un second « Enregistrer » ne doit pas reconvertir les notes
         self.orig_scale = new_scale
         self.orig_note_scales = {c["id"]: c["echelle"] for c in self.customs if c["type"] == "note"}

@@ -2,7 +2,9 @@
 
 La configuration est enregistrée dans les données chiffrées (state["settings"]) :
     settings["echelle"]   barème des notes (20 par défaut)
-    settings["builtin"]   réglages des colonnes intégrées : {clé: {"titre", "emoji", "increments", "visible"}}
+    settings["builtin"]   réglages des colonnes à compteur intégrées : {clé: {"titre", "emoji", "increments", "visible"}}
+    settings["base"]      réglages des colonnes de base (n°, nom, prénom, infos, notes, commentaire, fiche) : {clé: {"titre", "emoji", "visible"}}
+    settings["ordre"]     ordre d'affichage de toutes les colonnes (clés) ; les colonnes absentes de la liste reprennent leur place habituelle
     settings["colonnes"]  colonnes personnalisées, dans l'ordre d'affichage :
         {"id", "titre", "emoji", "type", "visible", "increments", "echelle", "choix", "orange", "rouge", "preset"}
 Types de colonne personnalisée :
@@ -32,6 +34,21 @@ BUILTINS = {
 BUILTIN_ORDER = ["seancePlus", "seanceMoins", "travail", "oubli"]
 # Type d'entrée du journal associé à chaque colonne intégrée
 BUILTIN_EVENT = {"seancePlus": "seance", "seanceMoins": "seance", "travail": "travail", "oubli": "oubli"}
+
+# Colonnes de base. « notes » désigne l'ensemble des colonnes de note de période (T1 à T3 ou S1 et S2).
+BASE = {
+    "numero": {"titre": "n°", "court": "n°", "emoji": ""},
+    "nom": {"titre": "Nom", "court": "Nom", "emoji": ""},
+    "prenom": {"titre": "Prénom", "court": "Prénom", "emoji": ""},
+    "infos": {"titre": "Infos (PAI…)", "court": "Infos", "emoji": ""},
+    "notes": {"titre": "Notes", "court": "Notes", "emoji": ""},
+    "comm": {"titre": "Commentaire bulletin", "court": "Commentaire bulletin", "emoji": ""},
+    "fiche": {"titre": "", "court": "", "emoji": "📝"},  # pour « fiche », le pictogramme est celui du bouton de chaque ligne
+}
+BASE_ORDER = ["numero", "nom", "prenom", "infos", "notes", "comm", "fiche"]
+# Ordre par défaut de toutes les colonnes ; les colonnes personnalisées s'insèrent avant « comm ».
+DEFAULT_ORDER = ["numero", "nom", "prenom", "infos", "notes", "seancePlus", "seanceMoins", "travail", "oubli", "comm", "fiche"]
+ALWAYS_VISIBLE = {"nom"}  # sans le nom, le tableau n'identifierait plus personne
 
 # Pictogrammes proposés (regroupés), l'utilisateur peut aussi en saisir un autre.
 EMOJIS = [
@@ -140,6 +157,38 @@ def builtin(settings, key, short=False):
         "visible": over.get("visible", True) is not False,
         "type": "compteur",
     }
+
+
+def base(settings, key, short=False):
+    """Réglages d'une colonne de base : valeurs par défaut + ce que l'utilisateur a modifié."""
+    d = BASE[key]
+    over = (settings.get("base") or {}).get(key) or {}
+    return {
+        "key": key,
+        "titre": over["titre"] if "titre" in over else (d["court"] if short else d["titre"]),
+        "emoji": over["emoji"] if "emoji" in over else d["emoji"],
+        "visible": key in ALWAYS_VISIBLE or over.get("visible", True) is not False,
+        "type": "base",
+    }
+
+
+def order(settings, custom_ids):
+    """Clés de toutes les colonnes dans l'ordre d'affichage : l'ordre choisi par l'utilisateur, complété par la place
+    habituelle des colonnes qu'il n'a pas encore placées (les nouvelles colonnes personnalisées vont avant « comm »)."""
+    known = DEFAULT_ORDER + [i for i in custom_ids if i not in DEFAULT_ORDER]
+    out = []
+    for k in settings.get("ordre") or []:
+        if k in known and k not in out:
+            out.append(k)
+    for k in DEFAULT_ORDER:
+        if k not in out:
+            i = DEFAULT_ORDER.index(k)
+            prev = next((p for p in reversed(DEFAULT_ORDER[:i]) if p in out), None)
+            out.insert(out.index(prev) + 1 if prev else 0, k)
+    for k in custom_ids:
+        if k not in out:
+            out.insert(out.index("comm") if "comm" in out else len(out), k)
+    return out
 
 
 def scale(settings):

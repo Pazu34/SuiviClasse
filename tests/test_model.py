@@ -19,7 +19,6 @@ class ModelTest(unittest.TestCase):
         # il y a de quoi voir les trois couleurs d'alerte et les infos particulières
         self.assertTrue(any(model.count(e, "oubli", 1) >= 3 for e in eleves))
         self.assertTrue(any(e["infos"] for e in eleves))
-        self.assertTrue(any(model.moyenne(e) is None for e in eleves))
 
     def test_chaque_appel_donne_une_classe_independante(self):
         a, b = model.demo_class(), model.demo_class()
@@ -89,10 +88,3 @@ class PeriodesTest(unittest.TestCase):
         self.assertEqual((t["n"], t["prefix"], t["word"], t["keys"]), (3, "T", "trimestre", ["1", "2", "3"]))
         self.assertEqual((s["n"], s["prefix"], s["word"], s["keys"]), (2, "S", "semestre", ["1", "2"]))
         self.assertEqual(model.periods("n'importe quoi")["mode"], "trimestres")
-
-    def test_moyenne_selon_le_decoupage(self):
-        e = model.new_student("DUPONT")
-        e["notes"].update({"1": 10.0, "2": 14.0, "3": 18.0})
-        self.assertAlmostEqual(model.moyenne(e), 14.0)             # trimestres : 3 notes
-        self.assertAlmostEqual(model.moyenne(e, 2), 12.0)          # semestres : la note de la 3e période est ignorée
-        self.assertIsNone(model.moyenne(model.new_student("X"), 2))

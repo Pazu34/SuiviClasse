@@ -111,6 +111,31 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class ColonnesDeBaseTest(unittest.TestCase):
+    def test_reglages_par_defaut_et_modifies(self):
+        b = C.base({}, "comm")
+        self.assertEqual((b["titre"], b["visible"]), ("Commentaire bulletin", True))
+        self.assertEqual((C.base({}, "infos")["titre"], C.base({}, "infos", short=True)["titre"]), ("Infos (PAI…)", "Infos"))
+        self.assertEqual(C.base({}, "fiche")["emoji"], "📝")
+        st = {"base": {"prenom": {"titre": "Prénoms", "visible": False}, "fiche": {"emoji": "🔍"}, "nom": {"visible": False}}}
+        self.assertEqual((C.base(st, "prenom")["titre"], C.base(st, "prenom")["visible"]), ("Prénoms", False))
+        self.assertEqual(C.base(st, "fiche")["emoji"], "🔍")
+        self.assertTrue(C.base(st, "nom")["visible"], "le nom ne peut pas être masqué")
+
+    def test_ordre_des_colonnes(self):
+        self.assertEqual(C.order({}, []), C.DEFAULT_ORDER)
+        self.assertEqual(C.order({}, ["c1", "c2"]), ["numero", "nom", "prenom", "infos", "notes", "seancePlus", "seanceMoins", "travail", "oubli", "c1", "c2", "comm", "fiche"])
+        # ordre choisi : on le respecte ; les colonnes manquantes reprennent leur place, les inconnues sont ignorées
+        st = {"ordre": ["prenom", "nom", "inconnue", "c1", "travail", "prenom"]}
+        got = C.order(st, ["c1", "c2"])
+        self.assertEqual(got[0], "numero")                              # « numero » manquait : il reprend sa place habituelle (en tête)
+        self.assertEqual(got[got.index("prenom") + 1], "infos")         # « infos » manquait : il se place après sa voisine habituelle
+        self.assertLess(got.index("prenom"), got.index("nom"))
+        self.assertEqual(sorted(got), sorted(C.DEFAULT_ORDER + ["c1", "c2"]))
+        self.assertLess(got.index("c1"), got.index("travail"))
+        self.assertLess(got.index("c2"), got.index("comm"))
+
+
 class MenuDeroulantTest(unittest.TestCase):
     def test_analyse_des_choix(self):
         self.assertEqual(C.parse_choices("Excellente\nBonne\n  Bonne \nÀ améliorer ; Insuffisante\n\n"), ["Excellente", "Bonne", "À améliorer", "Insuffisante"])

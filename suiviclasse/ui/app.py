@@ -27,6 +27,39 @@ def open_folder(path):
         subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(path)])
 
 
+class FlowFrame(ttk.Frame):
+    """Rangée de widgets qui passent à la ligne suivante quand la place manque (ex. beaucoup de classes)."""
+
+    def __init__(self, parent):
+        super().__init__(parent, style="Bar.TFrame")
+        self.items, self._laid = [], None
+        self.bind("<Configure>", lambda e: self.layout_items())
+
+    def add(self, widget, padx=(2, 2)):
+        self.items.append((widget, padx))
+        self._laid = None
+        self.after_idle(self.layout_items)
+
+    def layout_items(self):
+        width = self.winfo_width()
+        if width <= 1 or self._laid == (width, len(self.items)):
+            return
+        self._laid = (width, len(self.items))
+        for fr in getattr(self, "_rows", []):
+            fr.destroy()  # les widgets, enfants de ce cadre-ci et non des rangées, survivent
+        self._rows, x, fr = [], 0, None
+        for widget, padx in self.items:
+            need = widget.winfo_reqwidth() + sum(padx)
+            if fr is None or (x and x + need > width):  # nouvelle rangée
+                fr = ttk.Frame(self, style="Bar.TFrame")
+                fr.pack(fill="x", anchor="w")
+                self._rows.append(fr)
+                x = 0
+            widget.pack(in_=fr, side="left", padx=padx, pady=2)
+            widget.lift()  # au premier plan : la rangée, créée après, le masquerait
+            x += need
+
+
 class App:
     def __init__(self, root):
         self.root = root
@@ -164,25 +197,31 @@ class App:
             self.trimestre.set(1)
             self.state["ui"]["trimestre"] = 1
         f = self._swap_frame()
-        top = ttk.Frame(f, style="Bar.TFrame", padding=(14, 9))
+        # 1re ligne : annuler / rétablir à gauche, accès aux fenêtres à droite
+        top = ttk.Frame(f, style="Bar.TFrame", padding=(14, 9, 14, 3))
         top.pack(fill="x")
-        ttk.Label(top, text="Classes :", style="BarStrong.TLabel").pack(side="left", padx=(0, 8))
-        for c in s["classes"]:
-            ttk.Radiobutton(top, text=c["nom"], style="Pill.Toolbutton", value=c["id"], variable=self._class_var(),
-                            command=lambda: self.select_class()).pack(side="left", padx=2)
-        ttk.Button(top, text="+", style="Plus.TButton", command=self.add_class).pack(side="left", padx=(4, 4))
-        ttk.Button(top, text="Importer une liste PRONOTE", command=lambda: dialogs.ImportDialog(self, None),
-                   style="TButton" if s["classes"] else "Accent.TButton").pack(side="left", padx=4)
+        self.btn_undo = ttk.Button(top, text="↶ Annuler", command=self.undo_action)
+        self.btn_undo.pack(side="left", padx=(0, 4))
+        self.btn_redo = ttk.Button(top, text="↷ Rétablir", command=self.redo_action)
+        self.btn_redo.pack(side="left", padx=4)
+        ttk.Label(top, textvariable=self.status, style="Bar.TLabel").pack(side="left", padx=12)
         ttk.Button(top, text="Verrouiller", command=self.lock).pack(side="right")
         ttk.Button(top, text="Données", command=lambda: dialogs.DataDialog(self)).pack(side="right", padx=4)
         ttk.Button(top, text="Archives", command=lambda: dialogs.ArchivesDialog(self)).pack(side="right")
         ttk.Button(top, text="Préférences", command=self.show_prefs).pack(side="right", padx=4)
-        ttk.Label(top, textvariable=self.status, style="Bar.TLabel").pack(side="right", padx=12)
-        self.btn_redo = ttk.Button(top, text="↷ Rétablir", command=self.redo_action)
-        self.btn_redo.pack(side="right", padx=(2, 4))
-        self.btn_undo = ttk.Button(top, text="↶ Annuler", command=self.undo_action)
-        self.btn_undo.pack(side="right", padx=2)
         self.update_history_buttons()
+        # 2e ligne : les classes (les boutons passent à la ligne suivante s'il y en a beaucoup)
+        row = ttk.Frame(f, style="Bar.TFrame", padding=(14, 0, 14, 9))
+        row.pack(fill="x")
+        ttk.Label(row, text="Classes :", style="BarStrong.TLabel").pack(side="left", padx=(0, 8), anchor="n", pady=6)
+        flow = FlowFrame(row)
+        flow.pack(side="left", fill="x", expand=True)
+        for c in s["classes"]:
+            flow.add(ttk.Radiobutton(flow, text=c["nom"], style="Pill.Toolbutton", value=c["id"], variable=self._class_var(),
+                                     command=lambda: self.select_class()), padx=(2, 2))
+        flow.add(ttk.Button(flow, text="+", style="Plus.TButton", command=self.add_class), padx=(4, 4))
+        flow.add(ttk.Button(flow, text="Importer une liste PRONOTE", command=lambda: dialogs.ImportDialog(self, None),
+                            style="TButton" if s["classes"] else "Accent.TButton"), padx=(4, 4))
         ttk.Separator(f).pack(fill="x")
         self.status.set("Enregistré ✓" if not self.dirty else "Modifié…")
         self.body = ttk.Frame(f, padding=(14, 12, 14, 12))

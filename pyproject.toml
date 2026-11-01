@@ -1,0 +1,10 @@
+[project]
+name = "suiviclasse"
+version = "1.0.0"
+description = "Suivi quotidien des élèves (notes, commentaires, oublis, travail, implication), données chiffrées, version portable."
+requires-python = ">=3.9"
+license = { text = "GPL-3.0-or-later" }
+dependencies = ["cryptography>=42"]
+
+[project.gui-scripts]
+suiviclasse = "suiviclasse.ui.app:main"

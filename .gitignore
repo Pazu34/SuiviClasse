@@ -1,4 +1,8 @@
-node_modules/
+__pycache__/
+*.pyc
+build/
 dist/
+*.spec.bak
 SuiviClasse-Donnees/
 SuiviClasse-config.json
+.venv/

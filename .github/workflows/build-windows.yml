@@ -10,14 +10,14 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-python@v5
         with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm test
-      - run: npm run dist
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: python -m unittest discover -s tests -t .
+      - run: python -m PyInstaller --noconfirm --onefile --windowed --name SuiviClasse suiviclasse/__main__.py
       - uses: actions/upload-artifact@v4
         with:
           name: SuiviClasse-portable
-          path: dist/SuiviClasse-portable.exe
+          path: dist/SuiviClasse.exe

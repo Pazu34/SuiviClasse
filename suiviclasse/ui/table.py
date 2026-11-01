@@ -15,7 +15,7 @@ LAYOUTS = {
 }
 # Largeur par défaut (compact, normal) de chaque sorte de colonne
 WIDTHS = {"numero": (30, 40), "nom": (108, 150), "prenom": (94, 125), "infos": (104, 150), "note": (46, 64), "moy": (48, 54),
-          "xnote": (52, 64), "xtext": (150, 200), "xcheck": (46, 56), "comment": (280, 340), "fiche": (34, 40)}
+          "xnote": (52, 64), "xtext": (150, 200), "xlist": (110, 140), "xcheck": (46, 56), "comment": (280, 340), "fiche": (34, 40)}
 FICHE_ICON = "📝"  # en bout de ligne : ouvre la fiche de l'élève
 COUNTER_KINDS = ("seance", "counter")
 
@@ -49,7 +49,7 @@ def build_columns(app):
             kind = "seance" if key.startswith("seance") else "counter"
             cols.append(Col(key, kind, cfg["titre"], cfg["emoji"], cfg, event=columns.BUILTIN_EVENT[key], per_period=True))
     for c in (c for c in columns.customs(settings) if c["visible"]):
-        kind = {"compteur": "counter", "note": "xnote", "texte": "xtext", "coche": "xcheck"}[c["type"]]
+        kind = {"compteur": "counter", "note": "xnote", "texte": "xtext", "liste": "xlist", "coche": "xcheck"}[c["type"]]
         cols.append(Col(c["id"], kind, c["titre"], c["emoji"], c, per_period=True))
     cols += [Col("comm", "comment", "Commentaire"), Col("fiche", "fiche", "")]
     return cols
@@ -154,6 +154,8 @@ class ClassTable(ttk.Frame):
             width = sum(self.button_width(x) for x in labels) + self.layout["total"] + self.layout["gap"] + 2 * len(labels)
         else:
             width = WIDTHS[{"num": "numero"}.get(col.kind, col.kind)][i]
+        if col.kind == "xlist":  # assez large pour le plus long choix, flèche du menu comprise
+            width = max(width, max((self.measure.measure(c) for c in col.cfg.get("choix", [])), default=0) + 44)
         title = col.title + (f" ({self.per['prefix']}{self.app.t})" if col.per_period else "")
         whole = self.head_font.measure(title.upper()) + 16
         longest = max((self.head_font.measure(w) for w in title.upper().split()), default=0) + 16
@@ -301,7 +303,7 @@ class ClassTable(ttk.Frame):
             if col.kind == "note":
                 vals = [s["notes"][col.key[4:]] for s in self.cls["eleves"] if s["notes"][col.key[4:]] is not None]
             else:
-                vals = [v for v in (model.get_extra(s, col.key, t) for s in self.cls["eleves"]) if v is not None]
+                vals = [v for v in (model.extra_value(s, col.cfg, t) for s in self.cls["eleves"]) if v is not None]
             lab.configure(text=exchange.fmt_num(sum(vals) / len(vals)) if vals else "")
 
     def refresh_student(self, student):
@@ -415,7 +417,7 @@ class Row:
         self.counters[col.key] = (parent, total)
 
     def _build_xnote(self, col, parent, i):
-        v = model.get_extra(self.s, col.key, self.app.t)
+        v = model.extra_value(self.s, col.cfg, self.app.t)
         var = tk.StringVar(value="" if v is None else exchange.fmt_num(v))
         self._entry(parent, var, lambda col=col: self.commit_xnote(col))
         self.xvars[col.key] = var
@@ -436,7 +438,18 @@ class Row:
         self.comm = self._text_box(col, parent, self.s["comms"][str(self.app.t)], self.commit_comment)
 
     def _build_xtext(self, col, parent, i):
-        self._text_box(col, parent, model.get_extra(self.s, col.key, self.app.t, ""), lambda col=col: self.commit_xtext(col))
+        self._text_box(col, parent, model.extra_value(self.s, col.cfg, self.app.t) or "", lambda col=col: self.commit_xtext(col))
+
+    def _build_xlist(self, col, parent, i):
+        """Menu déroulant : une valeur parmi les choix définis dans la configuration de la colonne."""
+        var = tk.StringVar(value=model.extra_value(self.s, col.cfg, self.app.t) or "")
+        box = ttk.Combobox(parent, state="readonly", textvariable=var, values=[""] + list(col.cfg.get("choix", [])), font=self.font)
+        box.pack(fill="x", expand=True, padx=2, pady=2)
+        box.bind("<<ComboboxSelected>>", lambda e, col=col: (self.commit_xlist(col), box.selection_clear()))
+        # la molette fait défiler le tableau (au lieu de changer, sans le vouloir, le choix du menu survolé)
+        for ev in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            box.bind(ev, lambda e: (self.table._wheel(e), "break")[1])
+        self.xvars[col.key] = var
 
     def _build_xcheck(self, col, parent, i):
         lab = tk.Label(parent, bg=self.bg, fg=P["text"], font=(self.font[0], self.font[1] + 3), cursor="hand2")
@@ -505,7 +518,7 @@ class Row:
                     level = model.level(n, orange or float("inf"), rouge or float("inf")) if (orange or rouge) else ""
                 self._paint_counter(col, n, level)
             elif col.kind == "xcheck":
-                done = bool(model.get_extra(s, col.key, t))
+                done = bool(model.extra_value(s, col.cfg, t))
                 self.checks[col.key].configure(text="☑" if done else "☐", bg=P["ok"] if done else self.bg)
         self.fit()
 
@@ -665,7 +678,7 @@ class Row:
         var.set("" if value is None else exchange.fmt_num(value))
 
     def commit_xnote(self, col):
-        var, old = self.xvars[col.key], model.get_extra(self.s, col.key, self.app.t)
+        var, old = self.xvars[col.key], model.extra_value(self.s, col.cfg, self.app.t)
         maxi = col.cfg.get("echelle", 10)
         try:
             value = parse_grade(var.get(), maxi)
@@ -685,13 +698,20 @@ class Row:
             self.s["comms"][t] = text
             self.app.commit()
 
+    def commit_xlist(self, col):
+        value = self.xvars[col.key].get() or None
+        if value != model.extra_value(self.s, col.cfg, self.app.t):
+            model.set_extra(self.s, col.key, self.app.t, value)
+            self.app.commit()
+            self._refresh_window()
+
     def commit_xtext(self, col):
         box = next(b for c, b in self.texts if c is col)
         text = " ".join(box.get("1.0", "end-1c").split())
-        if text != model.get_extra(self.s, col.key, self.app.t, ""):
+        if text != (model.extra_value(self.s, col.cfg, self.app.t) or ""):
             model.set_extra(self.s, col.key, self.app.t, text)
             self.app.commit()
 
     def toggle_check(self, col):
-        model.set_extra(self.s, col.key, self.app.t, None if model.get_extra(self.s, col.key, self.app.t) else True)
+        model.set_extra(self.s, col.key, self.app.t, None if model.extra_value(self.s, col.cfg, self.app.t) else True)
         self.after_change()

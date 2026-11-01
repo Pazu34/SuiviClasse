@@ -31,8 +31,10 @@ Application de suivi quotidien des élèves, qui remplace un classeur Excel de s
   - *Compteur* : un total avec des boutons d'incrément de votre choix (« +0,5 ; +2 », « −2 −1 +1 +2 »…), éventuellement des alertes orange/rouge ;
   - *Note* : sur 10, sur 5, sur ce que vous voulez ;
   - *Texte* : une remarque libre par période ;
+  - *Menu déroulant* : une valeur parmi des choix que vous saisissez (un par ligne) à la création ou avec « Modifier… » ;
   - *Case à cocher*.
-- **Suggestions prêtes à l'emploi** (à cocher pour les activer) : Travail maison, Retards, Absences, Bavardages, Leçon non apprise, Devoir en retard, Participation orale, Comportement, Bonus, Punitions, Évaluation orale /10, Carnet signé, Matériel complet, Observation.
+- **Suggestions prêtes à l'emploi** (à cocher pour les activer) : Travail maison, Retards, Absences, Bavardages, Leçon non apprise, Devoir en retard, Participation orale, Comportement, Bonus, Punitions, Évaluation orale /10, Attitude en classe et Niveau de maîtrise (menus déroulants), Carnet signé, Matériel complet, Observation.
+- Le **type d'une colonne personnalisée peut être changé** avec « Modifier… » : les valeurs déjà saisies sont conservées et reprises quand elles sont compatibles (note ↔ texte ↔ menu ↔ case ; un compteur garde son journal), ainsi que les réglages de l'ancien type (choix du menu, boutons…).
 - Les colonnes s'affichent après « Oublis » ; **Monter / Descendre** règle leur ordre. Les valeurs saisies dans chaque colonne sont conservées même si la colonne est masquée ou supprimée (recréer une suggestion retrouve ses valeurs).
 - Les colonnes personnalisées apparaissent aussi dans la **fiche élève** (boutons du journal, valeurs), dans l'**export** et l'**historique annuler/rétablir** ; la configuration est enregistrée dans les données chiffrées, avec le reste.
 - Le total d'un compteur est la somme de ses incréments au journal ; en cliquant sur le total, vous le saisissez directement (le programme ajoute une entrée « Ajustement manuel »).

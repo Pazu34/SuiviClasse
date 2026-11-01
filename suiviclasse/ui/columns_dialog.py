@@ -80,14 +80,25 @@ class ColumnEditor(Dialog):
         self.combo = ttk.Combobox(f, state="readonly", width=30, values=[l for _, l in columns.TYPES], textvariable=self.var_type)
         self.combo.grid(row=2, column=1, sticky="w", padx=8)
         self.combo.bind("<<ComboboxSelected>>", lambda e: self.show_fields())
-        if builtin or data.get("id"):  # le type d'une colonne existante ne change pas
+        if builtin:  # une colonne intégrée garde son type ; celui d'une colonne personnalisée peut changer
             self.combo.state(["disabled"])
+        self.first_type = data.get("type", "compteur")
+        self.hint_type = ttk.Label(f, style="Muted.TLabel", wraplength=440, justify="left", text=(
+            "Changer le type conserve les valeurs déjà saisies : elles réapparaissent si elles sont compatibles "
+            "(note ↔ texte ↔ menu ↔ case ; un compteur garde son journal)."))
         self.f_incs = ttk.Frame(f)
         ttk.Label(self.f_incs, text="Boutons d'incrément").grid(row=0, column=0, sticky="w")
         ttk.Entry(self.f_incs, textvariable=self.var_incs, width=30).grid(row=0, column=1, padx=8)
         ttk.Label(self.f_incs, style="Muted.TLabel", wraplength=420, justify="left", text=(
             "Une valeur par bouton, séparées par des « ; » ou des espaces. Exemples : « +0,5 ; +2 », « −1 ; +1 », « −2 −1 +1 +2 ». "
             "Les valeurs négatives retirent des points. Jusqu'à 6 boutons.")).grid(row=1, column=0, columnspan=2, sticky="w", pady=(2, 0))
+        self.f_choix = ttk.Frame(f)
+        ttk.Label(self.f_choix, text="Choix du menu (un par ligne)").grid(row=0, column=0, sticky="w")
+        self.txt_choix = tk.Text(self.f_choix, width=34, height=6, wrap="none")
+        self.txt_choix.grid(row=1, column=0, sticky="w", pady=2)
+        self.txt_choix.insert("1.0", "\n".join(data.get("choix", [])))
+        ttk.Label(self.f_choix, style="Muted.TLabel", wraplength=440, justify="left",
+                  text="Exemples : Très bien / Bien / À surveiller. Jusqu'à 20 choix. Vous pourrez les modifier plus tard avec « Modifier… ».").grid(row=2, column=0, sticky="w")
         self.f_scale = ttk.Frame(f)
         ttk.Label(self.f_scale, text="Note sur").grid(row=0, column=0, sticky="w")
         ttk.Entry(self.f_scale, textvariable=self.var_scale, width=8, justify="center").grid(row=0, column=1, padx=8)
@@ -99,7 +110,7 @@ class ColumnEditor(Dialog):
         ttk.Entry(self.f_alert, textvariable=self.var_rouge, width=6, justify="center").grid(row=0, column=3, padx=8)
         self.err = ttk.Label(f, style="Error.TLabel", wraplength=440)
         self.err.grid(row=9, column=0, columnspan=2, sticky="w", pady=(6, 0))
-        self.frames = (self.f_incs, self.f_scale, self.f_alert)
+        self.frames = (self.f_incs, self.f_scale, self.f_alert, self.f_choix, self.hint_type)
         self.show_fields()
         self.buttons(("OK", self.ok, "right"), ("Annuler", self.destroy, "right"))
         title.focus_set()
@@ -119,6 +130,10 @@ class ColumnEditor(Dialog):
                 self.f_alert.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(10, 0))
         elif typ == "note":
             self.f_scale.grid(row=3, column=0, columnspan=2, sticky="w", pady=(10, 0))
+        elif typ == "liste":
+            self.f_choix.grid(row=3, column=0, columnspan=2, sticky="w", pady=(10, 0))
+        if not self.builtin and self.data.get("id") and typ != self.first_type:  # rappel seulement si le type a été changé
+            self.hint_type.grid(row=5, column=0, columnspan=2, sticky="w", pady=(8, 0))
         self.btn_emoji.configure(text=self.emoji or "(aucun)")
 
     def choose_emoji(self):
@@ -155,6 +170,10 @@ class ColumnEditor(Dialog):
                             out.pop(k, None)
                     if out.get("orange") and out.get("rouge") and out["orange"] > out["rouge"]:
                         raise ValueError("Le seuil orange doit être inférieur ou égal au seuil rouge.")
+            elif typ == "liste":
+                out["choix"] = columns.parse_choices(self.txt_choix.get("1.0", "end"))
+                if not out["choix"]:
+                    raise ValueError("Saisissez au moins un choix pour le menu (un par ligne).")
             elif typ == "note":
                 sc = parse_number(self.var_scale.get())
                 if sc <= 0:
@@ -186,7 +205,8 @@ class PresetsDialog(Dialog):
             row.pack(fill="x", pady=1)
             ttk.Checkbutton(row, variable=var, text=f"{p['emoji']}  {p['titre']}").pack(side="left")
             kind = TYPE_LABELS[p["type"]].split(" (")[0]
-            extra = f" — {columns.format_increments(p['increments'])}" if p["type"] == "compteur" else f" — /{exchange.fmt_num(p['echelle'])}" if p["type"] == "note" else ""
+            extra = (f" — {columns.format_increments(p['increments'])}" if p["type"] == "compteur" else f" — /{exchange.fmt_num(p['echelle'])}"
+                     if p["type"] == "note" else f" — {len(p['choix'])} choix" if p["type"] == "liste" else "")
             ttk.Label(row, style="Muted.TLabel", text=f"   {kind}{extra} · {p['description']}").pack(side="left")
         self.buttons(("Appliquer", self.apply, "right"), ("Annuler", self.destroy, "right"))
 
@@ -254,7 +274,8 @@ class ColumnsTab(ttk.Frame):
             self.tree.insert("", "end", iid=key, values=("☑" if c["visible"] else "☐", c["emoji"], c["titre"], "Compteur (intégré)",
                                                          columns.format_increments(c["increments"])))
         for c in self.customs:
-            detail = (columns.format_increments(c["increments"]) if c["type"] == "compteur" else f"/{exchange.fmt_num(c['echelle'])}" if c["type"] == "note" else "")
+            detail = (columns.format_increments(c["increments"]) if c["type"] == "compteur" else f"/{exchange.fmt_num(c['echelle'])}" if c["type"] == "note"
+                      else " · ".join(c["choix"]) if c["type"] == "liste" else "")
             if c["type"] == "compteur" and (c.get("orange") or c.get("rouge")):
                 detail += f"  · alertes : {exchange.fmt_num(c.get('orange', 0)) if c.get('orange') else '–'} / {exchange.fmt_num(c['rouge']) if c.get('rouge') else '–'}"
             self.tree.insert("", "end", iid=c["id"], values=("☑" if c.get("visible", True) else "☐", c["emoji"], c["titre"],

@@ -4,11 +4,12 @@ La configuration est enregistrée dans les données chiffrées (state["settings"
     settings["echelle"]   barème des notes (20 par défaut)
     settings["builtin"]   réglages des colonnes intégrées : {clé: {"titre", "emoji", "increments", "visible"}}
     settings["colonnes"]  colonnes personnalisées, dans l'ordre d'affichage :
-        {"id", "titre", "emoji", "type", "visible", "increments", "echelle", "orange", "rouge", "preset"}
+        {"id", "titre", "emoji", "type", "visible", "increments", "echelle", "choix", "orange", "rouge", "preset"}
 Types de colonne personnalisée :
     compteur  total à boutons d'incrément (comme « travail non fait ») ; valeurs = entrées du journal
     note      note sur `echelle` (/10, /5…), une par période
     texte     texte libre, un par période
+    liste     menu déroulant : une valeur parmi `choix` (saisis par l'utilisateur), une par période
     coche     case à cocher, une par période
 Les valeurs des notes, textes et cases sont rangées dans eleve["extra"][id][période].
 """
@@ -17,7 +18,9 @@ import secrets
 
 DEFAULT_SCALE = 20
 MAX_INCREMENTS = 6
-TYPES = [("compteur", "Compteur (boutons + / −)"), ("note", "Note"), ("texte", "Texte"), ("coche", "Case à cocher")]
+MAX_CHOICES, MAX_CHOICE_LEN = 20, 40
+TYPES = [("compteur", "Compteur (boutons + / −)"), ("note", "Note"), ("texte", "Texte"),
+         ("liste", "Menu déroulant"), ("coche", "Case à cocher")]
 
 # Colonnes à compteur intégrées : clé -> réglages par défaut. « court » : titre de la présentation resserrée.
 BUILTINS = {
@@ -60,6 +63,10 @@ PRESETS = [
      "description": "Points bonus"},
     {"id": "p_punition", "titre": "Punitions", "emoji": "📕", "type": "compteur", "increments": [-1, 1], "orange": 1, "rouge": 3,
      "description": "Punitions et retenues"},
+    {"id": "p_attitude", "titre": "Attitude en classe", "emoji": "🙂", "type": "liste",
+     "choix": ["Excellente", "Bonne", "Passable", "À améliorer"], "description": "Menu : appréciation de l'attitude"},
+    {"id": "p_maitrise", "titre": "Niveau de maîtrise", "emoji": "🎯", "type": "liste",
+     "choix": ["Non acquis", "En cours d'acquisition", "Acquis", "Dépassé"], "description": "Menu : compétence non acquise à dépassée"},
     {"id": "p_oral", "titre": "Évaluation orale", "emoji": "🎤", "type": "note", "echelle": 10,
      "description": "Note d'oral sur 10"},
     {"id": "p_carnet", "titre": "Carnet signé", "emoji": "✍", "type": "coche",
@@ -69,6 +76,18 @@ PRESETS = [
     {"id": "p_observation", "titre": "Observation", "emoji": "👁", "type": "texte",
      "description": "Remarque libre par période"},
 ]
+
+
+# ---------------------------------------------------------------- menus déroulants
+def parse_choices(text):
+    """Un choix par ligne (ou séparés par « ; ») -> liste sans doublon ni ligne vide (20 choix de 40 caractères au plus)."""
+    items = text if isinstance(text, (list, tuple)) else re.split(r"[\n;]", str(text))
+    out = []
+    for item in items:
+        c = " ".join(str(item).split())[:MAX_CHOICE_LEN]
+        if c and c not in out:
+            out.append(c)
+    return out[:MAX_CHOICES]
 
 
 # ---------------------------------------------------------------- incréments
@@ -141,16 +160,19 @@ def sanitize_column(raw):
            "emoji": str(raw.get("emoji") or "")[:4], "type": typ, "visible": raw.get("visible", True) is not False}
     if raw.get("preset"):
         col["preset"] = str(raw["preset"])
-    if typ == "compteur":
+    # Les réglages propres à un type sont conservés même s'il n'est pas actif : revenir à un type précédent les retrouve.
+    if raw.get("increments") or typ == "compteur":
         col["increments"] = [float(v) for v in (raw.get("increments") or [-1, 1])][:MAX_INCREMENTS] or [-1.0, 1.0]
-        for k in ("orange", "rouge"):
-            try:
-                v = float(raw[k]) if raw.get(k) not in (None, "") else None
-            except (TypeError, ValueError):
-                v = None
-            if v is not None and v > 0:
-                col[k] = v
-    elif typ == "note":
+    for k in ("orange", "rouge"):
+        try:
+            v = float(raw[k]) if raw.get(k) not in (None, "") else None
+        except (TypeError, ValueError):
+            v = None
+        if v is not None and v > 0:
+            col[k] = v
+    if raw.get("choix") or typ == "liste":
+        col["choix"] = parse_choices(raw.get("choix") or [])
+    if raw.get("echelle") or typ == "note":
         try:
             col["echelle"] = float(raw.get("echelle") or 10)
         except (TypeError, ValueError):

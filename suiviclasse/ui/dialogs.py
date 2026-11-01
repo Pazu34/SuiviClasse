@@ -124,7 +124,7 @@ class StudentWindow(Dialog):
             self.comms[k] = txt
 
         settings = app.state["settings"]
-        self.extra_cols = [c for c in columns.customs(settings) if c["visible"] and c["type"] in ("note", "texte", "coche")]
+        self.extra_cols = [c for c in columns.customs(settings) if c["visible"] and c["type"] in ("note", "texte", "liste", "coche")]
         self.extra_vars = {}
         if self.extra_cols:
             ttk.Label(self, text=f"Autres colonnes ({app.per['prefix']}{t})", font=("TkDefaultFont", 10, "bold")).pack(anchor="w", **pad)
@@ -136,6 +136,12 @@ class StudentWindow(Dialog):
                 if c["type"] == "coche":
                     var = tk.BooleanVar()
                     ttk.Checkbutton(box, text=title, variable=var, command=lambda c=c: self.commit_extra(c)).grid(row=r, column=0, columnspan=2, sticky="w", pady=1)
+                elif c["type"] == "liste":
+                    var = tk.StringVar()
+                    ttk.Label(box, text=title).grid(row=r, column=0, sticky="w", pady=1)
+                    combo = ttk.Combobox(box, state="readonly", textvariable=var, values=[""] + list(c["choix"]), width=30)
+                    combo.grid(row=r, column=1, sticky="w", padx=8)
+                    combo.bind("<<ComboboxSelected>>", lambda ev, c=c: self.commit_extra(c))
                 else:
                     var = tk.StringVar()
                     ttk.Label(box, text=title).grid(row=r, column=0, sticky="w", pady=1)
@@ -174,7 +180,7 @@ class StudentWindow(Dialog):
             self.stats[k].configure(text=self.stats_text(int(k)))
             self.update_counter(k)
         for c in self.extra_cols:
-            value = model.get_extra(s, c["id"], t)
+            value = model.extra_value(s, c, t)
             var = self.extra_vars[c["id"]]
             var.set(bool(value) if c["type"] == "coche" else "" if value is None else exchange.fmt_num(value) if c["type"] == "note" else value)
         self.journal.delete(*self.journal.get_children())
@@ -212,9 +218,11 @@ class StudentWindow(Dialog):
 
     def commit_extra(self, c):
         var, t = self.extra_vars[c["id"]], self.app.t
-        old = model.get_extra(self.s, c["id"], t)
+        old = model.extra_value(self.s, c, t)
         if c["type"] == "coche":
             value = True if var.get() else None
+        elif c["type"] == "liste":
+            value = var.get() or None
         elif c["type"] == "note":
             try:
                 value = parse_grade(var.get(), c["echelle"])
@@ -520,11 +528,11 @@ class ExportDialog(Dialog):
             if c["type"] == "compteur":
                 fn = lambda s, t, c=c: exchange.fmt_num(model.total(s, c["id"], t))
             elif c["type"] == "note":
-                fn = lambda s, t, c=c: "" if model.get_extra(s, c["id"], t) is None else exchange.fmt_num(model.get_extra(s, c["id"], t))
+                fn = lambda s, t, c=c: "" if model.extra_value(s, c, t) is None else exchange.fmt_num(model.extra_value(s, c, t))
             elif c["type"] == "coche":
-                fn = lambda s, t, c=c: "oui" if model.get_extra(s, c["id"], t) else ""
-            else:
-                fn = lambda s, t, c=c: model.get_extra(s, c["id"], t, "")
+                fn = lambda s, t, c=c: "oui" if model.extra_value(s, c, t) else ""
+            else:  # texte et menu déroulant
+                fn = lambda s, t, c=c: model.extra_value(s, c, t) or ""
             out.append((c["id"], c["titre"], fn))
         return out
 

@@ -13,7 +13,7 @@ ou semestres 1 et 2 (préférence « Découpage de l'année » ; la 3e période 
 import secrets
 from datetime import datetime, timezone
 
-from .exchange import norm
+from .exchange import fmt_num, norm
 
 def periods(mode):
     """Découpage de l'année choisi dans les préférences : trimestres (T1 à T3) ou semestres (S1 et S2)."""
@@ -212,6 +212,41 @@ def rescale_extra(data, col_id, old, new):
                     s["extra"][col_id][k] = round(v * new / old, 2)
                     n += 1
     return n
+
+
+_YES = {"oui", "vrai", "x", "1", "true", "✓", "✔", "☑"}
+
+
+def coerce_extra(value, typ):
+    """Valeur lisible selon le type actuel de la colonne. Si l'on change le type d'une colonne, les valeurs déjà saisies
+    sont conservées et reprises quand elles sont compatibles (note ↔ texte ↔ menu, case) ; sinon elles sont ignorées."""
+    if value is None or value == "":
+        return None
+    if typ == "note":
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, (int, float)):
+            return value
+        try:
+            return float(str(value).strip().replace(",", "."))
+        except ValueError:
+            return None
+    if typ in ("texte", "liste"):
+        if value is True:
+            return "oui"
+        if value is False:
+            return None
+        return fmt_num(value) if isinstance(value, (int, float)) else str(value)
+    if typ == "coche":
+        if isinstance(value, (int, float)):
+            return True if value else None
+        return True if value is True or str(value).strip().lower() in _YES else None
+    return value
+
+
+def extra_value(student, col, t):
+    """Valeur d'une colonne personnalisée (dictionnaire de configuration `col`) pour la période t, selon son type."""
+    return coerce_extra(get_extra(student, col["id"], t), col["type"])
 
 
 def remove_last(student, type_, t):

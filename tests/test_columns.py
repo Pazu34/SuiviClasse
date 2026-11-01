@@ -109,3 +109,40 @@ class ValeursTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MenuDeroulantTest(unittest.TestCase):
+    def test_analyse_des_choix(self):
+        self.assertEqual(C.parse_choices("Excellente\nBonne\n  Bonne \nÀ améliorer ; Insuffisante\n\n"), ["Excellente", "Bonne", "À améliorer", "Insuffisante"])
+        self.assertEqual(C.parse_choices(["  a  ", "", "a", "b"]), ["a", "b"])
+        self.assertEqual(len(C.parse_choices("\n".join(str(i) for i in range(50)))), C.MAX_CHOICES)
+        self.assertEqual(len(C.parse_choices("x" * 100)[0]), C.MAX_CHOICE_LEN)
+        self.assertEqual(C.parse_choices(""), [])
+
+    def test_colonne_liste(self):
+        col = C.sanitize_column({"id": "l1", "titre": "Attitude", "type": "liste", "choix": ["A", "B", "A"]})
+        self.assertEqual((col["type"], col["choix"]), ("liste", ["A", "B"]))
+        self.assertIn("liste", dict(C.TYPES))
+        self.assertTrue(any(p["type"] == "liste" and p["choix"] for p in C.PRESETS))
+
+    def test_reglages_conserves_au_changement_de_type(self):
+        liste = C.sanitize_column({"id": "x", "titre": "T", "type": "liste", "choix": ["A", "B"], "increments": [1, 2]})
+        texte = C.sanitize_column({**liste, "type": "texte"})                      # on change de type…
+        self.assertEqual((texte["type"], texte["choix"], texte["increments"]), ("texte", ["A", "B"], [1.0, 2.0]))
+        self.assertEqual(C.sanitize_column({**texte, "type": "liste"})["choix"], ["A", "B"])   # …puis on revient : choix retrouvés
+        self.assertEqual("choix" in C.sanitize_column({"id": "y", "type": "compteur"}), False)  # rien d'inventé pour les autres
+
+
+class ChangementDeTypeTest(unittest.TestCase):
+    def test_valeurs_reprises_selon_le_type(self):
+        c = model.coerce_extra
+        self.assertEqual((c("7,5", "note"), c("Bonne", "note"), c(True, "note"), c(8.5, "note")), (7.5, None, None, 8.5))
+        self.assertEqual((c(8.5, "texte"), c(True, "liste"), c("Bonne", "liste"), c("", "texte"), c(False, "texte")), ("8,5", "oui", "Bonne", None, None))
+        self.assertEqual((c("Oui", "coche"), c(True, "coche"), c(1, "coche"), c("Bonne", "coche"), c(0, "coche")), (True, True, True, None, None))
+
+    def test_extra_value_utilise_le_type_actuel(self):
+        s = model.new_student("X")
+        model.set_extra(s, "c", 1, "7,5")
+        self.assertEqual(model.extra_value(s, {"id": "c", "type": "note"}, 1), 7.5)
+        self.assertEqual(model.extra_value(s, {"id": "c", "type": "texte"}, 1), "7,5")
+        self.assertIsNone(model.extra_value(s, {"id": "c", "type": "coche"}, 1))

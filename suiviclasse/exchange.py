@@ -59,18 +59,22 @@ def parse_table(text, delim=None):
     return [[c.strip() for c in r] for r in rows if any(c.strip() for c in r)]
 
 
-ROLES = [
-    ("ignore", "Champ ignoré"), ("nom", "Nom"), ("prenom", "Prénom"), ("nomprenom", "Nom et prénom"),
-    ("classe", "Classe"), ("naissance", "Date de naissance"), ("infos", "Infos (PAI…)"),
-    ("note1", "Note T1"), ("note2", "Note T2"), ("note3", "Note T3"),
-    ("comm1", "Appréciation T1"), ("comm2", "Appréciation T2"), ("comm3", "Appréciation T3"),
-]
+def role_list(prefix="T", n=3):
+    """Rubriques proposées à l'import : T1 à T3 (trimestres) ou S1 et S2 (semestres)."""
+    base = [("ignore", "Champ ignoré"), ("nom", "Nom"), ("prenom", "Prénom"), ("nomprenom", "Nom et prénom"),
+            ("classe", "Classe"), ("naissance", "Date de naissance"), ("infos", "Infos (PAI…)")]
+    return (base + [(f"note{i}", f"Note {prefix}{i}") for i in range(1, n + 1)]
+            + [(f"comm{i}", f"Appréciation {prefix}{i}") for i in range(1, n + 1)])
+
+
+ROLES = role_list()
 
 
 def guess_role(header, default_t=1):
     """Devine le rôle d'une colonne d'après son titre ; default_t = trimestre si le titre n'en précise pas."""
     h = norm(header)
-    m = re.search(r"\b(?:t|trimestre\s*)([123])\b", h) or re.search(r"\b([123])\s*(?:er|e|eme|d)?\s*trimestre\b", h)
+    m = (re.search(r"\b(?:t|s|trimestre\s*|semestre\s*)([123])\b", h)
+         or re.search(r"\b([123])\s*(?:er|e|eme|d)?\s*(?:trimestre|semestre)\b", h))
     t = m.group(1) if m else str(default_t or 1)
     if re.fullmatch(r"nom et prenom|eleve|nom prenom|nom complet", h):
         return "nomprenom"
@@ -218,7 +222,7 @@ def fmt_num(n):
     return (str(int(n)) if n == int(n) else str(n)).replace(".", ",")
 
 
-def build_export(cls, fields, t, header, delim, max_len, stats):
+def build_export(cls, fields, t, header, delim, max_len, stats, prefix="T", word="trimestre"):
     """Construit le texte d'export. stats(eleve, t) -> (séance +, séance −, travail, oublis).
     Retourne (texte, appréciations trop longues)."""
     labels = dict(EXPORT_FIELDS)
@@ -229,7 +233,7 @@ def build_export(cls, fields, t, header, delim, max_len, stats):
 
     lines, too_long = [], []
     if header:
-        lines.append(delim.join(q(labels[f] + (f" T{t}" if f in _PER_TRIMESTER else "")) for f in fields))
+        lines.append(delim.join(q(labels[f].replace("trimestre", word) + (f" {prefix}{t}" if f in _PER_TRIMESTER else "")) for f in fields))
     for s in cls["eleves"]:
         plus, moins, travail, oubli = stats(s, int(t))
         note = s["notes"][str(t)]

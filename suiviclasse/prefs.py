@@ -10,16 +10,18 @@ from pathlib import Path
 FILE = "preferences.json"
 
 SCHEMA = [
+    dict(key="periodes", group="Affichage", label="Découpage de l’année", type="choice", default="trimestres",
+         options=[("trimestres", "Trimestres (T1 à T3)"), ("semestres", "Semestres (S1 et S2)")], unit=""),
     dict(key="theme", group="Affichage", label="Thème", type="choice", default="clair",
          options=[("clair", "Clair"), ("sombre", "Sombre"), ("auto", "Automatique (suit Windows)")], unit=""),
     dict(key="pictogrammes", group="Affichage", label="Pictogrammes dans les titres", type="choice", default="oui",
          options=[("oui", "Oui"), ("non", "Non")], unit=""),
     dict(key="affichage", group="Affichage", label="Densité du tableau", type="choice", default="compact",
          options=[("compact", "Resserré (portable)"), ("normal", "Normal (grand écran)")], unit=""),
-    dict(key="oubliOrange", group="Alertes — oublis de matériel", label="Orange à partir de", type="int", min=1, max=99, default=2, unit="par trimestre"),
-    dict(key="oubliRouge", group="Alertes — oublis de matériel", label="Rouge à partir de", type="int", min=1, max=99, default=3, unit="par trimestre"),
-    dict(key="travailOrange", group="Alertes — travail non fait", label="Orange à partir de", type="int", min=1, max=99, default=2, unit="par trimestre"),
-    dict(key="travailRouge", group="Alertes — travail non fait", label="Rouge à partir de", type="int", min=1, max=99, default=3, unit="par trimestre"),
+    dict(key="oubliOrange", group="Alertes — oublis de matériel", label="Orange à partir de", type="int", min=1, max=99, default=2, unit="par période"),
+    dict(key="oubliRouge", group="Alertes — oublis de matériel", label="Rouge à partir de", type="int", min=1, max=99, default=3, unit="par période"),
+    dict(key="travailOrange", group="Alertes — travail non fait", label="Orange à partir de", type="int", min=1, max=99, default=2, unit="par période"),
+    dict(key="travailRouge", group="Alertes — travail non fait", label="Rouge à partir de", type="int", min=1, max=99, default=3, unit="par période"),
     dict(key="seancePlusVert", group="Alertes — implication en séance", label="Séance + : vert à partir de", type="number", min=0.5, max=99, default=3, unit="pts"),
     dict(key="seanceMoinsRouge", group="Alertes — implication en séance", label="Séance − : rouge à partir de", type="number", min=0.5, max=99, default=2, unit="pts (valeur absolue)"),
     dict(key="backupMinutes", group="Sauvegardes automatiques", label="Créer une archive toutes les", type="int", min=0, max=1440, default=15, unit="min (0 = désactivé)"),

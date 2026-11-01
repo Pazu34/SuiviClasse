@@ -7,12 +7,20 @@ et quelques fonctions de calcul.
               "notes": {"1": 14.5 | None, "2": …, "3": …}, "comms": {"1": "", …}, "events": [evenement, …]}
     evenement = {"id", "type": "seance" | "travail" | "oubli", "t": 1..3, "v": ±0.5, ±1 (séance) ou 1,
                  "date": ISO 8601 UTC, "note": ""}
-Les notes et commentaires sont indexés par le numéro de trimestre écrit en texte ("1", "2", "3").
+Les notes et commentaires sont indexés par le numéro de période écrit en texte ("1", "2", "3") : trimestres 1 à 3,
+ou semestres 1 et 2 (préférence « Découpage de l'année » ; la 3e période est alors masquée mais conservée).
 """
 import secrets
 from datetime import datetime, timezone
 
 from .exchange import norm
+
+def periods(mode):
+    """Découpage de l'année choisi dans les préférences : trimestres (T1 à T3) ou semestres (S1 et S2)."""
+    prefix, word, n = {"semestres": ("S", "semestre", 2)}.get(mode, ("T", "trimestre", 3))
+    return {"mode": "semestres" if n == 2 else "trimestres", "prefix": prefix, "word": word, "n": n,
+            "keys": [str(i) for i in range(1, n + 1)]}
+
 
 TYPES = {"seance": "Séance", "travail": "Travail non fait", "oubli": "Oubli de matériel"}
 
@@ -114,8 +122,9 @@ def stats(student, t):
     return plus, moins, count(student, "travail", t), count(student, "oubli", t)
 
 
-def moyenne(student):
-    vals = [v for v in student["notes"].values() if v is not None]
+def moyenne(student, n=3):
+    """Moyenne des notes des n premières périodes (celles qui sont renseignées)."""
+    vals = [v for k, v in student["notes"].items() if v is not None and int(k) <= n]
     return sum(vals) / len(vals) if vals else None
 
 

@@ -113,3 +113,18 @@ class ExchangeTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SemestresTest(unittest.TestCase):
+    def test_roles_et_titres(self):
+        self.assertEqual([l for _, l in X.role_list("S", 2)][-4:], ["Note S1", "Note S2", "Appréciation S1", "Appréciation S2"])
+        self.assertEqual(len(X.role_list("T", 3)), 13)
+        g = X.guess_role
+        self.assertEqual((g("Moyenne S2"), g("Appréciation Semestre 1"), g("1er semestre"), g("Moyenne", 2)), ("note2", "comm1", "ignore", "note2"))
+
+    def test_export_en_semestres(self):
+        s = new_student("DUPONT", "Marie")
+        s["notes"]["2"] = 12.5
+        c = cls("6A", s)
+        text, _ = X.build_export(c, ["nom", "note", "comm"], 2, True, ";", 0, lambda e, t: (0, 0, 0, 0), "S", "semestre")
+        self.assertEqual(text.split("\r\n")[0], "Nom;Note du semestre S2;Appréciation du semestre S2")

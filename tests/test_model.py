@@ -81,3 +81,18 @@ class SaisieManuelleTest(unittest.TestCase):
         model.set_seance_total(s, 1, "moins", 0)
         self.assertEqual(model.seance(s, 1), (0.25, 0))
         self.assertEqual(model.seance(s, 2), (0, 0))
+
+
+class PeriodesTest(unittest.TestCase):
+    def test_trimestres_et_semestres(self):
+        t, s = model.periods("trimestres"), model.periods("semestres")
+        self.assertEqual((t["n"], t["prefix"], t["word"], t["keys"]), (3, "T", "trimestre", ["1", "2", "3"]))
+        self.assertEqual((s["n"], s["prefix"], s["word"], s["keys"]), (2, "S", "semestre", ["1", "2"]))
+        self.assertEqual(model.periods("n'importe quoi")["mode"], "trimestres")
+
+    def test_moyenne_selon_le_decoupage(self):
+        e = model.new_student("DUPONT")
+        e["notes"].update({"1": 10.0, "2": 14.0, "3": 18.0})
+        self.assertAlmostEqual(model.moyenne(e), 14.0)             # trimestres : 3 notes
+        self.assertAlmostEqual(model.moyenne(e, 2), 12.0)          # semestres : la note de la 3e période est ignorée
+        self.assertIsNone(model.moyenne(model.new_student("X"), 2))

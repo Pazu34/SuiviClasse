@@ -19,6 +19,7 @@ TITLES = {
                "Travail non fait", "Oubli matériel", "Commentaire", ""],
 }
 # Pictogrammes des colonnes à compteur (indice de colonne -> pictogramme)
+NOTE_COL = 4  # indice de la colonne de la note de la 1re période
 ICONS = {8: "👍", 9: "👎", 10: "📝", 11: "🎒"}
 FICHE_ICON = "📝"  # en bout de ligne : ouvre la fiche de l'élève
 
@@ -62,7 +63,10 @@ class ClassTable(ttk.Frame):
         layout = LAYOUTS[self.mode]
         self.default_widths, self.row_h = layout["widths"], layout["row_h"]
         self.widths = app.prefs.columns(self.mode, self.default_widths)  # largeurs réglées à la souris, sinon défaut
-        self.total_w = sum(self.widths)
+        self.per = app.per
+        # colonnes masquées : la note de la 3e période n'existe pas en semestres (ses données restent conservées)
+        self.hidden = {NOTE_COL + 2} if self.per["n"] < 3 else set()
+        self.total_w = self.visible_width()
         self.head_h = self.row_h
         self._drag = None
         base = tkfont.nametofont("TkDefaultFont")
@@ -93,6 +97,11 @@ class ClassTable(ttk.Frame):
         self.body.bind("<Enter>", lambda e: self._bind_wheel(True))
         self.body.bind("<Leave>", lambda e: self._bind_wheel(False))
         self.build()
+
+    def visible_width(self, upto=None):
+        """Largeur des colonnes visibles (jusqu'à la colonne `upto` exclue)."""
+        cols = range(len(self.widths) if upto is None else upto)
+        return sum(self.widths[i] for i in cols if i not in self.hidden)
 
     def cell(self, parent, row, col, bg=None):
         """Case de largeur fixe : garantit l'alignement des en-têtes avec les lignes."""
@@ -130,15 +139,21 @@ class ClassTable(ttk.Frame):
         self.rows = []
         t = self.app.t
         titles = list(TITLES[self.mode])
+        pre = self.per["prefix"]
+        for k in range(1, 4):  # « T1 /20 » ou « S1 /20 »
+            titles[NOTE_COL + k - 1] = titles[NOTE_COL + k - 1].replace("T", pre, 1)
         for i in range(8, 12):
-            titles[i] += f" (T{t})"
-        titles[12] += f" T{t}"
-        self.total_w = sum(self.widths)
+            titles[i] += f" ({pre}{t})"
+        titles[12] += f" {pre}{t}"
+        self.total_w = self.visible_width()
         heads, labels = [], []
         icon_font = self.icon_font
         head_font = tkfont.Font(family=self.font[0], size=self.font[1] - 1, weight="bold")
         icons = self.app.values["pictogrammes"] == "oui"
         for i, title in enumerate(titles):
+            if i in self.hidden:
+                heads.append(None)
+                continue
             c = self.cell(self.hf, 0, i, P["surface2"])
             text = title.upper()
             fits = head_font.measure(text) <= self.widths[i] - 12
@@ -152,6 +167,7 @@ class ClassTable(ttk.Frame):
             heads.append(c)
             labels.append(lab)
         # hauteur de l'en-tête : celle du titre le plus haut (pictogramme + titre sur plusieurs lignes)
+        heads = [c for c in heads if c is not None]
         self.head_h = max(self.row_h, max(sum(w.winfo_reqheight() for w in c.winfo_children() if isinstance(w, tk.Label)) for c in heads) + 8)
         for c in heads:
             c.configure(height=self.head_h)
@@ -167,9 +183,9 @@ class ClassTable(ttk.Frame):
             msg = "Aucun élève ne correspond à la recherche." if self.cls["eleves"] else "Aucun élève. Utilisez « Importer / ajouter des élèves… »."
             tk.Label(self.bf, text=msg, bg=P["surface"], fg=P["muted"], pady=30).grid(row=0, column=0, columnspan=len(self.widths), sticky="w", padx=20)
             r = 1
-        self.footer = [self.cell(self.bf, r, i, P["surface2"]) for i in range(len(self.widths))]
+        self.footer = [None if i in self.hidden else self.cell(self.bf, r, i, P["surface2"]) for i in range(len(self.widths))]
         tk.Label(self.footer[1], text="Moy. classe" if self.mode == "compact" else "Moyenne de la classe", bg=P["surface2"], fg=P["text"], font=self.bold).pack(side="left", padx=4)
-        self.footer_labels = [tk.Label(self.footer[4 + k], bg=P["surface2"], fg=P["text"], font=self.bold) for k in range(3)]
+        self.footer_labels = [tk.Label(self.footer[NOTE_COL + k], bg=P["surface2"], fg=P["text"], font=self.bold) for k in range(self.per["n"])]
         for lab in self.footer_labels:
             lab.pack(expand=True)
         self.refresh_footer()
@@ -199,7 +215,7 @@ class ClassTable(ttk.Frame):
         if not d:
             return
         d["w"] = max(COLUMN_MIN, d["w0"] + e.x_root - d["x0"])
-        x = sum(self.widths[:d["i"]]) + d["w"] - self.hdr.canvasx(0) + self.hdr.winfo_x()
+        x = self.visible_width(d["i"]) + d["w"] - self.hdr.canvasx(0) + self.hdr.winfo_x()
         self.guide.place(x=x, y=0, relheight=1.0)
         self.guide.lift()
 
@@ -271,7 +287,7 @@ class Row:
         self.infos.pack(fill="x", expand=True, padx=3, pady=3)
         editable(self.infos, self.edit_infos)
         self.note_vars = {}
-        for k in "123":
+        for k in table.per["keys"]:
             var = tk.StringVar(value="" if s["notes"][k] is None else exchange.fmt_num(s["notes"][k]))
             e = ttk.Entry(cell(bf, r, 3 + int(k)), textvariable=var, justify="center", font=f, style="Cell.TEntry")
             e.pack(fill="x", expand=True, padx=2, pady=2)
@@ -356,7 +372,7 @@ class Row:
         infos = " · ".join(x.strip() for x in s["infos"].splitlines() if x.strip())
         self.infos.configure(text=infos, bg=P["bad"] if infos else self.bg, fg=P["text"])
         self.infos.master.configure(bg=self.bg)
-        m = model.moyenne(s)
+        m = model.moyenne(s, self.table.per["n"])
         self.moy.configure(text="" if m is None else exchange.fmt_num(m))
         plus, moins = model.seance(s, t)
         self.seance[0].configure(text=exchange.fmt_num(plus), bg=self.color("ok" if plus >= v["seancePlusVert"] else ""))
@@ -508,7 +524,8 @@ class Row:
         if value != old:
             self.s["notes"][k] = value
             self.app.commit()
-            self.moy.configure(text="" if model.moyenne(self.s) is None else exchange.fmt_num(model.moyenne(self.s)))
+            m = model.moyenne(self.s, self.table.per["n"])
+            self.moy.configure(text="" if m is None else exchange.fmt_num(m))
             self.table.refresh_footer()
             w = self.app.student_window
             if w is not None and w.winfo_exists() and w.s is self.s:

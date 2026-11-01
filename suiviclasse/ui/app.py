@@ -65,8 +65,14 @@ class App:
         return self.prefs.values
 
     @property
+    def per(self):
+        """Découpage de l'année (trimestres ou semestres) : voir model.periods."""
+        return model.periods(self.values["periodes"])
+
+    @property
     def t(self):
-        return self.trimestre.get()
+        """Période affichée (1 à 3 en trimestres, 1 à 2 en semestres)."""
+        return min(max(1, self.trimestre.get()), self.per["n"])
 
     @property
     def current_class(self):
@@ -154,6 +160,9 @@ class App:
     def render(self):
         """Reconstruit toute la fenêtre principale."""
         s = self.state
+        if self.trimestre.get() > self.per["n"]:  # passage de trimestres à semestres : on revient à la 1re période
+            self.trimestre.set(1)
+            self.state["ui"]["trimestre"] = 1
         f = self._swap_frame()
         top = ttk.Frame(f, style="Bar.TFrame", padding=(14, 9))
         top.pack(fill="x")
@@ -209,8 +218,8 @@ class App:
         bar.pack(fill="x", pady=(0, 10))
         ttk.Label(bar, text=c["nom"], style="H1.TLabel").pack(side="left")
         ttk.Label(bar, text=f"   {len(c['eleves'])} élèves", style="Muted.TLabel").pack(side="left")
-        for t in (1, 2, 3):
-            ttk.Radiobutton(bar, text=f"T{t}", style="Pill.Toolbutton", value=t, variable=self.trimestre, command=self.on_trimestre).pack(side="left", padx=(14 if t == 1 else 1, 1))
+        for t in range(1, self.per["n"] + 1):
+            ttk.Radiobutton(bar, text=f"{self.per['prefix']}{t}", style="Pill.Toolbutton", value=t, variable=self.trimestre, command=self.on_trimestre).pack(side="left", padx=(14 if t == 1 else 1, 1))
         ttk.Button(bar, text="Importer des élèves…", command=lambda: dialogs.ImportDialog(self, c)).pack(side="left", padx=(18, 4))
         ttk.Button(bar, text="Exporter (PRONOTE, tableur)…", command=lambda: dialogs.ExportDialog(self, c)).pack(side="left", padx=4)
         ttk.Button(bar, text="Renommer", command=lambda: self.rename_class(c)).pack(side="left", padx=4)

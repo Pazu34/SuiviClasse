@@ -82,10 +82,11 @@ class StudentWindow(Dialog):
 
         ttk.Label(self, text="Notes et commentaires de bulletin", font=("TkDefaultFont", 10, "bold")).pack(anchor="w", **pad)
         self.notes, self.stats, self.comms, self.counters = {}, {}, {}, {}
-        for k in "123":
+        self.per = app.per  # trimestres ou semestres
+        for k in self.per["keys"]:
             row = ttk.Frame(self)
             row.pack(fill="x", padx=10, pady=(4, 0))
-            ttk.Label(row, text=f"Trimestre {k}", width=12).pack(side="left")
+            ttk.Label(row, text=f"{self.per['word'].capitalize()} {k}", width=12).pack(side="left")
             var = tk.StringVar()
             e = ttk.Entry(row, textvariable=var, width=7, justify="center")
             e.pack(side="left")
@@ -103,7 +104,7 @@ class StudentWindow(Dialog):
             txt.bind("<KeyRelease>", lambda ev, k=k: self.update_counter(k))
             self.comms[k] = txt
 
-        ttk.Label(self, text=f"Journal du trimestre {t}", font=("TkDefaultFont", 10, "bold")).pack(anchor="w", **pad)
+        ttk.Label(self, text=f"Journal du {app.per['word']} {t}", font=("TkDefaultFont", 10, "bold")).pack(anchor="w", **pad)
         quick = ttk.Frame(self)
         quick.pack(fill="x", padx=10)
         self.precision = tk.StringVar()
@@ -125,7 +126,7 @@ class StudentWindow(Dialog):
     # ---------- affichage ----------
     def refresh(self):
         s, t = self.s, self.app.t
-        for k in "123":
+        for k in self.per["keys"]:
             v = s["notes"][k]
             self.notes[k].set("" if v is None else exchange.fmt_num(v))
             plus, moins = model.seance(s, int(k))
@@ -195,7 +196,7 @@ class StudentWindow(Dialog):
     def commit_all(self):
         self.commit_identity()
         self.commit_infos()
-        for k in "123":
+        for k in self.per["keys"]:
             self.commit_note(k)
             self.commit_comment(k)
 
@@ -236,6 +237,7 @@ class ImportDialog(Dialog):
         super().__init__(app, f"Importer dans {cls['nom']}" if cls else "Importer une liste PRONOTE", size="980x640")
         self.cls = cls
         self.rows, self.guessed, self.role_boxes = [], [], []
+        self.roles_list = exchange.role_list(app.per["prefix"], app.per["n"])
         ttk.Label(self, wraplength=940, foreground=P["muted"], padding=(10, 8), text=(
             "Dans PRONOTE, le bouton de copie en haut à droite d’une liste (ou du tableau de notes) place les données dans le "
             "presse-papiers : collez-les ici (Ctrl+V). Un fichier texte exporté de PRONOTE ou d’Excel convient aussi.")).pack(anchor="w")
@@ -294,6 +296,8 @@ class ImportDialog(Dialog):
             self.guessed = ([exchange.guess_role(x, self.app.t) for x in self.rows[0]] if has_header
                             else ["nomprenom"] if n == 1 else [["nom", "prenom", "infos"][i] if i < 3 else "ignore" for i in range(n)])
             self.guessed += ["ignore"] * (n - len(self.guessed))
+            valid = {k for k, _ in self.roles_list}  # un titre « T3 » n'a pas de rubrique en semestres
+            self.guessed = [r if r in valid else "ignore" for r in self.guessed]
             if "classe" in self.guessed:  # la liste indique les classes : on peut les créer
                 self.create.set(True)
         self.draw()
@@ -314,11 +318,11 @@ class ImportDialog(Dialog):
             self.summary.configure(text="")
             return
         n, k = max(len(r) for r in self.rows), self.skip_count()
-        labels = [label for _, label in exchange.ROLES]
+        labels = [label for _, label in self.roles_list]
         for i in range(n):
             box = ttk.Combobox(self.preview, state="readonly", values=labels, width=18)
             role = keep[i] if i < len(keep) else self.guessed[i]
-            box.set(dict(exchange.ROLES)[role])
+            box.set(dict(self.roles_list)[role])
             box.grid(row=0, column=i, padx=1, pady=(0, 3), sticky="ew")
             box.bind("<<ComboboxSelected>>", lambda e: self.summarize())
             self.role_boxes.append(box)
@@ -331,9 +335,8 @@ class ImportDialog(Dialog):
                                  "rubrique ; les lignes grisées (titres) sont ignorées.")
         self.summarize()
 
-    @staticmethod
-    def key_of(label):
-        return next(k for k, l in exchange.ROLES if l == label)
+    def key_of(self, label):
+        return next(k for k, l in self.roles_list if l == label)
 
     def roles(self):
         return [self.key_of(b.get()) for b in self.role_boxes]
@@ -393,8 +396,8 @@ class ExportDialog(Dialog):
         top = ttk.Frame(self, padding=(10, 0))
         top.pack(fill="x")
         self.t = tk.StringVar(value=str(app.t))
-        ttk.Combobox(top, state="readonly", width=14, textvariable=self.t, values=["1", "2", "3"]).pack(side="left")
-        ttk.Label(top, text="← trimestre   ").pack(side="left")
+        ttk.Combobox(top, state="readonly", width=14, textvariable=self.t, values=app.per["keys"]).pack(side="left")
+        ttk.Label(top, text=f"← {app.per['word']}   ").pack(side="left")
         self.sep = ttk.Combobox(top, state="readonly", width=36, values=["Tabulation (collage PRONOTE / Excel)", "Point-virgule (CSV)"])
         self.sep.current(0)
         self.sep.pack(side="left")
@@ -405,7 +408,7 @@ class ExportDialog(Dialog):
         self.fields = {}
         for i, (key, label) in enumerate(exchange.EXPORT_FIELDS):
             var = tk.BooleanVar(value=key in ("nom", "prenom", "note", "comm"))
-            ttk.Checkbutton(box, text=label, variable=var).grid(row=i // 3, column=i % 3, sticky="w", padx=8, pady=2)
+            ttk.Checkbutton(box, text=label.replace("trimestre", app.per["word"]), variable=var).grid(row=i // 3, column=i % 3, sticky="w", padx=8, pady=2)
             self.fields[key] = var
         self.warn = ttk.Label(self, foreground=P["bad_text"], wraplength=620, padding=(10, 0))
         self.warn.pack(anchor="w")
@@ -423,7 +426,8 @@ class ExportDialog(Dialog):
             return None
         delim = "\t" if self.sep.current() == 0 else ";"
         mx = self.app.values["appreciationMax"]
-        text, too_long = exchange.build_export(self.cls, fields, int(self.t.get()), self.header.get(), delim, mx, model.stats)
+        text, too_long = exchange.build_export(self.cls, fields, int(self.t.get()), self.header.get(), delim, mx, model.stats,
+                                             self.app.per["prefix"], self.app.per["word"])
         self.warn.configure(text=f"⚠ Appréciation(s) de plus de {mx} caractères (PRONOTE les refuserait ou les tronquerait) : "
                                  + ", ".join(too_long) if too_long else "")
         return text, delim
@@ -441,7 +445,7 @@ class ExportDialog(Dialog):
         if not built:
             return
         ext = "txt" if built[1] == "\t" else "csv"
-        path = filedialog.asksaveasfilename(parent=self, defaultextension="." + ext, initialfile=f"{self.cls['nom']}-T{self.t.get()}.{ext}",
+        path = filedialog.asksaveasfilename(parent=self, defaultextension="." + ext, initialfile=f"{self.cls['nom']}-{self.app.per['prefix']}{self.t.get()}.{ext}",
                                             filetypes=[("Fichier texte", "*." + ext)])
         if path:
             with open(path, "w", encoding="utf-8-sig", newline="") as f:
@@ -567,7 +571,16 @@ class PrefsDialog(Dialog):
 
     def save(self):
         app = self.app
+        before = app.values["periodes"]
         app.prefs.set({k: v.get() for k, v in self.vars.items()})
+        if app.values["periodes"] != before:
+            sem = app.values["periodes"] == "semestres"
+            messagebox.showinfo(
+                "Découpage de l’année",
+                "Les données déjà saisies gardent leur numéro de période : la période 1 devient "
+                + ("S1" if sem else "T1") + ", la période 2 devient " + ("S2" if sem else "T2") + ".\n\n"
+                "Le 3e trimestre n’est pas affiché en semestres, mais ses données restent enregistrées "
+                "et réapparaissent si vous revenez aux trimestres.", parent=self)
         app.vault.prune(app.values["backupKeepRecent"], app.values["backupKeepDays"])
         self.destroy()
         app.restyle()

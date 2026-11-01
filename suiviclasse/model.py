@@ -3,7 +3,7 @@ et quelques fonctions de calcul.
 
     {"version": 1, "settings": {"annee": ""}, "classes": [classe, …], "ui": {"classe": id, "trimestre": 1}}
     classe = {"id", "nom", "eleves": [eleve, …]}
-    eleve  = {"id", "nom", "prenom", "numero", "naissance", "infos",
+    eleve  = {"id", "nom", "prenom", "numero", "naissance", "infos", "extra",
               "notes": {"1": 14.5 | None, "2": …, "3": …}, "comms": {"1": "", …}, "events": [evenement, …]}
     evenement = {"id", "type": "seance" | "travail" | "oubli", "t": 1..3, "v": ±0.5, ±1 (séance) ou 1,
                  "date": ISO 8601 UTC, "note": ""}
@@ -44,7 +44,7 @@ def new_class(nom):
 
 def new_student(nom, prenom="", infos=""):
     return {"id": uid(), "nom": nom.strip(), "prenom": prenom.strip(), "numero": None, "naissance": "", "infos": infos,
-            "notes": {"1": None, "2": None, "3": None}, "comms": {"1": "", "2": "", "3": ""}, "events": []}
+            "notes": {"1": None, "2": None, "3": None}, "comms": {"1": "", "2": "", "3": ""}, "events": [], "extra": {}}
 
 
 # (nom, prénom, infos, note T1, commentaire T1, oublis, travail non fait, points de séance)
@@ -107,8 +107,17 @@ def sort_classes(data):
     data["classes"].sort(key=lambda c: norm(c["nom"]))
 
 
-def count(student, type_, t):
-    return sum(1 for e in student["events"] if e["type"] == type_ and e["t"] == t)
+def _clean(x):
+    x = round(x, 2)
+    return int(x) if x == int(x) else x
+
+
+def total(student, type_, t):
+    """Total d'une colonne à compteur sur la période t : somme des incréments enregistrés au journal."""
+    return _clean(sum(e["v"] for e in student["events"] if e["type"] == type_ and e["t"] == t))
+
+
+count = total  # nom historique : « travail non fait » et « oublis » étaient de simples nombres d'entrées
 
 
 def seance(student, t):
@@ -133,13 +142,14 @@ def add_event(student, type_, t, v, note=""):
                               "date": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")})
 
 
-def set_count(student, type_, t, target):
-    """Amène le compteur (travail non fait, oublis) du trimestre à `target` : ajoute ou retire les dernières entrées."""
-    cur = count(student, type_, t)
-    for _ in range(max(0, target - cur)):
-        add_event(student, type_, t, 1, "Ajustement manuel")
-    for _ in range(max(0, cur - target)):
-        remove_last(student, type_, t)
+def set_total(student, type_, t, target):
+    """Amène le total d'une colonne à compteur à `target` par une entrée « Ajustement manuel » (la différence)."""
+    diff = round(float(target) - total(student, type_, t), 2)
+    if abs(diff) > 1e-9:
+        add_event(student, type_, t, diff, "Ajustement manuel")
+
+
+set_count = set_total
 
 
 def set_seance_total(student, t, bucket, target):
@@ -165,6 +175,43 @@ def set_seance_total(student, t, bucket, target):
             del student["events"][i]
     if removed > need + 1e-9:
         add_event(student, "seance", t, sign * round(removed - need, 2), "Ajustement manuel")
+
+
+def get_extra(student, col_id, t, default=None):
+    """Valeur d'une colonne personnalisée (note, texte ou case) pour la période t."""
+    return (student.get("extra") or {}).get(col_id, {}).get(str(t), default)
+
+
+def set_extra(student, col_id, t, value):
+    """Enregistre la valeur ; None (ou texte vide) l'efface."""
+    if value is None or value == "":
+        (student.get("extra") or {}).get(col_id, {}).pop(str(t), None)
+    else:
+        student.setdefault("extra", {}).setdefault(col_id, {})[str(t)] = value
+
+
+def rescale_notes(data, old, new):
+    """Convertit les notes des trimestres d'un barème à un autre (/20 -> /10 : ×0,5). Retourne le nombre de notes changées."""
+    n = 0
+    for cls in data["classes"]:
+        for s in cls["eleves"]:
+            for k, v in s["notes"].items():
+                if v is not None:
+                    s["notes"][k] = round(v * new / old, 2)
+                    n += 1
+    return n
+
+
+def rescale_extra(data, col_id, old, new):
+    """Idem pour une colonne personnalisée de type note."""
+    n = 0
+    for cls in data["classes"]:
+        for s in cls["eleves"]:
+            for k, v in (s.get("extra") or {}).get(col_id, {}).items():
+                if isinstance(v, (int, float)):
+                    s["extra"][col_id][k] = round(v * new / old, 2)
+                    n += 1
+    return n
 
 
 def remove_last(student, type_, t):

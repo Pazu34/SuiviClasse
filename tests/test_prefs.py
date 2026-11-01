@@ -43,19 +43,29 @@ class ChoixTest(unittest.TestCase):
 
 
 class ColonnesTest(unittest.TestCase):
-    def test_largeurs_de_colonnes(self):
+    def test_largeurs_de_colonnes_par_cle(self):
         d = Path(tempfile.mkdtemp())
         p = Prefs(d)
-        self.assertEqual(p.columns("compact", [30, 40]), [30, 40])           # par défaut
-        p.set_columns("compact", [30, 999, 5])
-        self.assertEqual(Prefs(d).columns("compact", [1, 2, 3]), [30, 900, 24])  # bornées, relues
-        self.assertEqual(Prefs(d).columns("normal", [1, 2, 3]), [1, 2, 3])       # un mode à la fois
-        self.assertEqual(Prefs(d).columns("compact", [1, 2]), [1, 2])            # nombre de colonnes changé : défaut
-        p.set({"oubliRouge": 7})                                                  # un réglage ne perd pas les colonnes
-        self.assertEqual(Prefs(d).columns("compact", [1, 2, 3]), [30, 900, 24])
+        self.assertEqual(p.widths("compact"), {})                                  # rien d'enregistré : défauts
+        p.set_width("compact", "nom", 160)
+        p.set_width("compact", "comm", 5000)
+        p.set_width("compact", "numero", 1)
+        self.assertEqual(Prefs(d).widths("compact"), {"nom": 160, "comm": 900, "numero": 24})  # bornées, relues
+        self.assertEqual(Prefs(d).widths("normal"), {})                            # un mode à la fois
+        p.set({"oubliRouge": 7})                                                    # un réglage ne perd pas les colonnes
+        self.assertEqual(Prefs(d).widths("compact")["nom"], 160)
+        p.forget_width("compact", "nom")
+        self.assertNotIn("nom", Prefs(d).widths("compact"))
         p.reset_columns()
-        self.assertEqual(Prefs(d).columns("compact", [1, 2, 3]), [1, 2, 3])
-        p.set_columns("normal", [50, 60]); p.reset()
-        self.assertEqual(Prefs(d).columns("normal", [50, 60]), [50, 60])
-        (d / "preferences.json").write_text(json.dumps({"colonnes": {"compact": "n'importe quoi", "x": [1, "a"]}}))
-        self.assertEqual(Prefs(d).columns("compact", [1, 2]), [1, 2])
+        self.assertEqual(Prefs(d).widths("compact"), {})
+        p.set_width("normal", "nom", 200)
+        p.reset()                                                                   # « valeurs par défaut » remet aussi les colonnes
+        self.assertEqual(Prefs(d).widths("normal"), {})
+        # ancien format (liste) et fichier invalide : ignorés
+        (d / "preferences.json").write_text(json.dumps({"colonnes": {"compact": [28, 112], "normal": "x", "x": {"a": "b"}}}))
+        self.assertEqual(Prefs(d).widths("compact"), {})
+
+    def test_onglets(self):
+        from suiviclasse.prefs import SCHEMA, TABS
+        self.assertEqual(TABS, ["Affichage", "Alertes", "Sauvegardes", "Sécurité et bulletins"])
+        self.assertTrue(all(f["tab"] in TABS for f in SCHEMA))

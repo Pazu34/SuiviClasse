@@ -222,10 +222,13 @@ def fmt_num(n):
     return (str(int(n)) if n == int(n) else str(n)).replace(".", ",")
 
 
-def build_export(cls, fields, t, header, delim, max_len, stats, prefix="T", word="trimestre"):
+def build_export(cls, fields, t, header, delim, max_len, stats, prefix="T", word="trimestre", extras=None):
     """Construit le texte d'export. stats(eleve, t) -> (séance +, séance −, travail, oublis).
     Retourne (texte, appréciations trop longues)."""
     labels = dict(EXPORT_FIELDS)
+    getters = {}
+    for key, label, fn in extras or []:  # colonnes personnalisées : (clé, titre, fonction (élève, période) -> valeur)
+        labels[key], getters[key] = label, fn
 
     def q(v):
         s = re.sub(r"\r?\n", " ", str("" if v is None else v))
@@ -233,7 +236,7 @@ def build_export(cls, fields, t, header, delim, max_len, stats, prefix="T", word
 
     lines, too_long = [], []
     if header:
-        lines.append(delim.join(q(labels[f].replace("trimestre", word) + (f" {prefix}{t}" if f in _PER_TRIMESTER else "")) for f in fields))
+        lines.append(delim.join(q(labels[f].replace("trimestre", word) + (f" {prefix}{t}" if f in _PER_TRIMESTER or f in getters else "")) for f in fields))
     for s in cls["eleves"]:
         plus, moins, travail, oubli = stats(s, int(t))
         note = s["notes"][str(t)]
@@ -241,6 +244,8 @@ def build_export(cls, fields, t, header, delim, max_len, stats, prefix="T", word
         v = {"numero": s.get("numero") or "", "nom": s["nom"], "prenom": s["prenom"], "classe": cls["nom"], "infos": s["infos"],
              "note": "" if note is None else fmt_num(note), "comm": comm,
              "seancePlus": fmt_num(plus), "seanceMoins": fmt_num(moins), "travail": travail, "oubli": oubli}
+        for key, fn in getters.items():
+            v[key] = fn(s, int(t))
         if max_len and "comm" in fields and len(comm) > max_len:
             too_long.append(f"{s['nom']} {s['prenom']} ({len(comm)})")
         lines.append(delim.join(q(v[f]) for f in fields))

@@ -3,8 +3,9 @@ import copy
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
-from .. import exchange, model
+from .. import columns, exchange, model
 from ..vault import NeedPasswordError, WrongPasswordError
+from .table import parse_grade
 from .theme import P
 
 REASONS = {"suppression": "avant suppression d’une classe", "auto": "automatique", "manuel": "manuelle", "demarrage": "à l’ouverture", "fermeture": "à la fermeture",
@@ -21,20 +22,38 @@ def ask_password(parent, title, label):
 
 
 class Dialog(tk.Toplevel):
-    def __init__(self, app, title, modal=True, size=None):
-        super().__init__(app.root)
+    def __init__(self, app, title, modal=True, size=None, parent=None):
+        super().__init__(parent or app.root)
         self.app = app
+        self.parent_dialog = parent  # fenêtre modale qui a ouvert celle-ci (elle reprend la main à la fermeture)
         self.title(title)
-        self.transient(app.root)
+        self.transient(parent or app.root)
+        self._size = size
         if size:
             self.geometry(size)
-        self.update_idletasks()
-        x = app.root.winfo_rootx() + max(0, (app.root.winfo_width() - self.winfo_reqwidth()) // 2)
-        y = app.root.winfo_rooty() + 40
-        self.geometry(f"+{x}+{y}")
+        self.after(0, self._place)  # une fois le contenu construit : la taille réelle est alors connue
         if modal:
             self.after(60, self._grab)
         self.bind("<Escape>", lambda e: self.destroy())
+
+    def _place(self):
+        """Centre la fenêtre sur la fenêtre principale, sans déborder de l'écran."""
+        if not self.winfo_exists():
+            return
+        self.update_idletasks()
+        w, h = (self.winfo_width(), self.winfo_height()) if self._size else (self.winfo_reqwidth(), self.winfo_reqheight())
+        root = self.app.root
+        x = root.winfo_rootx() + (root.winfo_width() - w) // 2
+        y = root.winfo_rooty() + 40
+        x = max(0, min(x, self.winfo_screenwidth() - w - 8))
+        y = max(0, min(y, self.winfo_screenheight() - h - 48))
+        self.geometry(f"+{x}+{y}")
+
+    def destroy(self):
+        parent = self.parent_dialog
+        super().destroy()
+        if parent is not None and parent.winfo_exists():
+            parent.after(10, parent._grab)
 
     def _grab(self):
         try:
@@ -104,16 +123,39 @@ class StudentWindow(Dialog):
             txt.bind("<KeyRelease>", lambda ev, k=k: self.update_counter(k))
             self.comms[k] = txt
 
+        settings = app.state["settings"]
+        self.extra_cols = [c for c in columns.customs(settings) if c["visible"] and c["type"] in ("note", "texte", "coche")]
+        self.extra_vars = {}
+        if self.extra_cols:
+            ttk.Label(self, text=f"Autres colonnes ({app.per['prefix']}{t})", font=("TkDefaultFont", 10, "bold")).pack(anchor="w", **pad)
+            box = ttk.Frame(self)
+            box.pack(fill="x", padx=10)
+            box.columnconfigure(1, weight=1)
+            for r, c in enumerate(self.extra_cols):
+                title = (c["emoji"] + " " if c["emoji"] else "") + c["titre"] + (f" (/{exchange.fmt_num(c['echelle'])})" if c["type"] == "note" else "")
+                if c["type"] == "coche":
+                    var = tk.BooleanVar()
+                    ttk.Checkbutton(box, text=title, variable=var, command=lambda c=c: self.commit_extra(c)).grid(row=r, column=0, columnspan=2, sticky="w", pady=1)
+                else:
+                    var = tk.StringVar()
+                    ttk.Label(box, text=title).grid(row=r, column=0, sticky="w", pady=1)
+                    e = ttk.Entry(box, textvariable=var, justify="center" if c["type"] == "note" else "left", width=8 if c["type"] == "note" else 40)
+                    e.grid(row=r, column=1, sticky="w" if c["type"] == "note" else "ew", padx=8)
+                    e.bind("<FocusOut>", lambda ev, c=c: self.commit_extra(c))
+                    e.bind("<Return>", lambda ev, c=c: self.commit_extra(c))
+                self.extra_vars[c["id"]] = var
+
         ttk.Label(self, text=f"Journal du {app.per['word']} {t}", font=("TkDefaultFont", 10, "bold")).pack(anchor="w", **pad)
         quick = ttk.Frame(self)
         quick.pack(fill="x", padx=10)
         self.precision = tk.StringVar()
         ttk.Entry(quick, textvariable=self.precision).pack(fill="x", pady=2)
-        row = ttk.Frame(quick)
-        row.pack(fill="x")
-        for label, kind, value in (("Séance +0,5", "seance", 0.5), ("Séance +1", "seance", 1), ("Séance −0,5", "seance", -0.5),
-                                   ("Séance −1", "seance", -1), ("Travail non fait", "travail", 1), ("Oubli matériel", "oubli", 1)):
-            ttk.Button(row, text=label, style="Mini.TButton", command=lambda kind=kind, value=value: self.add(kind, value)).pack(side="left", padx=1, pady=2)
+        specs = self.quick_specs()
+        for n in range(0, len(specs), 5):  # cinq boutons par ligne
+            row = ttk.Frame(quick)
+            row.pack(fill="x")
+            for label, kind, value in specs[n:n + 5]:
+                ttk.Button(row, text=label, style="Mini.TButton", command=lambda kind=kind, value=value: self.add(kind, value)).pack(side="left", padx=1, pady=2)
         self.journal = ttk.Treeview(self, columns=("date", "type", "note"), show="headings", height=4, selectmode="browse")
         for col, text, w in (("date", "Date", 120), ("type", "Événement", 150), ("note", "Précision", 280)):
             self.journal.heading(col, text=text)
@@ -129,15 +171,64 @@ class StudentWindow(Dialog):
         for k in self.per["keys"]:
             v = s["notes"][k]
             self.notes[k].set("" if v is None else exchange.fmt_num(v))
-            plus, moins = model.seance(s, int(k))
-            self.stats[k].configure(text=f"Séance + {exchange.fmt_num(plus)} · − {exchange.fmt_num(moins)} · "
-                                         f"travail {model.count(s, 'travail', int(k))} · oublis {model.count(s, 'oubli', int(k))}")
+            self.stats[k].configure(text=self.stats_text(int(k)))
             self.update_counter(k)
+        for c in self.extra_cols:
+            value = model.get_extra(s, c["id"], t)
+            var = self.extra_vars[c["id"]]
+            var.set(bool(value) if c["type"] == "coche" else "" if value is None else exchange.fmt_num(value) if c["type"] == "note" else value)
         self.journal.delete(*self.journal.get_children())
         for e in reversed(s["events"]):
             if e["t"] == t:
-                name = model.TYPES[e["type"]] + (f" {'+' if e['v'] > 0 else '−'}{exchange.fmt_num(abs(e['v']))}" if e["type"] == "seance" else "")
+                name = columns.type_label(self.app.state["settings"], e["type"])
+                if e["type"] == "seance" or e["v"] != 1:  # la valeur d'un incrément simple (+1) n'est pas répétée
+                    name += " " + columns.increment_label(e["v"])
                 self.journal.insert("", "end", iid=e["id"], values=(model.event_datetime(e).strftime("%d/%m/%Y %H:%M"), name, e["note"]))
+
+    def quick_specs(self):
+        """Boutons d'ajout au journal : un par incrément de chaque colonne à compteur affichée (intégrée ou personnalisée)."""
+        settings, out = self.app.state["settings"], []
+        for key in columns.BUILTIN_ORDER:
+            cfg = columns.builtin(settings, key)
+            if cfg["visible"]:
+                name = "Séance" if key.startswith("seance") and cfg["titre"] in (columns.BUILTINS[key]["titre"],) else cfg["titre"]
+                out += [(f"{name} {columns.increment_label(v)}", columns.BUILTIN_EVENT[key], v) for v in cfg["increments"]]
+        for c in columns.customs(settings):
+            if c["visible"] and c["type"] == "compteur":
+                out += [(f"{c['titre']} {columns.increment_label(v)}", c["id"], v) for v in c["increments"]]
+        return out
+
+    def stats_text(self, k):
+        s, settings = self.s, self.app.state["settings"]
+        plus, moins = model.seance(s, k)
+        parts = [f"Séance + {exchange.fmt_num(plus)} · − {exchange.fmt_num(moins)}"]
+        for key in ("travail", "oubli"):
+            cfg = columns.builtin(settings, key)
+            if cfg["visible"]:
+                parts.append(f"{cfg['titre'].lower()} {exchange.fmt_num(model.total(s, key, k))}")
+        parts += [f"{c['titre'].lower()} {exchange.fmt_num(model.total(s, c['id'], k))}" for c in columns.customs(settings)
+                  if c["visible"] and c["type"] == "compteur"]
+        return " · ".join(parts)
+
+    def commit_extra(self, c):
+        var, t = self.extra_vars[c["id"]], self.app.t
+        old = model.get_extra(self.s, c["id"], t)
+        if c["type"] == "coche":
+            value = True if var.get() else None
+        elif c["type"] == "note":
+            try:
+                value = parse_grade(var.get(), c["echelle"])
+            except ValueError:
+                messagebox.showwarning("Note invalide", f"Entrez un nombre entre 0 et {exchange.fmt_num(c['echelle'])}.", parent=self)
+                self.refresh()
+                return
+        else:
+            value = " ".join(var.get().split())
+        if value != old:
+            model.set_extra(self.s, c["id"], t, value)
+            self.app.commit()
+            if self.app.table:
+                self.app.table.build()
 
     def update_counter(self, k):
         n, mx = len(self.comms[k].get("1.0", "end-1c")), self.app.values["appreciationMax"]
@@ -171,11 +262,11 @@ class StudentWindow(Dialog):
             self.changed()
 
     def commit_note(self, k):
-        from .table import parse_grade
+        sc = columns.scale(self.app.state["settings"])
         try:
-            value = parse_grade(self.notes[k].get())
+            value = parse_grade(self.notes[k].get(), sc)
         except ValueError:
-            messagebox.showwarning("Note invalide", "Entrez un nombre entre 0 et 20.", parent=self)
+            messagebox.showwarning("Note invalide", f"Entrez un nombre entre 0 et {exchange.fmt_num(sc)}.", parent=self)
             self.refresh()
             return
         if value != self.s["notes"][k]:
@@ -199,6 +290,8 @@ class StudentWindow(Dialog):
         for k in self.per["keys"]:
             self.commit_note(k)
             self.commit_comment(k)
+        for c in self.extra_cols:
+            self.commit_extra(c)
 
     # ---------- actions ----------
     def add(self, kind, value):
@@ -406,7 +499,9 @@ class ExportDialog(Dialog):
         box = ttk.LabelFrame(self, text="Champs à exporter", padding=8)
         box.pack(fill="x", padx=10, pady=8)
         self.fields = {}
-        for i, (key, label) in enumerate(exchange.EXPORT_FIELDS):
+        self.extras = self.custom_exports()  # colonnes personnalisées : exportables comme les autres
+        self.field_list = list(exchange.EXPORT_FIELDS) + [(k, label) for k, label, _ in self.extras]
+        for i, (key, label) in enumerate(self.field_list):
             var = tk.BooleanVar(value=key in ("nom", "prenom", "note", "comm"))
             ttk.Checkbutton(box, text=label.replace("trimestre", app.per["word"]), variable=var).grid(row=i // 3, column=i % 3, sticky="w", padx=8, pady=2)
             self.fields[key] = var
@@ -419,15 +514,29 @@ class ExportDialog(Dialog):
         self.buttons(("Enregistrer un fichier…", self.save, "right"), ("Copier dans le presse-papiers", self.copy, "right"),
                      ("Fermer", self.destroy, "left"))
 
+    def custom_exports(self):
+        out = []
+        for c in (c for c in columns.customs(self.app.state["settings"]) if c["visible"]):
+            if c["type"] == "compteur":
+                fn = lambda s, t, c=c: exchange.fmt_num(model.total(s, c["id"], t))
+            elif c["type"] == "note":
+                fn = lambda s, t, c=c: "" if model.get_extra(s, c["id"], t) is None else exchange.fmt_num(model.get_extra(s, c["id"], t))
+            elif c["type"] == "coche":
+                fn = lambda s, t, c=c: "oui" if model.get_extra(s, c["id"], t) else ""
+            else:
+                fn = lambda s, t, c=c: model.get_extra(s, c["id"], t, "")
+            out.append((c["id"], c["titre"], fn))
+        return out
+
     def build(self):
-        fields = [k for k, _ in exchange.EXPORT_FIELDS if self.fields[k].get()]
+        fields = [k for k, _ in self.field_list if self.fields[k].get()]
         if not fields:
             self.warn.configure(text="Cochez au moins un champ.")
             return None
         delim = "\t" if self.sep.current() == 0 else ";"
         mx = self.app.values["appreciationMax"]
         text, too_long = exchange.build_export(self.cls, fields, int(self.t.get()), self.header.get(), delim, mx, model.stats,
-                                             self.app.per["prefix"], self.app.per["word"])
+                                             self.app.per["prefix"], self.app.per["word"], self.extras)
         self.warn.configure(text=f"⚠ Appréciation(s) de plus de {mx} caractères (PRONOTE les refuserait ou les tronquerait) : "
                                  + ", ".join(too_long) if too_long else "")
         return text, delim
@@ -539,38 +648,50 @@ class ChoiceVar:
 
 
 class PrefsDialog(Dialog):
+    """Préférences, rangées par catégorie dans des onglets. L'onglet « Colonnes » configure le tableau (données chiffrées)."""
+
     def __init__(self, app):
         super().__init__(app, "Préférences")
-        from ..prefs import SCHEMA
+        from ..prefs import SCHEMA, TABS
+        from .columns_dialog import ColumnsTab
         self.schema, self.vars = SCHEMA, {}
-        grid = ttk.Frame(self, padding=(8, 8, 8, 0))  # groupes sur deux colonnes : la fenêtre reste basse
-        grid.pack(fill="both", expand=True)
-        grid.columnconfigure((0, 1), weight=1, uniform="g")
-        for i, group in enumerate(dict.fromkeys(f["group"] for f in SCHEMA)):
-            box = ttk.LabelFrame(grid, text=group, padding=8)
-            box.grid(row=i // 2, column=i % 2, sticky="nsew", padx=5, pady=5)
-            box.columnconfigure(0, weight=1)
-            for r, f in enumerate(x for x in SCHEMA if x["group"] == group):
-                ttk.Label(box, text=f["label"]).grid(row=r, column=0, sticky="w")
-                if f["type"] == "choice":
-                    labels = dict(f["options"])
-                    combo = ttk.Combobox(box, state="readonly", width=22, values=list(labels.values()))
-                    combo.set(labels[app.values[f["key"]]])
-                    combo.grid(row=r, column=1, columnspan=2, padx=8, pady=2, sticky="w")
-                    self.vars[f["key"]] = ChoiceVar(combo, f["options"])
-                    continue
-                var = tk.StringVar(value=str(app.values[f["key"]]).replace(".", ","))
-                ttk.Spinbox(box, from_=f["min"], to=f["max"], increment=1 if f["type"] == "int" else 0.5, width=7,
-                            textvariable=var, justify="center").grid(row=r, column=1, padx=8, pady=2)
-                ttk.Label(box, text=f["unit"], foreground=P["muted"]).grid(row=r, column=2, sticky="w")
-                self.vars[f["key"]] = var
-        ttk.Label(self, foreground=P["muted"], font=("TkDefaultFont", 8), padding=(10, 2),
-                  text="Réglages enregistrés dans : " + str(app.prefs.file)).pack(anchor="w")
+        self.nb = ttk.Notebook(self)
+        self.nb.pack(fill="both", expand=True, padx=10, pady=(10, 0))
+        self.columns_tab = ColumnsTab(self.nb, self, app)
+        for name in TABS:
+            tab = ttk.Frame(self.nb, padding=10)
+            self.nb.add(tab, text=name)
+            if name == "Affichage":  # l'onglet « Colonnes » vient juste après « Affichage »
+                self.nb.add(self.columns_tab, text="Colonnes")
+            tab.columnconfigure(0, weight=1)
+            for gi, group in enumerate(dict.fromkeys(f["group"] for f in SCHEMA if f["tab"] == name)):
+                box = ttk.LabelFrame(tab, text=group, padding=8)
+                box.grid(row=gi, column=0, sticky="ew", pady=5)
+                box.columnconfigure(0, weight=1)
+                for r, f in enumerate(x for x in SCHEMA if x["group"] == group):
+                    ttk.Label(box, text=f["label"]).grid(row=r, column=0, sticky="w")
+                    if f["type"] == "choice":
+                        labels = dict(f["options"])
+                        combo = ttk.Combobox(box, state="readonly", width=26, values=list(labels.values()))
+                        combo.set(labels[app.values[f["key"]]])
+                        combo.grid(row=r, column=1, columnspan=2, padx=8, pady=3, sticky="w")
+                        self.vars[f["key"]] = ChoiceVar(combo, f["options"])
+                        continue
+                    var = tk.StringVar(value=str(app.values[f["key"]]).replace(".", ","))
+                    ttk.Spinbox(box, from_=f["min"], to=f["max"], increment=1 if f["type"] == "int" else 0.5, width=7,
+                                textvariable=var, justify="center").grid(row=r, column=1, padx=8, pady=3)
+                    ttk.Label(box, text=f["unit"], foreground=P["muted"]).grid(row=r, column=2, sticky="w")
+                    self.vars[f["key"]] = var
+        ttk.Label(self, foreground=P["muted"], font=("TkDefaultFont", 8), padding=(12, 4), wraplength=760,
+                  text="Réglages d'affichage et de sécurité : " + str(app.prefs.file) + " · colonnes : dans les données chiffrées").pack(anchor="w")
         self.buttons(("Enregistrer", self.save, "right"), ("Annuler", self.destroy, "right"), ("Valeurs par défaut", self.reset, "left"),
                      ("Rétablir les largeurs de colonnes", self.reset_columns, "left"))
 
     def save(self):
         app = self.app
+        if not self.columns_tab.apply():
+            self.nb.select(self.columns_tab)
+            return
         before = app.values["periodes"]
         app.prefs.set({k: v.get() for k, v in self.vars.items()})
         if app.values["periodes"] != before:
@@ -581,6 +702,7 @@ class PrefsDialog(Dialog):
                 + ("S1" if sem else "T1") + ", la période 2 devient " + ("S2" if sem else "T2") + ".\n\n"
                 "Le 3e trimestre n’est pas affiché en semestres, mais ses données restent enregistrées "
                 "et réapparaissent si vous revenez aux trimestres.", parent=self)
+        app.commit()  # configuration des colonnes : une seule modification annulable
         app.vault.prune(app.values["backupKeepRecent"], app.values["backupKeepDays"])
         self.destroy()
         app.restyle()
@@ -591,7 +713,7 @@ class PrefsDialog(Dialog):
         self.app.restyle()
 
     def reset(self):
-        if messagebox.askyesno("Préférences", "Revenir aux réglages par défaut ?", parent=self):
+        if messagebox.askyesno("Préférences", "Revenir aux réglages par défaut ?\n(Les colonnes que vous avez ajoutées sont conservées.)", parent=self):
             self.app.prefs.reset()
             self.destroy()
             self.app.restyle()

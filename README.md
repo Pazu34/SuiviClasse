@@ -21,6 +21,22 @@ Application de suivi quotidien des élèves, qui remplace un classeur Excel de s
 - **↶ Annuler / ↷ Rétablir** (ou `Ctrl+Z` / `Ctrl+Y` hors d'un champ de saisie) : jusqu'à 100 modifications du tableau, des fiches, des imports et des suppressions de classe. L'historique est conservé tant que le programme est ouvert ; les **archives** couvrent le reste.
 - Les colonnes à compteur ont un pictogramme (👍 👎 📝 🎒) ; il se désactive dans Préférences → Affichage → Pictogrammes.
 
+## Colonnes personnalisables
+
+**Préférences → Colonnes** (les préférences sont rangées en onglets : Affichage, Colonnes, Alertes, Sauvegardes, Sécurité et bulletins) :
+
+- **Barème des notes** : « Notes sur 20 » par défaut, modifiable (10, 5…). En changeant le barème, le programme propose de convertir les notes déjà saisies (14/20 → 7/10).
+- **Colonnes intégrées** (séance +, séance −, travail non fait, oublis) : on peut changer leur titre, leur pictogramme et leurs **boutons d'incrément** (par exemple « −1 ; +2 »), ou les masquer.
+- **Ajouter une colonne** : titre, pictogramme (une sélection classée par thème, ou n'importe quel emoji saisi ou collé) et un type :
+  - *Compteur* : un total avec des boutons d'incrément de votre choix (« +0,5 ; +2 », « −2 −1 +1 +2 »…), éventuellement des alertes orange/rouge ;
+  - *Note* : sur 10, sur 5, sur ce que vous voulez ;
+  - *Texte* : une remarque libre par période ;
+  - *Case à cocher*.
+- **Suggestions prêtes à l'emploi** (à cocher pour les activer) : Travail maison, Retards, Absences, Bavardages, Leçon non apprise, Devoir en retard, Participation orale, Comportement, Bonus, Punitions, Évaluation orale /10, Carnet signé, Matériel complet, Observation.
+- Les colonnes s'affichent après « Oublis » ; **Monter / Descendre** règle leur ordre. Les valeurs saisies dans chaque colonne sont conservées même si la colonne est masquée ou supprimée (recréer une suggestion retrouve ses valeurs).
+- Les colonnes personnalisées apparaissent aussi dans la **fiche élève** (boutons du journal, valeurs), dans l'**export** et l'**historique annuler/rétablir** ; la configuration est enregistrée dans les données chiffrées, avec le reste.
+- Le total d'un compteur est la somme de ses incréments au journal ; en cliquant sur le total, vous le saisissez directement (le programme ajoute une entrée « Ajustement manuel »).
+
 ## Trimestres ou semestres
 
 **Préférences → Affichage → Découpage de l'année** : *Trimestres (T1 à T3)* par défaut, ou *Semestres (S1 et S2)*. En semestres, les boutons, les titres du tableau, la fiche élève, l'import et l'export parlent de S1 et S2, et la colonne de la 3ᵉ note disparaît ; la moyenne porte sur S1 et S2. Les données gardent leur numéro de période (période 1 = T1 ou S1, période 2 = T2 ou S2) : choisissez le découpage en début d'année. Les données de la 3ᵉ période ne sont pas supprimées, elles réapparaissent si vous revenez aux trimestres. Les titres d'import « S1 », « Semestre 2 », « 1er semestre »… sont reconnus comme « T1 », « Trimestre 2 », etc.

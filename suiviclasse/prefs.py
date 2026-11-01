@@ -61,16 +61,26 @@ def sanitize(src):
     return out
 
 
+# Onglet de la fenêtre « Préférences » où apparaît chaque groupe de réglages (l'onglet « Colonnes » est à part).
+TAB_OF_GROUP = {"Affichage": "Affichage", "Sauvegardes automatiques": "Sauvegardes",
+                "Sécurité": "Sécurité et bulletins", "Bulletins": "Sécurité et bulletins"}
+for _f in SCHEMA:
+    _f["tab"] = TAB_OF_GROUP.get(_f["group"], "Alertes")
+TABS = list(dict.fromkeys(f["tab"] for f in SCHEMA))
+
 COLUMN_MIN, COLUMN_MAX = 24, 900  # largeur d'une colonne du tableau, en pixels
 
 
 def sanitize_columns(raw):
-    """{"compact": [28, 112, …], "normal": […]} -> même forme, largeurs bornées ; le reste est ignoré."""
+    """{"compact": {"nom": 108, …}, "normal": {…}} -> même forme, largeurs bornées ; le reste est ignoré."""
     out = {}
     if isinstance(raw, dict):
         for mode, widths in raw.items():
-            if isinstance(widths, list) and widths and all(isinstance(w, (int, float)) and not isinstance(w, bool) for w in widths):
-                out[str(mode)] = [int(min(COLUMN_MAX, max(COLUMN_MIN, w))) for w in widths]
+            if isinstance(widths, dict):
+                clean = {str(k): int(min(COLUMN_MAX, max(COLUMN_MIN, w))) for k, w in widths.items()
+                         if isinstance(w, (int, float)) and not isinstance(w, bool)}
+                if clean:
+                    out[str(mode)] = clean
     return out
 
 
@@ -105,13 +115,17 @@ class Prefs:
         self.saved_columns = {}
         return self.set(defaults())
 
-    # ---------- largeurs de colonnes (réglées à la souris dans le tableau) ----------
-    def columns(self, mode, default):
-        saved = self.saved_columns.get(mode)
-        return list(saved) if saved and len(saved) == len(default) else list(default)
+    # ---------- largeurs de colonnes (réglées à la souris dans le tableau, par clé de colonne) ----------
+    def widths(self, mode):
+        """Largeurs enregistrées pour la présentation `mode` : {clé de colonne: pixels}."""
+        return dict(self.saved_columns.get(mode, {}))
 
-    def set_columns(self, mode, widths):
-        self.saved_columns[mode] = sanitize_columns({mode: list(widths)})[mode]
+    def set_width(self, mode, key, width):
+        self.saved_columns.setdefault(mode, {})[key] = int(min(COLUMN_MAX, max(COLUMN_MIN, width)))
+        self._write()
+
+    def forget_width(self, mode, key):
+        self.saved_columns.get(mode, {}).pop(key, None)
         self._write()
 
     def reset_columns(self):

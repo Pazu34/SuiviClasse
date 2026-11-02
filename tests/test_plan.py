@@ -124,6 +124,12 @@ class RepartitionTest(unittest.TestCase):
         P.assign(self.plan, b, self.ids[2])                      # élève sans place sur une place occupée : l'occupant n'a plus de place
         self.assertEqual(self.plan["places"], {c: self.ids[1], b: self.ids[2]})
         self.assertEqual([s["nom"] for s in P.without_place(self.plan, self.cls)], ["ANDRÉ", "DUBOIS"])
+
+    def test_sans_place_tries_par_nom_en_majuscules(self):
+        cls = {"eleves": [{"id": "1", "nom": "Martin", "prenom": "Alice"}, {"id": "2", "nom": "dupont", "prenom": "Zoé"},
+                          {"id": "3", "nom": "Dupont", "prenom": "Bob"}, {"id": "4", "nom": "Andre", "prenom": "Léa"}]}
+        libres = P.without_place({"places": {}}, cls)
+        self.assertEqual([P.list_name(s) for s in libres], ["ANDRE Léa", "DUPONT Bob", "DUPONT Zoé", "MARTIN Alice"])
         P.unassign(self.plan, self.ids[1])
         self.assertIsNone(P.place_of(self.plan, self.ids[1]))
 

@@ -232,7 +232,7 @@ class PlanView(ttk.Frame):
         mode = self.app.values["planAffichage"]
         if cur is not None:
             for s in P.without_place(cur, self.cls):
-                self.free.insert("end", P.display_name(s, "prenom_nom"))
+                self.free.insert("end", P.list_name(s))
                 self.free_ids.append(s["id"])
         self.lbl_free.configure(text=f"Sans place ({len(self.free_ids)})")
 
@@ -435,7 +435,7 @@ class PlanView(ttk.Frame):
                 menu.add_command(label="Tous les élèves ont une place", state="disabled")
             sub = tk.Menu(menu, tearoff=0)
             for st in free:
-                sub.add_command(label=P.display_name(st, "prenom_nom"), command=lambda st=st: (P.assign(cur, pid, st["id"]), self.changed()))
+                sub.add_command(label=P.list_name(st), command=lambda st=st: (P.assign(cur, pid, st["id"]), self.changed()))
             if free:
                 menu.add_cascade(label="Placer un élève ici", menu=sub)
         menu.tk_popup(e.x_root, e.y_root)

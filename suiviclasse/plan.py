@@ -198,9 +198,14 @@ def clean(plan, salle, cls):
 
 
 def without_place(plan, cls):
-    """Élèves de la classe sans place, dans l'ordre alphabétique de la liste."""
+    """Élèves de la classe sans place, dans l'ordre alphabétique des noms (puis des prénoms)."""
     placed = set(plan["places"].values())
-    return [s for s in cls["eleves"] if s["id"] not in placed]
+    return sorted((s for s in cls["eleves"] if s["id"] not in placed), key=lambda s: (norm(s["nom"]), norm(s["prenom"])))
+
+
+def list_name(s):
+    """« NOM Prénom » : libellé des listes d'élèves (nom en majuscules)."""
+    return f"{s['nom'].upper()} {s['prenom']}".strip()
 
 
 def auto_fill(plan, salle, cls, mode="alpha", keep=True, rng=None):

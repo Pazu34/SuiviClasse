@@ -41,6 +41,17 @@ Application de suivi quotidien des élèves, qui remplace un classeur Excel de s
 - Les colonnes personnalisées apparaissent aussi dans la **fiche élève** (boutons du journal, valeurs), dans l'**export** et l'**historique annuler/rétablir** ; la configuration est enregistrée dans les données chiffrées, avec le reste.
 - Le total d'un compteur est la somme de ses incréments au journal ; en cliquant sur le total, vous le saisissez directement (le programme ajoute une entrée « Ajustement manuel »).
 
+## Plan de classe
+
+Bouton **Plan de classe** (à côté de « Tableau », sur la ligne de la classe) : la salle vue d'en haut, une place (chaise + bureau) par rectangle. Chaque place montre le nom de l'élève et une **pastille par colonne à compteur** (👍 👎 📝 🎒 et vos colonnes ajoutées), avec la même valeur et les mêmes couleurs d'alerte que le tableau, pour la période (T1/T2/T3) choisie.
+
+- **Pastilles** : un clic ajoute l'incrément principal (le premier incrément positif de la colonne) ; un **clic droit** propose tous les incréments (+0,5, +1, −1…) ou la saisie directe du total.
+- **Élèves** : cliquez sur un nom pour ouvrir la fiche ; **glissez** un nom vers une autre place pour le déplacer (ou échanger deux élèves) ; glissez-le vers la liste « Sans place » pour le retirer ; glissez un élève de cette liste vers une place libre. Clic droit sur une place libre : « Placer un élève ici ».
+- **Noms affichés** : *Prénom Nom*, *Prénom*, *Nom*, *Prénom + initiale du nom* ou *Initiales* (liste du plan, ou Préférences → Affichage). Un **zoom** (50 à 200 %) adapte la taille ; la recherche grise les places des autres élèves.
+- **Salles** (bouton « Salles… ») : un plan générique de la salle, réutilisable pour toutes les classes. L'éditeur permet d'ajouter des places une à une ou en **rangées, binômes ou îlots**, de poser des **repères** (Tableau, Bureau du professeur, Porte, Fenêtre ou texte libre), de **glisser** les éléments (sélection par cadre ou Maj+clic, flèches pour ajuster, Suppr pour retirer), d'**aligner** ou répartir régulièrement, et de régler la taille des places.
+- **Répartitions** : une classe peut avoir plusieurs répartitions nommées (« Plan T1 », « Plan T2 »…), chacune dans une salle ; boutons *Nouvelle*, *Dupliquer*, *Renommer*, *Supprimer*. **Répartir les élèves…** les place automatiquement (ordre alphabétique rangée par rangée, ou au hasard, en gardant ou non ceux déjà placés) ; **Vider la répartition** les retire tous.
+- Salles et répartitions sont enregistrées avec le reste des **données chiffrées**, archivées et annulables (Annuler / Rétablir). Un nouveau coffre contient une salle d'exemple et une répartition pour la classe Test.
+
 ## Trimestres ou semestres
 
 **Préférences → Affichage → Découpage de l'année** : *Trimestres (T1 à T3)* par défaut, ou *Semestres (S1 et S2)*. En semestres, les boutons, les titres du tableau, la fiche élève, l'import et l'export parlent de S1 et S2, et la colonne de la 3ᵉ note disparaît. Les données gardent leur numéro de période (période 1 = T1 ou S1, période 2 = T2 ou S2) : choisissez le découpage en début d'année. Les données de la 3ᵉ période ne sont pas supprimées, elles réapparaissent si vous revenez aux trimestres. Les titres d'import « S1 », « Semestre 2 », « 1er semestre »… sont reconnus comme « T1 », « Trimestre 2 », etc.
@@ -111,6 +122,8 @@ Pour ajouter un réglage : ajouter une entrée au tableau `SCHEMA` de `suiviclas
 | `suiviclasse/ui/app.py` | fenêtre principale, enregistrement, archives, verrouillage |
 | `suiviclasse/ui/theme.py` | apparence : palettes clair/sombre, style des widgets |
 | `suiviclasse/ui/table.py` | tableau d'une classe |
+| `suiviclasse/plan.py` | plan de classe : salles, répartitions, remplissage automatique (fonctions pures) |
+| `suiviclasse/ui/plan_view.py`, `salle_editor.py` | vue « Plan de classe », éditeur de salles |
 | `suiviclasse/ui/dialogs.py` | fiche élève, import, export, archives, préférences |
 
 Les fichiers de données sont compatibles avec la première version de SuiviClasse (Electron) : un `suivi.enc` existant s'ouvre tel quel.

@@ -83,6 +83,22 @@ def wrapped_lines(text, font, width):
     return total
 
 
+def counter_state(app, col, student, t):
+    """(valeur, niveau d'alerte) d'une colonne à compteur pour un élève et une période. Niveau : 'ok', 'warn', 'bad' ou ''.
+    Partagé par le tableau et le plan de classe."""
+    v = app.values
+    if col.kind == "seance":
+        plus, moins = model.seance(student, t)
+        if col.key == "seancePlus":
+            return plus, "ok" if plus >= v["seancePlusVert"] else ""
+        return moins, "bad" if moins <= -v["seanceMoinsRouge"] else "warn" if moins < 0 else ""
+    n = model.total(student, col.event, t)
+    if col.key in ("travail", "oubli"):
+        return n, model.level(n, v[col.key + "Orange"], v[col.key + "Rouge"])
+    orange, rouge = col.cfg.get("orange"), col.cfg.get("rouge")  # colonne personnalisée : alerte seulement si des seuils existent
+    return n, model.level(n, orange or float("inf"), rouge or float("inf")) if (orange or rouge) else ""
+
+
 def parse_grade(text, maxi=20):
     """'' -> None ; '14,5' -> 14.5 ; texte invalide ou hors de 0..maxi -> ValueError."""
     text = text.strip()
@@ -508,22 +524,10 @@ class Row:
             infos = " · ".join(x.strip() for x in s["infos"].splitlines() if x.strip())
             self.infos.configure(text=infos, bg=P["bad"] if infos else self.bg, fg=P["text"])
             self.infos.master.configure(bg=self.bg)
-        plus, moins = model.seance(s, t)
         for col in self.table.cols:
-            if col.kind == "seance":
-                if col.key == "seancePlus":
-                    value, level = plus, "ok" if plus >= v["seancePlusVert"] else ""
-                else:
-                    value, level = moins, "bad" if moins <= -v["seanceMoinsRouge"] else "warn" if moins < 0 else ""
+            if col.kind in COUNTER_KINDS:
+                value, level = counter_state(self.app, col, s, t)
                 self._paint_counter(col, value, level)
-            elif col.kind == "counter":
-                n = model.total(s, col.event, t)
-                if col.key in ("travail", "oubli"):
-                    level = model.level(n, v[col.key + "Orange"], v[col.key + "Rouge"])
-                else:  # colonne personnalisée : alerte seulement si des seuils ont été définis
-                    orange, rouge = col.cfg.get("orange"), col.cfg.get("rouge")
-                    level = model.level(n, orange or float("inf"), rouge or float("inf")) if (orange or rouge) else ""
-                self._paint_counter(col, n, level)
             elif col.kind == "xcheck":
                 done = bool(model.extra_value(s, col.cfg, t))
                 self.checks[col.key].configure(text="☑" if done else "☐", bg=P["ok"] if done else self.bg)

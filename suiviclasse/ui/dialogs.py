@@ -235,8 +235,7 @@ class StudentWindow(Dialog):
         if value != old:
             model.set_extra(self.s, c["id"], t, value)
             self.app.commit()
-            if self.app.table:
-                self.app.table.build()
+            self.app.rebuild_view()
 
     def update_counter(self, k):
         n, mx = len(self.comms[k].get("1.0", "end-1c")), self.app.values["appreciationMax"]
@@ -245,9 +244,7 @@ class StudentWindow(Dialog):
     # ---------- enregistrement des champs ----------
     def changed(self):
         self.app.commit()
-        if self.app.table:
-            self.app.table.refresh_student(self.s)
-            self.app.table.refresh_footer()
+        self.app.refresh_student(self.s)
 
     def commit_identity(self):
         nom = self.vars["nom"].get().strip()
@@ -260,8 +257,7 @@ class StudentWindow(Dialog):
             model.sort_students(self.cls)
             self.app.commit()
             self.title(f"{self.s['nom']} {self.s['prenom']}")
-            if self.app.table:
-                self.app.table.build()
+            self.app.rebuild_view()
 
     def commit_infos(self):
         text = self.infos.get("1.0", "end-1c")
@@ -280,8 +276,7 @@ class StudentWindow(Dialog):
         if value != self.s["notes"][k]:
             self.s["notes"][k] = value
             self.changed()
-            if self.app.table:
-                self.app.table.build()
+            self.app.rebuild_view()
         self.notes[k].set("" if value is None else exchange.fmt_num(value))
 
     def commit_comment(self, k):
@@ -289,8 +284,8 @@ class StudentWindow(Dialog):
         if text != self.s["comms"][k]:
             self.s["comms"][k] = text
             self.app.commit()
-            if self.app.table and k == str(self.app.t):
-                self.app.table.build()
+            if k == str(self.app.t):
+                self.app.rebuild_view()
 
     def commit_all(self):
         self.commit_identity()
@@ -320,8 +315,7 @@ class StudentWindow(Dialog):
             self.cls["eleves"].remove(self.s)
             self.app.commit()
             self.close(save=False)
-            if self.app.table:
-                self.app.table.build()
+            self.app.rebuild_view()
 
     def close(self, save=True):
         if save:
@@ -755,6 +749,8 @@ class DataDialog(Dialog):
             self.err.configure(text=f"Une classe « {model.DEMO_NAME} » existe déjà (supprimez-la d’abord si vous voulez la recréer).")
             return
         demo = model.demo_class()
+        from .. import plan
+        plan.add_demo_plan(app.state, demo)  # avec la salle d'exemple et une répartition
         app.state["classes"].append(demo)
         app.state["ui"]["classe"] = demo["id"]
         app.commit()

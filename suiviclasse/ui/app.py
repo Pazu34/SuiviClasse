@@ -11,6 +11,7 @@ from .. import model, paths
 from ..prefs import Prefs
 from ..vault import Vault, WrongPasswordError
 from . import dialogs, icons, theme
+from .plan_view import PlanView
 from .table import ClassTable
 from .theme import P
 
@@ -30,8 +31,9 @@ def open_folder(path):
 class FlowFrame(ttk.Frame):
     """Rangée de widgets qui passent à la ligne suivante quand la place manque (ex. beaucoup de classes)."""
 
-    def __init__(self, parent):
-        super().__init__(parent, style="Bar.TFrame")
+    def __init__(self, parent, style="Bar.TFrame"):
+        super().__init__(parent, style=style)
+        self._style = style
         self.items, self._laid = [], None
         self.bind("<Configure>", lambda e: self.layout_items())
 
@@ -51,7 +53,7 @@ class FlowFrame(ttk.Frame):
         for widget, padx in self.items:
             need = widget.winfo_reqwidth() + sum(padx)
             if fr is None or (x and x + need > width):  # nouvelle rangée
-                fr = ttk.Frame(self, style="Bar.TFrame")
+                fr = ttk.Frame(self, style=self._style)
                 fr.pack(fill="x", anchor="w")
                 self._rows.append(fr)
                 x = 0
@@ -70,7 +72,9 @@ class App:
         self.prefs = Prefs(paths.data_dir())
         self.state = None
         self.dirty = False
-        self.table = None
+        self.table = None       # tableau de la classe affichée (None en vue « plan de classe »)
+        self.plan_view = None   # plan de classe affiché (None en vue « tableau »)
+        self.vue = tk.StringVar(value="tableau")
         self.student_window = None
         self._save_job = None
         self._last_archive = time.time()
@@ -81,7 +85,7 @@ class App:
         self.frame = None
         self.undo, self.redo, self._last = [], [], None  # historique des modifications (voir commit)
         self.btn_undo = self.btn_redo = None
-        self.search.trace_add("write", lambda *a: self.table and self.table.build())
+        self.search.trace_add("write", lambda *a: self.rebuild_view())
         theme.apply(root, self.values["theme"])
         for ev in ("<Key>", "<Button>", "<Motion>"):
             root.bind_all(ev, self._activity, add="+")
@@ -163,6 +167,7 @@ class App:
                 return
             self.state.setdefault("ui", {"classe": None, "trimestre": 1})
             self.state["settings"].setdefault("annee", "")
+            self.state.setdefault("salles", [])  # données créées avant le plan de classe
             for c in self.state["classes"]:
                 model.ensure_numbers(c)  # données créées avant l'ajout des n° d'élèves
             if self.current_class is None and self.state["classes"]:
@@ -302,33 +307,63 @@ class App:
 
     def on_trimestre(self):
         self.state["ui"]["trimestre"] = self.t
+        self.rebuild_view()
+
+    # ---------- vue de la classe : tableau ou plan de classe ----------
+    @property
+    def view(self):
+        """Vue de la classe actuellement affichée (tableau ou plan de classe)."""
+        return self.table or self.plan_view
+
+    def rebuild_view(self):
+        v = self.view
+        if v is not None:
+            v.build()
+
+    def refresh_student(self, student):
+        """Met à jour l'affichage d'un élève (après une modification faite depuis sa fiche)."""
         if self.table:
-            self.table.build()
+            self.table.refresh_student(student)
+            self.table.refresh_footer()
+        elif self.plan_view:
+            self.plan_view.build()
+
+    def on_vue(self):
+        self.state["ui"]["vue"] = self.vue.get()
+        self.show_class()
 
     def show_class(self):
         for w in self.body.winfo_children():
             w.destroy()
-        self.table = None
+        self.table = self.plan_view = None
         c = self.current_class
         if c is None:
             ttk.Label(self.body, style="Muted.TLabel", justify="center", text=(
                 "Aucune classe.\nCliquez sur « Importer une liste PRONOTE » (les classes sont créées "
                 "automatiquement) ou sur « + Classe »."), padding=60).pack()
             return
-        bar = ttk.Frame(self.body)
+        bar = FlowFrame(self.body, style="TFrame")  # passe à la ligne si la fenêtre est étroite
         bar.pack(fill="x", pady=(0, 10))
-        ttk.Label(bar, text=c["nom"], style="H1.TLabel").pack(side="left")
-        ttk.Label(bar, text=f"   {len(c['eleves'])} élèves", style="Muted.TLabel").pack(side="left")
+        bar.add(ttk.Label(bar, text=c["nom"], style="H1.TLabel"), padx=(0, 2))
+        bar.add(ttk.Label(bar, text=f"{len(c['eleves'])} élèves", style="Muted.TLabel"), padx=(4, 10))
+        self.vue.set(self.state["ui"].get("vue", "tableau"))
+        for value, label in (("tableau", "Tableau"), ("plan", "Plan de classe")):
+            bar.add(ttk.Radiobutton(bar, text=label, style="Pill.Toolbutton", value=value, variable=self.vue, command=self.on_vue), padx=(1, 1))
         for t in range(1, self.per["n"] + 1):
-            ttk.Radiobutton(bar, text=f"{self.per['prefix']}{t}", style="Pill.Toolbutton", value=t, variable=self.trimestre, command=self.on_trimestre).pack(side="left", padx=(14 if t == 1 else 1, 1))
-        ttk.Button(bar, text="Importer des élèves…", command=lambda: dialogs.ImportDialog(self, c)).pack(side="left", padx=(18, 4))
-        ttk.Button(bar, text="Exporter (PRONOTE, tableur)…", command=lambda: dialogs.ExportDialog(self, c)).pack(side="left", padx=4)
-        ttk.Button(bar, text="Renommer", command=lambda: self.rename_class(c)).pack(side="left", padx=4)
-        ttk.Button(bar, text="Supprimer la classe", style="Danger.TButton", command=lambda: self.delete_class(c)).pack(side="left", padx=4)
-        ttk.Label(bar, text="Rechercher", style="Muted.TLabel").pack(side="left", padx=(4, 4))
-        ttk.Entry(bar, textvariable=self.search, width=16).pack(side="left")
-        self.table = ClassTable(self.body, self, c)
-        self.table.pack(fill="both", expand=True)
+            bar.add(ttk.Radiobutton(bar, text=f"{self.per['prefix']}{t}", style="Pill.Toolbutton", value=t, variable=self.trimestre, command=self.on_trimestre),
+                    padx=(14 if t == 1 else 1, 1))
+        bar.add(ttk.Button(bar, text="Importer des élèves…", command=lambda: dialogs.ImportDialog(self, c)), padx=(14, 4))
+        bar.add(ttk.Button(bar, text="Exporter (PRONOTE, tableur)…", command=lambda: dialogs.ExportDialog(self, c)), padx=(4, 4))
+        bar.add(ttk.Button(bar, text="Renommer", command=lambda: self.rename_class(c)), padx=(4, 4))
+        bar.add(ttk.Button(bar, text="Supprimer la classe", style="Danger.TButton", command=lambda: self.delete_class(c)), padx=(4, 4))
+        bar.add(ttk.Label(bar, text="Rechercher", style="Muted.TLabel"), padx=(8, 4))
+        bar.add(ttk.Entry(bar, textvariable=self.search, width=16), padx=(0, 0))
+        if self.vue.get() == "plan":
+            self.plan_view = PlanView(self.body, self, c)
+            self.plan_view.pack(fill="both", expand=True)
+        else:
+            self.table = ClassTable(self.body, self, c)
+            self.table.pack(fill="both", expand=True)
 
     def add_class(self):
         nom = dialogs.ask_text(self.root, "Nouvelle classe", "Nom de la classe (ex. 6A)")
@@ -434,7 +469,7 @@ class App:
             return
         target.append(self._snap())
         snap = source.pop()
-        y = self.table.body.yview()[0] if self.table else 0
+        y = self.table.body.yview()[0] if self.table else 0  # défilement du tableau, retrouvé après la restauration
         self.state.update(copy.deepcopy(snap))
         self._last = copy.deepcopy(snap)
         if self.current_class is None:
@@ -509,6 +544,7 @@ class App:
         """Remplace toutes les données (restauration d'une archive)."""
         self.state = data
         self.state.setdefault("ui", {"classe": None, "trimestre": 1})
+        self.state.setdefault("salles", [])
         for c in self.state["classes"]:
             model.ensure_numbers(c)
         if self.current_class is None:

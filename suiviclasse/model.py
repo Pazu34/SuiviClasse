@@ -35,7 +35,10 @@ DEMO_NAME = "Test"
 def new_data():
     """Données d'un nouveau coffre : une classe d'essai (voir demo_class) pour découvrir le programme."""
     demo = demo_class()
-    return {"version": 1, "settings": {"annee": ""}, "classes": [demo], "ui": {"classe": demo["id"], "trimestre": 1}}
+    data = {"version": 1, "settings": {"annee": ""}, "classes": [demo], "salles": [], "ui": {"classe": demo["id"], "trimestre": 1}}
+    from . import plan  # import tardif : le module du plan de classe dépend de celui-ci
+    plan.add_demo_plan(data, demo)  # une salle et une répartition d'exemple pour essayer le plan de classe
+    return data
 
 
 def new_class(nom):

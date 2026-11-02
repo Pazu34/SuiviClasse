@@ -165,6 +165,7 @@ class PlanView(ttk.Frame):
         icons = self.app.values["pictogrammes"] == "oui"
         cols = self.counter_cols()
         mode = self.app.values["planAffichage"]
+        names = P.display_names(self.cls["eleves"], mode)  # abrégés rallongés si deux élèves s'afficheraient pareil
         q = exchange.norm(self.app.search.get())
         t = self.app.t
         w, h = salle["place"]["w"] * z, salle["place"]["h"] * z
@@ -183,7 +184,7 @@ class PlanView(ttk.Frame):
                 continue
             c.create_rectangle(x, y, x + w, y + h, fill=PAL["bg"] if dim else PAL["surface"], outline=PAL["border"], width=1,
                                tags=("seat", f"seat:{pid}"))
-            name = fit_text(P.display_name(s, mode), self.f_name, w - 12)
+            name = fit_text(names.get(s["id"]) or P.display_name(s, mode), self.f_name, w - 12)
             c.create_text(x + 6, y + 4, text=name, anchor="nw", fill=PAL["muted"] if dim else PAL["text"], font=self.f_name,
                           tags=("name", f"name:{pid}", f"seat:{pid}"))
             self._draw_chips(pid, s, cols, icons, t, x, y + 6 + line, w, h - 6 - line, dim)
@@ -319,7 +320,7 @@ class PlanView(ttk.Frame):
         c.delete("ghost")
         s = self.student(self.drag["student"])
         if s and not self._over_free_list(e):
-            text = P.display_name(s, self.app.values["planAffichage"])
+            text = P.display_names(self.cls["eleves"], self.app.values["planAffichage"]).get(s["id"], "")
             tid = c.create_text(cx + 14, cy + 10, text=text, anchor="nw", font=self.f_name, fill=PAL["accent_fg"], tags="ghost")
             x0, y0, x1, y1 = c.bbox(tid)
             r = c.create_rectangle(x0 - 4, y0 - 2, x1 + 4, y1 + 2, fill=PAL["accent"], outline="", tags="ghost")

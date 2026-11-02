@@ -13,6 +13,7 @@ Données (rangées dans les données chiffrées) :
 """
 import random
 import re
+import unicodedata
 
 from .exchange import norm
 from .model import uid
@@ -37,6 +38,56 @@ def display_name(student, mode="prenom_nom"):
     if mode == "prenom_i":
         return (f"{prenom} {nom[:1].upper()}." if nom else prenom).strip()
     return f"{prenom} {cap}".strip()
+
+
+def _fold(text):
+    """Chaque caractère ramené à une forme comparable (minuscule, sans accent, tiret/apostrophe = espace), sans changer la longueur."""
+    out = []
+    for ch in text:
+        f = "".join(c for c in unicodedata.normalize("NFD", ch) if not unicodedata.combining(c)).lower()
+        out.append(" " if f in "-_'’" else (f or ch))
+    return out
+
+
+def _common_prefix(a, b):
+    n = 0
+    for x, y in zip(_fold(a), _fold(b)):
+        if x != y:
+            break
+        n += 1
+    return n
+
+
+def display_names(students, mode="prenom_nom"):
+    """{id: nom affiché} pour une liste d'élèves (une classe). Les modes abrégés (Prénom, Prénom + initiale, Initiales) ajoutent autant
+    de lettres du nom que nécessaire pour distinguer deux élèves qui s'afficheraient pareil : « Rayan Benaoui » et « Rayan Bendaoud »
+    deviennent « Rayan Bena. » et « Rayan Bend. »."""
+    if mode not in ("prenom", "prenom_i", "initiales"):
+        return {s["id"]: display_name(s, mode) for s in students}
+
+    def key(s):
+        prenom, nom = _fold(s.get("prenom", "").strip()), _fold(s.get("nom", "").strip())
+        return (tuple(prenom[:1]), tuple(nom[:1])) if mode == "initiales" else tuple(prenom)
+
+    groups = {}
+    for s in students:
+        groups.setdefault(key(s), []).append(s)
+    out = {}
+    for group in groups.values():
+        for s in group:
+            prenom, nom = s.get("prenom", "").strip(), s.get("nom", "").strip()
+            others = [o.get("nom", "").strip() for o in group if o is not s]
+            if mode == "prenom" and not others or not nom:
+                out[s["id"]] = display_name(s, mode)
+                continue
+            k = 1 + max((_common_prefix(nom, o) for o in others), default=0)
+            cap = nom.title() if nom.isupper() else nom
+            part = cap[:k][:1].upper() + cap[:k][1:]
+            if mode == "initiales":
+                out[s["id"]] = prenom[:1].upper() + part if prenom else part
+            else:
+                out[s["id"]] = f"{prenom} {part}{'.' if k < len(nom) else ''}".strip()
+    return out
 
 
 # ---------------------------------------------------------------- salles

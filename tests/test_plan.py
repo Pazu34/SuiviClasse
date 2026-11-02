@@ -22,6 +22,27 @@ class NomsTest(unittest.TestCase):
         self.assertEqual(P.display_name(model.new_student("Martin", ""), "prenom"), "Martin")   # repli si un champ est vide
         self.assertEqual(P.display_name(model.new_student("", ""), "initiales"), "?")
 
+    def test_noms_abreges_discriminants(self):
+        eleves = [model.new_student("BENAOUI", "Rayan"), model.new_student("BENDAOUD", "Rayan"), model.new_student("Martin", "Léa")]
+        def noms(mode):
+            d = P.display_names(eleves, mode)
+            return [d[e["id"]] for e in eleves]
+        self.assertEqual(noms("prenom_i"), ["Rayan Bena.", "Rayan Bend.", "Léa M."])
+        self.assertEqual(noms("prenom"), ["Rayan Bena.", "Rayan Bend.", "Léa"])
+        self.assertEqual(noms("initiales"), ["RBena", "RBend", "LM"])
+        self.assertEqual(noms("prenom_nom"), ["Rayan Benaoui", "Rayan Bendaoud", "Léa Martin"])
+        # un nom qui est le début d'un autre s'affiche en entier, sans point
+        eleves.append(model.new_student("Ben", "Rayan"))
+        self.assertEqual(noms("prenom_i")[:2] + noms("prenom_i")[3:], ["Rayan Bena.", "Rayan Bend.", "Rayan Ben"])
+        # seul dans la classe, rien ne change
+        seul = [model.new_student("Dupont", "Marie")]
+        self.assertEqual(P.display_names(seul, "prenom_i")[seul[0]["id"]], "Marie D.")
+
+    def test_accents_et_casse_ignores_pour_departager(self):
+        a, b = model.new_student("ÉLOI", "Paul"), model.new_student("Eliot", "Paul")
+        d = P.display_names([a, b], "prenom_i")
+        self.assertEqual((d[a["id"]], d[b["id"]]), ("Paul Élo.", "Paul Eli."))
+
 
 class SalleTest(unittest.TestCase):
     def test_generateurs(self):

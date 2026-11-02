@@ -28,6 +28,16 @@ def fit_text(text, font, width):
     return text.rstrip() + "…"
 
 
+def draw_marker(c, m, z, font=None, fill=None, outline=None, width=1, dash=(4, 3), tags=()):
+    """Dessine un repère (rectangle en pointillés + texte, vertical si son angle est de 90°) ; commun à l'éditeur de salle et au plan."""
+    x, y, mw, mh = m["x"] * z, m["y"] * z, m["w"] * z, m["h"] * z
+    vertical = m.get("angle", 0) == 90
+    c.create_rectangle(x, y, x + mw, y + mh, fill=fill or PAL["surface2"], outline=outline or PAL["border"], width=width, dash=dash, tags=tags)
+    opts = {"font": font} if font else {}
+    c.create_text(x + mw / 2, y + mh / 2, text=m["texte"], fill=PAL["muted"], angle=90 if vertical else 0,
+                  width=max(10, (mh if vertical else mw) - 6), tags=tags, **opts)
+
+
 class PlanView(ttk.Frame):
     def __init__(self, parent, app, cls):
         super().__init__(parent)
@@ -159,9 +169,7 @@ class PlanView(ttk.Frame):
         t = self.app.t
         w, h = salle["place"]["w"] * z, salle["place"]["h"] * z
         for m in salle["reperes"]:
-            x, y, mw, mh = m["x"] * z, m["y"] * z, m["w"] * z, m["h"] * z
-            c.create_rectangle(x, y, x + mw, y + mh, fill=PAL["surface2"], outline=PAL["border"], dash=(4, 3), tags=("repere",))
-            c.create_text(x + mw / 2, y + mh / 2, text=m["texte"], fill=PAL["muted"], font=self.f_chip, width=mw - 6, tags=("repere",))
+            draw_marker(c, m, z, font=self.f_chip, tags=("repere",))
         line = self.f_name.metrics("linespace")
         for place in salle["places"]:
             pid = place["id"]

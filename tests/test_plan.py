@@ -50,6 +50,60 @@ class SalleTest(unittest.TestCase):
         s = P.demo_salle()
         self.assertEqual((len(s["places"]), [m["texte"] for m in s["reperes"]]), (12, ["Tableau", "Bureau du professeur"]))
 
+    def test_tableau_et_bureau_en_bas_par_defaut(self):
+        s = P.demo_salle()
+        bas_des_places = max(p["y"] + s["place"]["h"] for p in s["places"])
+        for m in s["reperes"]:
+            self.assertGreater(m["y"], bas_des_places)
+        self.assertTrue(P.front_is_bottom(s))
+
+    def test_remplissage_depuis_le_tableau(self):
+        s = P.demo_salle()
+        premiere = next(p for p in s["places"] if p["id"] == P.reading_order(s)[0])
+        self.assertEqual(premiere["y"], max(p["y"] for p in s["places"]))  # rangée la plus proche du tableau
+        haut = P.new_salle()
+        P.add_rows(haut, 2, 2)
+        P.add_marker(haut, "Tableau", 40, 0)
+        self.assertFalse(P.front_is_bottom(haut))
+
+    def test_nouvelle_salle_commence_en_haut(self):
+        s = P.new_salle()
+        P.add_rows(s, 1, 1)
+        self.assertEqual(s["places"][0]["y"], 40)
+
+    def test_redimensionner_un_repere(self):
+        m = P.add_marker(P.new_salle(), "Porte", 100, 100)
+        P.resize_marker(m, "se", 304, 196)
+        self.assertEqual((m["x"], m["y"], m["w"], m["h"]), (100, 100, 200, 100))
+        P.resize_marker(m, "nw", 50, 60)
+        self.assertEqual((m["x"], m["y"], m["w"], m["h"]), (50, 60, 250, 140))
+        P.resize_marker(m, "se", 0, 0)  # taille minimale
+        self.assertEqual((m["w"], m["h"]), (P.MIN_MARKER, P.MIN_MARKER))
+
+    def test_pivoter_un_repere(self):
+        m = P.add_marker(P.new_salle(), "Porte", 100, 100, 130, 34)
+        centre = (m["x"] + m["w"] / 2, m["y"] + m["h"] / 2)
+        P.rotate_marker(m)
+        self.assertEqual((m["w"], m["h"], m["angle"]), (34, 130, 90))
+        self.assertAlmostEqual(m["x"] + m["w"] / 2, centre[0], delta=P.GRID)
+        self.assertAlmostEqual(m["y"] + m["h"] / 2, centre[1], delta=P.GRID)
+        P.rotate_marker(m)
+        self.assertEqual((m["w"], m["h"], m["angle"]), (130, 34, 0))
+
+    def test_retourner_la_salle(self):
+        s = P.demo_salle()
+        avant = P.front_is_bottom(s)
+        P.rotate_room(s)
+        self.assertNotEqual(P.front_is_bottom(s), avant)
+        self.assertEqual(len(s["places"]), 12)
+        P.rotate_room(s)
+        self.assertEqual(P.front_is_bottom(s), avant)
+
+    def test_ancien_repere_sans_angle(self):
+        s = P.new_salle()
+        s["reperes"].append({"id": "a", "texte": "Porte", "x": 0, "y": 0, "w": 130, "h": 34})
+        self.assertEqual(P.copy_salle(s, "Copie")["reperes"][0].get("angle", 0), 0)
+
 
 class RepartitionTest(unittest.TestCase):
     def setUp(self):

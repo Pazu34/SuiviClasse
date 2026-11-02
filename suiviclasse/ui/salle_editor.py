@@ -5,6 +5,7 @@ from tkinter import messagebox, simpledialog, ttk
 
 from .. import plan as P
 from . import dialogs
+from .plan_view import draw_marker
 from .theme import P as PAL
 
 EDIT_ZOOM = 0.6  # zoom initial de l'éditeur : une salle entière tient dans la fenêtre
@@ -192,7 +193,7 @@ class SalleEditor(dialogs.Dialog):
         sp.pack(side="left", padx=(4, 0))
         sp.bind("<Return>", lambda e: self.set_zoom())
         ttk.Label(tb, text="%", style="Muted.TLabel").pack(side="left", padx=2)
-        tb2 = ttk.Frame(self, padding=(10, 2, 10, 6))
+        tb2 = ttk.Frame(self, padding=(10, 2, 10, 2))
         tb2.pack(fill="x")
         ttk.Button(tb2, text="Ajouter une place", command=self.add_place).pack(side="left", padx=(0, 4))
         ttk.Button(tb2, text="Ajouter des rangées / îlots…", command=lambda: GeneratorDialog(app, self, self)).pack(side="left", padx=4)
@@ -212,6 +213,12 @@ class SalleEditor(dialogs.Dialog):
         ttk.Button(tb2, text="Supprimer la sélection", style="Danger.TButton", command=self.delete_selection).pack(side="left", padx=4)
         self.info = ttk.Label(tb2, style="Muted.TLabel")
         self.info.pack(side="right")
+        tb3 = ttk.Frame(self, padding=(10, 2, 10, 6))
+        tb3.pack(fill="x")
+        ttk.Label(tb3, text="Repères :", style="Muted.TLabel").pack(side="left", padx=(0, 6))
+        ttk.Button(tb3, text="Pivoter de 90°  (R)", command=self.rotate_markers).pack(side="left", padx=(0, 4))
+        ttk.Button(tb3, text="Retourner la salle de 180°", command=self.rotate_room).pack(side="left", padx=4)
+        ttk.Label(tb3, text="Sélectionnez un repère, puis tirez sur un coin pour le redimensionner.", style="Muted.TLabel").pack(side="left", padx=10)
         # boutons et message d'erreur créés avant la zone de dessin : ils restent visibles même dans une fenêtre basse
         self.buttons(("Enregistrer la salle", self.save, "right"), ("Annuler", self.cancel, "right"))
         self.err = ttk.Label(self, style="Error.TLabel", padding=(10, 2))
@@ -234,6 +241,7 @@ class SalleEditor(dialogs.Dialog):
             self.bind(key, lambda e: self.delete_selection())
         for key, dx, dy in (("<Left>", -1, 0), ("<Right>", 1, 0), ("<Up>", 0, -1), ("<Down>", 0, 1)):
             self.bind(key, lambda e, dx=dx, dy=dy: self.nudge(dx, dy, e))
+        self.bind("<r>", lambda e: self.rotate_markers() if not isinstance(self.focus_get(), (ttk.Entry, ttk.Spinbox)) else None)
         self.bind("<Control-a>", lambda e: (self.sel.update(i["id"] for i in self.items()), self.redraw()))
         if first:
             self.after(200, lambda: GeneratorDialog(app, self, self))  # une nouvelle salle commence par ses places
@@ -252,11 +260,9 @@ class SalleEditor(dialogs.Dialog):
         c.delete("all")
         w, h = s["place"]["w"] * z, s["place"]["h"] * z
         for m in s["reperes"]:
-            x, y = m["x"] * z, m["y"] * z
             sel = m["id"] in self.sel
-            c.create_rectangle(x, y, x + m["w"] * z, y + m["h"] * z, fill=PAL["surface2"], outline=PAL["accent"] if sel else PAL["border"],
-                               width=3 if sel else 1, dash=() if sel else (4, 3), tags=("item", f"i:{m['id']}"))
-            c.create_text(x + m["w"] * z / 2, y + m["h"] * z / 2, text=m["texte"], fill=PAL["muted"], tags=("item", f"i:{m['id']}"))
+            draw_marker(c, m, z, outline=PAL["accent"] if sel else PAL["border"], width=3 if sel else 1, dash=() if sel else (4, 3),
+                        tags=("item", f"i:{m['id']}"))
         for n, pid in enumerate(P.reading_order(s), 1):
             p = self.by_id(pid)
             x, y = p["x"] * z, p["y"] * z
@@ -264,9 +270,26 @@ class SalleEditor(dialogs.Dialog):
             c.create_rectangle(x, y, x + w, y + h, fill=PAL["bg"] if not sel else PAL["hover"], outline=PAL["accent"] if sel else PAL["muted"],
                                width=3 if sel else 1, tags=("item", f"i:{pid}"))
             c.create_text(x + w / 2, y + h / 2, text=str(n), fill=PAL["muted"], tags=("item", f"i:{pid}"))
+        chosen = [m for m in s["reperes"] if m["id"] in self.sel]
+        if len(chosen) == 1 and len(self.sel) == 1:  # poignées aux quatre coins du repère sélectionné
+            m = chosen[0]
+            for corner in P.CORNERS:
+                hx = (m["x"] + (m["w"] if "e" in corner else 0)) * z
+                hy = (m["y"] + (m["h"] if corner.startswith("s") else 0)) * z
+                c.create_rectangle(hx - 5, hy - 5, hx + 5, hy + 5, fill=PAL["accent"], outline=PAL["surface"], tags=("handle", f"h:{corner}:{m['id']}"))
         bw, bh = P.bounds(s)
         c.configure(scrollregion=(0, 0, max(bw, 900) * z, max(bh, 500) * z))
         self.info.configure(text=f"{len(s['places'])} place(s) · {len(self.sel)} sélectionné(s) · glissez pour déplacer, Suppr pour retirer")
+
+    def _handle(self, e):
+        """(coin, repère) si le clic tombe sur une poignée de redimensionnement."""
+        cx, cy = self.canvas.canvasx(e.x), self.canvas.canvasy(e.y)
+        for item in self.canvas.find_overlapping(cx, cy, cx, cy):
+            for tag in self.canvas.gettags(item):
+                if tag.startswith("h:"):
+                    _, corner, iid = tag.split(":")
+                    return corner, self.by_id(iid)
+        return None
 
     def _hit(self, e):
         cx, cy = self.canvas.canvasx(e.x), self.canvas.canvasy(e.y)
@@ -281,6 +304,10 @@ class SalleEditor(dialogs.Dialog):
         self.canvas.focus_set()
         self.err.configure(text="")
         cx, cy = self.canvas.canvasx(e.x), self.canvas.canvasy(e.y)
+        handle = self._handle(e)
+        if handle:
+            self.drag = {"mode": "resize", "corner": handle[0], "m": handle[1]}
+            return
         hit = self._hit(e)
         shift = bool(e.state & 0x0001)
         if hit is None:
@@ -301,7 +328,10 @@ class SalleEditor(dialogs.Dialog):
         if not d:
             return
         cx, cy = self.canvas.canvasx(e.x), self.canvas.canvasy(e.y)
-        if d["mode"] == "move":
+        if d["mode"] == "resize":
+            P.resize_marker(d["m"], d["corner"], cx / self.zoom, cy / self.zoom)
+            self.redraw()
+        elif d["mode"] == "move":
             dx, dy = (cx - d["x"]) / self.zoom, (cy - d["y"]) / self.zoom
             for iid, (ox, oy) in d["orig"].items():
                 it = self.by_id(iid)
@@ -364,8 +394,22 @@ class SalleEditor(dialogs.Dialog):
             if not name or not name.strip():
                 return
             name = name.strip()
-        m = P.add_marker(self.salle, name, 40, 20 + 40 * len(self.salle["reperes"]))  # sous les repères déjà posés
+        m = P.add_marker(self.salle, name, 0, 0)
+        m["x"], m["y"] = P.next_marker_spot(self.salle, m["w"], m["h"])  # en bas du plan, comme le tableau et le bureau
         self.sel = {m["id"]}
+        self.redraw()
+
+    def rotate_markers(self):
+        chosen = [m for m in self.salle["reperes"] if m["id"] in self.sel]
+        if not chosen:
+            self.err.configure(text="Sélectionnez d'abord un repère (porte, tableau…) à pivoter.")
+            return
+        for m in chosen:
+            P.rotate_marker(m)
+        self.redraw()
+
+    def rotate_room(self):
+        P.rotate_room(self.salle)
         self.redraw()
 
     def delete_selection(self):

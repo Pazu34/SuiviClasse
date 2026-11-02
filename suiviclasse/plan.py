@@ -2,9 +2,11 @@
 
 Données (rangées dans les données chiffrées) :
     state["salles"]  = [salle, …]
-    salle  = {"id", "nom", "place": {"w", "h"}, "places": [{"id", "x", "y"}, …], "reperes": [{"id", "texte", "x", "y", "w", "h"}, …]}
+    salle  = {"id", "nom", "place": {"w", "h"}, "places": [{"id", "x", "y"}, …], "reperes": [{"id", "texte", "x", "y", "w", "h", "angle"}, …]}
              Les places ont toutes la même taille (« place » : chaise + bureau) ; les repères (tableau, bureau du professeur,
-             porte…) sont des rectangles étiquetés où l'on ne place personne. Coordonnées en pixels, à 100 % de zoom.
+             porte…) sont des rectangles étiquetés où l'on ne place personne ; « angle » (0 ou 90) est l'orientation du texte.
+             Coordonnées en pixels, à 100 % de zoom. Par défaut le tableau et le bureau sont en bas du plan : on regarde la classe
+             comme le professeur, qui lui fait face.
     classe["plans"]       = [plan, …]        plusieurs répartitions possibles (par trimestre, par chapitre…)
     classe["plan_actif"]  = id de la répartition affichée
     plan   = {"id", "nom", "salle": id de la salle, "places": {id de la place: id de l'élève}}
@@ -48,14 +50,28 @@ def add_place(salle, x, y):
     return p
 
 
-def add_marker(salle, texte, x, y, w=None, h=34):
-    w = w or (360 if texte == "Tableau" else 260 if "Bureau" in texte else 130)
-    m = {"id": uid(), "texte": texte, "x": int(x), "y": int(y), "w": int(w), "h": int(h)}
+def marker_size(texte):
+    """Dimensions par défaut d'un repère selon son nom."""
+    return (360, 34) if texte == "Tableau" else (260, 34) if "Bureau" in texte else (130, 34)
+
+
+def add_marker(salle, texte, x, y, w=None, h=None, angle=0):
+    dw, dh = marker_size(texte)
+    m = {"id": uid(), "texte": texte, "x": int(x), "y": int(y), "w": int(w or dw), "h": int(h or dh), "angle": angle}
     salle["reperes"].append(m)
     return m
 
 
-def add_rows(salle, rows, cols, x0=40, y0=80, gap_x=14, gap_y=22, pair_gap=0, group=1):
+def next_marker_spot(salle, w, h):
+    """Emplacement d'un nouveau repère : en bas du plan, sous les places, à la suite des repères déjà posés sur cette bande."""
+    bottom = max((p["y"] + salle["place"]["h"] for p in salle["places"]), default=40)
+    y = bottom + 30
+    band = [m for m in salle["reperes"] if m["y"] >= bottom]
+    x = max((m["x"] + m["w"] + 20 for m in band), default=40)
+    return x, y
+
+
+def add_rows(salle, rows, cols, x0=40, y0=40, gap_x=14, gap_y=22, pair_gap=0, group=1):
     """Rangées de places (lignes × colonnes). `group` : nombre de places côte à côte avant un espace plus large `pair_gap`
     (2 = binômes). Retourne les places créées."""
     w, h = salle["place"]["w"], salle["place"]["h"]
@@ -70,7 +86,7 @@ def add_rows(salle, rows, cols, x0=40, y0=80, gap_x=14, gap_y=22, pair_gap=0, gr
     return out
 
 
-def add_islands(salle, rows, cols, per_row=2, per_col=2, x0=40, y0=80, gap_x=6, gap_y=6, island_gap=40):
+def add_islands(salle, rows, cols, per_row=2, per_col=2, x0=40, y0=40, gap_x=6, gap_y=6, island_gap=40):
     """Îlots de `per_row` × `per_col` places collées, disposés en `rows` × `cols` îlots."""
     w, h = salle["place"]["w"], salle["place"]["h"]
     iw, ih = per_row * w + (per_row - 1) * gap_x, per_col * h + (per_col - 1) * gap_y
@@ -96,10 +112,22 @@ def bounds(salle, margin=40):
     return max(xs, default=400) + margin, max(ys, default=300) + margin
 
 
+def front_is_bottom(salle):
+    """Le tableau est-il sous les places (point de vue du professeur) ? Alors le devant de la classe est en bas du plan."""
+    if not salle["places"]:
+        return False
+    mean = sum(p["y"] for p in salle["places"]) / len(salle["places"])
+    return any(norm(m["texte"]) == "tableau" and m["y"] > mean for m in salle["reperes"])
+
+
 def reading_order(salle):
-    """Identifiants des places dans l'ordre de lecture (rangée par rangée, de gauche à droite)."""
+    """Identifiants des places dans l'ordre de remplissage : rangée par rangée en partant du côté du tableau
+    (le devant de la classe), de gauche à droite."""
     h = salle["place"]["h"]
-    return [p["id"] for p in sorted(salle["places"], key=lambda p: (round(p["y"] / (h * 0.6)), p["x"]))]
+    rows = sorted(salle["places"], key=lambda p: (round(p["y"] / (h * 0.6)), p["x"]))
+    if front_is_bottom(salle):  # rangées du bas vers le haut, chaque rangée de gauche à droite
+        rows = sorted(salle["places"], key=lambda p: (-round(p["y"] / (h * 0.6)), p["x"]))
+    return [p["id"] for p in rows]
 
 
 def find(salles, salle_id):
@@ -107,11 +135,14 @@ def find(salles, salle_id):
 
 
 def demo_salle():
-    """Salle d'exemple : tableau et bureau du professeur, trois rangées de quatre places."""
+    """Salle d'exemple, vue du professeur : trois rangées de quatre places, le tableau et le bureau en bas du plan."""
     s = new_salle("Salle d'exemple")
-    add_marker(s, "Tableau", 40 + 80, 20)
-    add_marker(s, "Bureau du professeur", 40 + 620, 20)
     add_rows(s, 3, 4)
+    width = 4 * s["place"]["w"] + 3 * 14
+    x, y = next_marker_spot(s, 360, 34)
+    add_marker(s, "Tableau", x + (width - 360) // 2 - 120, y)
+    bureau = marker_size("Bureau du professeur")[0]
+    add_marker(s, "Bureau du professeur", x + width - bureau, y)
     return s
 
 
@@ -241,6 +272,47 @@ def copy_salle(salle, nom):
     out = {"id": uid(), "nom": nom, "place": dict(salle["place"]),
            "places": [{**p, "id": uid()} for p in salle["places"]], "reperes": [{**m, "id": uid()} for m in salle["reperes"]]}
     return out
+
+
+# ---------------------------------------------------------------- repères : taille et orientation
+MIN_MARKER = 20
+CORNERS = ("nw", "ne", "sw", "se")
+
+
+def resize_marker(m, corner, px, py):
+    """Déplace un coin du repère jusqu'au point (px, py) (coordonnées du plan, alignées sur la grille) ; taille minimale 20."""
+    px, py = snap(px), snap(py)
+    x0, y0, x1, y1 = m["x"], m["y"], m["x"] + m["w"], m["y"] + m["h"]
+    if "w" in corner:
+        x0 = min(px, x1 - MIN_MARKER)
+    else:
+        x1 = max(px, x0 + MIN_MARKER)
+    if corner.startswith("n"):
+        y0 = min(py, y1 - MIN_MARKER)
+    else:
+        y1 = max(py, y0 + MIN_MARKER)
+    m["x"], m["y"], m["w"], m["h"] = max(0, x0), max(0, y0), x1 - max(0, x0), y1 - max(0, y0)
+
+
+def rotate_marker(m):
+    """Pivote un repère de 90° autour de son centre : largeur et hauteur s'échangent, le texte passe de l'horizontal au vertical (et inversement)."""
+    cx, cy = m["x"] + m["w"] / 2, m["y"] + m["h"] / 2
+    m["w"], m["h"] = m["h"], m["w"]
+    m["x"], m["y"] = max(0, snap(cx - m["w"] / 2)), max(0, snap(cy - m["h"] / 2))
+    m["angle"] = 90 if m.get("angle", 0) == 0 else 0
+
+
+def rotate_room(salle):
+    """Retourne toute la salle de 180° (places et repères) : passer du point de vue des élèves à celui du professeur, ou l'inverse.
+    Le texte des repères reste lisible."""
+    w, h = salle["place"]["w"], salle["place"]["h"]
+    items = [(p, w, h) for p in salle["places"]] + [(m, m["w"], m["h"]) for m in salle["reperes"]]
+    if not items:
+        return
+    lo_x, hi_x = min(i["x"] for i, _, _ in items), max(i["x"] + iw for i, iw, _ in items)
+    lo_y, hi_y = min(i["y"] for i, _, _ in items), max(i["y"] + ih for i, _, ih in items)
+    for i, iw, ih in items:
+        i["x"], i["y"] = lo_x + hi_x - (i["x"] + iw), lo_y + hi_y - (i["y"] + ih)
 
 
 def add_demo_plan(data, cls):

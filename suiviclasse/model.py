@@ -5,7 +5,8 @@ et quelques fonctions de calcul.
     classe = {"id", "nom", "eleves": [eleve, …]}
     eleve  = {"id", "nom", "prenom", "numero", "naissance", "infos", "extra",
               "notes": {"1": 14.5 | None, "2": …, "3": …}, "comms": {"1": "", …}, "events": [evenement, …]}
-    evenement = {"id", "type": "seance" | "travail" | "oubli", "t": 1..3, "v": ±0.5, ±1 (séance) ou 1,
+    evenement = {"id", "type": "seance" | "travail" | "oubli" | "qualSeance" | "qualMaison", "t": 1..3,
+                 "v": ±0.5, ±1 (séance), 1, ou 1 à 5 pour une lettre de A (5) à E (1) (qualSeance, qualMaison),
                  "date": ISO 8601 UTC, "note": ""}
 Les notes et commentaires sont indexés par le numéro de période écrit en texte ("1", "2", "3") : trimestres 1 à 3,
 ou semestres 1 et 2 (préférence « Découpage de l'année » ; la 3e période est alors masquée mais conservée).
@@ -50,16 +51,16 @@ def new_student(nom, prenom="", infos=""):
             "notes": {"1": None, "2": None, "3": None}, "comms": {"1": "", "2": "", "3": ""}, "events": [], "extra": {}}
 
 
-# (nom, prénom, infos, note T1, commentaire T1, oublis, travail non fait, points de séance)
+# (nom, prénom, infos, note T1, commentaire T1, oublis, travail non fait, points de séance, notes A-E en séance, notes A-E à la maison)
 _DEMO = [
-    ("ANDRÉ", "Léa", "PAI asthme (exemple)", 14.5, "Bon début de trimestre, élève sérieuse.", 0, 0, [1, 0.5, 1]),
-    ("BERNARD", "Zoé", "", 11, "Participe volontiers, doit soigner la présentation.", 2, 1, [0.5, -0.5]),
-    ("CHARPENTIER", "Lucas", "Dyslexie, tiers temps (exemple)", 9.5, "Des difficultés à rester concentré, à encourager.", 3, 3, [-1, -0.5, 0.5]),
-    ("DUBOIS", "Emma", "", 17, "Très bon travail.", 0, 0, [1, 1, 1, 0.5]),
-    ("FONTAINE", "Jules", "", 12, "Peut mieux faire : manque de régularité.", 1, 2, [0.5, -0.5, -0.5]),
-    ("GARCIA", "Inès", "Suivi PAP (exemple)", 13, "", 1, 0, [1, 0.5]),
-    ("HENRY", "Noah", "", None, "", 4, 2, [-1]),
-    ("LAMBERT", "Chloé", "", 19, "Excellente élève, très impliquée.", 0, 0, [1, 1, 1]),
+    ("ANDRÉ", "Léa", "PAI asthme (exemple)", 14.5, "Bon début de trimestre, élève sérieuse.", 0, 0, [1, 0.5, 1], "ABA", "AB"),
+    ("BERNARD", "Zoé", "", 11, "Participe volontiers, doit soigner la présentation.", 2, 1, [0.5, -0.5], "BCB", "CB"),
+    ("CHARPENTIER", "Lucas", "Dyslexie, tiers temps (exemple)", 9.5, "Des difficultés à rester concentré, à encourager.", 3, 3, [-1, -0.5, 0.5], "DCD", "ED"),
+    ("DUBOIS", "Emma", "", 17, "Très bon travail.", 0, 0, [1, 1, 1, 0.5], "AAAB", "AA"),
+    ("FONTAINE", "Jules", "", 12, "Peut mieux faire : manque de régularité.", 1, 2, [0.5, -0.5, -0.5], "CBC", ""),
+    ("GARCIA", "Inès", "Suivi PAP (exemple)", 13, "", 1, 0, [1, 0.5], "BB", "BA"),
+    ("HENRY", "Noah", "", None, "", 4, 2, [-1], "", "E"),
+    ("LAMBERT", "Chloé", "", 19, "Excellente élève, très impliquée.", 0, 0, [1, 1, 1], "AAA", "AB"),
 ]
 
 
@@ -67,7 +68,7 @@ def demo_class():
     """Classe « Test » avec des élèves fictifs et quelques données, pour essayer le programme.
     Elle se supprime comme n'importe quelle classe (bouton « Supprimer la classe »)."""
     cls = new_class(DEMO_NAME)
-    for nom, prenom, infos, note, comm, oublis, travail, seance in _DEMO:
+    for nom, prenom, infos, note, comm, oublis, travail, seance, qual_seance, qual_maison in _DEMO:
         s = new_student(nom, prenom, infos)
         s["notes"]["1"], s["comms"]["1"] = note, comm
         for _ in range(oublis):
@@ -76,6 +77,10 @@ def demo_class():
             add_event(s, "travail", 1, 1)
         for v in seance:
             add_event(s, "seance", 1, v)
+        for letter in qual_seance:
+            add_event(s, "qualSeance", 1, grade_value(letter))
+        for letter in qual_maison:
+            add_event(s, "qualMaison", 1, grade_value(letter))
         cls["eleves"].append(s)
     sort_students(cls)
     ensure_numbers(cls)
@@ -261,6 +266,50 @@ def coerce_extra(value, typ):
 def extra_value(student, col, t):
     """Valeur d'une colonne personnalisée (dictionnaire de configuration `col`) pour la période t, selon son type."""
     return coerce_extra(get_extra(student, col["id"], t), col["type"])
+
+
+# ---------------------------------------------------------------- notes de A à E (travail en séance, travail à la maison)
+GRADES = "ABCDE"  # A = excellent … E = très mauvais ; l'entrée du journal garde la valeur 5 (A) à 1 (E)
+GRADE_NAMES = {"A": "excellent", "B": "bien", "C": "moyen", "D": "insuffisant", "E": "très mauvais"}
+NOT_GRADED = "non noté"
+
+
+def grade_value(letter):
+    """A -> 5 … E -> 1."""
+    return len(GRADES) - GRADES.index(letter)
+
+
+def grade_letter(value):
+    """5 -> A … 1 -> E (valeur arrondie et bornée)."""
+    return GRADES[len(GRADES) - min(len(GRADES), max(1, int(round(value))))]
+
+
+def grade_events(student, type_, t):
+    """Entrées de notes (de la plus ancienne à la plus récente) d'une colonne pour la période t."""
+    return [e for e in student["events"] if e["type"] == type_ and e["t"] == t and 1 <= e["v"] <= len(GRADES)]
+
+
+def grade_mean(student, type_, t):
+    """Moyenne (de 1 = E à 5 = A) des notes attribuées sur la période, ou None si l'élève n'a aucune note."""
+    values = [e["v"] for e in grade_events(student, type_, t)]
+    return sum(values) / len(values) if values else None
+
+
+def grade_text(mean):
+    """Moyenne affichée sous forme de lettre avec + ou − (« B+ », « C », « D− »), ou « non noté » sans note.
+    La lettre est la plus proche de la moyenne ; le + ou le − indique le tiers de l'intervalle où elle se situe."""
+    if mean is None:
+        return NOT_GRADED
+    near = min(len(GRADES), max(1, int(mean + 0.5 + 1e-9)))
+    gap = mean - near
+    return grade_letter(near) + ("+" if gap > 1 / 6 else "−" if gap < -1 / 6 else "")
+
+
+def grade_level(mean):
+    """Couleur d'alerte d'une moyenne : A et B 'ok', C neutre, D 'warn', E 'bad' ; '' sans note."""
+    if mean is None:
+        return ""
+    return {"A": "ok", "B": "ok", "C": "", "D": "warn", "E": "bad"}[grade_letter(mean)]
 
 
 def remove_last(student, type_, t):

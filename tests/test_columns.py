@@ -22,8 +22,8 @@ class IncrementsTest(unittest.TestCase):
 
 class ConfigurationTest(unittest.TestCase):
     def test_colonnes_integrees(self):
-        base = C.builtin({}, "travail")
-        self.assertEqual((base["titre"], base["emoji"], base["increments"], base["visible"]), ("Travail non fait", "📝", [-1, 1], True))
+        base = C.builtin({}, "oubli")
+        self.assertEqual((base["titre"], base["emoji"], base["increments"], base["visible"]), ("Oubli matériel", "🎒", [-1, 1], True))
         self.assertEqual(C.builtin({}, "travail", short=True)["titre"], "Travail")
         over = {"builtin": {"travail": {"titre": "Devoirs", "increments": [2], "visible": False}, "oubli": {"emoji": ""}}}
         self.assertEqual(C.builtin(over, "travail", short=True)["titre"], "Devoirs")   # un titre choisi vaut pour toutes les présentations
@@ -124,7 +124,8 @@ class ColonnesDeBaseTest(unittest.TestCase):
 
     def test_ordre_des_colonnes(self):
         self.assertEqual(C.order({}, []), C.DEFAULT_ORDER)
-        self.assertEqual(C.order({}, ["c1", "c2"]), ["numero", "nom", "prenom", "infos", "notes", "seancePlus", "seanceMoins", "travail", "oubli", "c1", "c2", "comm", "fiche"])
+        self.assertEqual(C.order({}, ["c1", "c2"]), ["numero", "nom", "prenom", "infos", "notes", "qualSeance", "qualMaison", "seancePlus", "seanceMoins",
+                                                     "travail", "oubli", "c1", "c2", "comm", "fiche"])
         # ordre choisi : on le respecte ; les colonnes manquantes reprennent leur place, les inconnues sont ignorées
         st = {"ordre": ["prenom", "nom", "inconnue", "c1", "travail", "prenom"]}
         got = C.order(st, ["c1", "c2"])
@@ -193,3 +194,69 @@ class IconesTest(unittest.TestCase):
         px = next(row[k:k + 4] for row in rows for k in range(0, 64, 4) if row[k + 3] > 200)
         self.assertEqual(tuple(px[:3]), (0x33, 0x66, 0x99))
         self.assertNotEqual(icons.arrow_png("#336699", 16, flip=True), data, "« rétablir » est le symétrique de « annuler »")
+
+
+class NotesLettresTest(unittest.TestCase):
+    """Colonnes « Travail en séance » et « Travail à la maison » : une lettre de A à E par séance, moyenne par période."""
+
+    def eleve(self, seance="", maison="", t=1):
+        s = model.new_student("Martin", "Léa")
+        for letter in seance:
+            model.add_event(s, "qualSeance", t, model.grade_value(letter))
+        for letter in maison:
+            model.add_event(s, "qualMaison", t, model.grade_value(letter))
+        return s
+
+    def test_lettres_et_valeurs(self):
+        self.assertEqual([model.grade_value(x) for x in "ABCDE"], [5, 4, 3, 2, 1])
+        self.assertEqual([model.grade_letter(v) for v in (5, 4, 3, 2, 1)], list("ABCDE"))
+
+    def test_non_note(self):
+        s = self.eleve()
+        self.assertIsNone(model.grade_mean(s, "qualSeance", 1))
+        self.assertEqual(model.grade_text(model.grade_mean(s, "qualSeance", 1)), "non noté")
+        self.assertEqual(model.grade_level(None), "")
+
+    def test_moyenne_par_colonne_et_par_periode(self):
+        s = self.eleve("AB", "E")
+        model.add_event(s, "qualSeance", 2, model.grade_value("E"))   # un autre trimestre : ne compte pas
+        self.assertEqual(model.grade_mean(s, "qualSeance", 1), 4.5)
+        self.assertEqual(model.grade_text(model.grade_mean(s, "qualSeance", 1)), "A−")
+        self.assertEqual(model.grade_text(model.grade_mean(s, "qualMaison", 1)), "E")
+        self.assertEqual(model.grade_text(model.grade_mean(s, "qualSeance", 2)), "E")
+        self.assertEqual(model.grade_text(model.grade_mean(s, "qualMaison", 3)), "non noté")
+
+    def test_lettre_de_la_moyenne(self):
+        got = {m: model.grade_text(m) for m in (5, 4.6, 4.3, 4, 3.7, 3.1, 3, 2.9, 2.8, 2.3, 2, 1.5, 1.2, 1)}
+        self.assertEqual(got, {5: "A", 4.6: "A−", 4.3: "B+", 4: "B", 3.7: "B−", 3.1: "C", 3: "C", 2.9: "C", 2.8: "C−",
+                               2.3: "D+", 2: "D", 1.5: "D−", 1.2: "E+", 1: "E"})
+        self.assertEqual([model.grade_level(m) for m in (5, 4, 3, 2, 1)], ["ok", "ok", "", "warn", "bad"])
+
+    def test_annuler_la_derniere_note(self):
+        s = self.eleve("ABC")
+        model.remove_last(s, "qualSeance", 1)
+        self.assertEqual(model.grade_mean(s, "qualSeance", 1), 4.5)
+        self.assertEqual(len(model.grade_events(s, "qualSeance", 1)), 2)
+
+    def test_les_notes_n_alterent_pas_les_compteurs(self):
+        s = self.eleve("AAA", "BB")
+        self.assertEqual(model.stats(s, 1), (0, 0, 0, 0))
+
+    def test_affichage_par_defaut(self):
+        visible = [k for k in C.BUILTIN_ORDER if C.builtin({}, k)["visible"]]
+        self.assertEqual(visible, ["qualSeance", "qualMaison", "oubli"])
+        self.assertEqual(C.builtin({}, "qualMaison")["type"], "lettres")
+        # un ancien compteur masqué par défaut se réaffiche à la demande
+        self.assertTrue(C.builtin({"builtin": {"travail": {"visible": True}}}, "travail")["visible"])
+        self.assertFalse(C.builtin({"builtin": {"qualSeance": {"visible": False}}}, "qualSeance")["visible"])
+
+    def test_libelle_du_journal(self):
+        self.assertEqual(C.type_label({}, "qualSeance"), "Travail en séance")
+        self.assertEqual(C.type_label({"builtin": {"qualMaison": {"titre": "Devoirs"}}}, "qualMaison"), "Devoirs")
+
+    def test_classe_test_avec_notes(self):
+        cls = model.demo_class()
+        mean = {s["prenom"]: model.grade_text(model.grade_mean(s, "qualSeance", 1)) for s in cls["eleves"]}
+        self.assertEqual(mean["Noah"], "non noté")
+        self.assertEqual(mean["Emma"], "A−")
+        self.assertEqual(model.grade_text(model.grade_mean(next(s for s in cls["eleves"] if s["prenom"] == "Jules"), "qualMaison", 1)), "non noté")

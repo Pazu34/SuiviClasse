@@ -84,6 +84,7 @@ def apply(root, mode="clair"):
     style.configure("Danger.TButton", foreground=p["danger"])
     style.configure("Plus.TButton", padding=(9, 4), font=(family, 11, "bold"))
     style.configure("Mini.TButton", padding=(4, 1), font=small, width=0)
+    style.configure("Letter.Mini.TButton", padding=(2, 1))  # boutons A à E : une lettre, le plus étroit possible
     # onglets / sélecteurs en « pilules »
     style.configure("Pill.Toolbutton", background=p["surface2"], foreground=p["text"], padding=(12, 5), relief="flat", borderwidth=0, **{**flat, "bordercolor": p["surface2"]})
     style.map("Pill.Toolbutton", background=[("selected", p["accent"]), ("active", p["hover"])],

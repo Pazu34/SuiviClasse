@@ -12,7 +12,7 @@ from tkinter import messagebox, simpledialog, ttk
 from .. import columns, exchange, model
 from .. import plan as P
 from . import dialogs
-from .table import COUNTER_KINDS, build_columns, counter_state
+from .table import COUNTER_KINDS, build_columns, counter_state, grade_state
 from .theme import P as PAL
 
 LEVEL_COLORS = {"ok": "ok", "warn": "warn", "bad": "bad"}
@@ -95,7 +95,8 @@ class PlanView(ttk.Frame):
         return next((s for s in self.cls["eleves"] if s["id"] == sid), None)
 
     def counter_cols(self):
-        return [c for c in build_columns(self.app) if c.kind in COUNTER_KINDS]
+        """Colonnes qui ont une pastille sur chaque place : compteurs et notes de A à E."""
+        return [c for c in build_columns(self.app) if c.kind in COUNTER_KINDS or c.kind == "grade"]
 
     # ---------- barre d'outils ----------
     def _build_toolbar(self):
@@ -198,6 +199,12 @@ class PlanView(ttk.Frame):
         ch = self.f_chip.metrics("linespace") + 4
         labels = []
         for col in cols:
+            if col.kind == "grade":  # moyenne des notes A à E ; « – » tant que l'élève n'a aucune note (la place est comptée)
+                text, level, n = grade_state(self.app, col, s, t)
+                title = columns.builtin(self.app.state["settings"], col.key, short=True)["titre"]
+                icon = col.icon if icons and col.icon else P.initial_text(title)
+                labels.append((col, f"{icon}{text if n else '–'}", level))
+                continue
             value, level = counter_state(self.app, col, s, t)
             icon = col.icon if icons and col.icon else P.initial_text(col.title)
             labels.append((col, f"{icon}{exchange.fmt_num(value)}", level))
@@ -358,7 +365,13 @@ class PlanView(ttk.Frame):
         if not hit:
             return
         if hit[0] == "chip":
-            self.add_increment(hit[1], hit[2])
+            col = self.col_by_key(hit[2])
+            if col is not None and col.kind == "grade":  # une note de A à E se choisit dans un menu
+                menu = tk.Menu(self, tearoff=0)
+                self._counter_menu(menu, hit[1], col)
+                menu.tk_popup(e.x_root, e.y_root)
+            else:
+                self.add_increment(hit[1], hit[2])
         elif hit[0] == "more":
             self.popup_more(hit[1], e)
         elif hit[0] == "name":
@@ -384,7 +397,36 @@ class PlanView(ttk.Frame):
         if w is not None and w.winfo_exists() and w.s is s:
             w.refresh()
 
+    def add_grade(self, pid, key, letter):
+        col, s = self.col_by_key(key), self.student(self.plan["places"].get(pid))
+        if col is None or s is None:
+            return
+        model.add_event(s, col.event, self.app.t, model.grade_value(letter))
+        self.after_student_change(s)
+
+    def remove_last_grade(self, pid, key):
+        col, s = self.col_by_key(key), self.student(self.plan["places"].get(pid))
+        if col is None or s is None:
+            return
+        model.remove_last(s, col.event, self.app.t)
+        self.after_student_change(s)
+
+    def _grade_menu(self, menu, pid, col):
+        """Notes de A à E à attribuer, moyenne actuelle, annulation de la dernière note."""
+        s = self.student(self.plan["places"].get(pid))
+        for letter in model.GRADES:
+            menu.add_command(label=f"{col.title} : {letter} — {model.GRADE_NAMES[letter]}", command=lambda l=letter: self.add_grade(pid, col.key, l))
+        if s is not None:
+            text, _, n = grade_state(self.app, col, s, self.app.t)
+            menu.add_separator()
+            menu.add_command(label=f"Moyenne : {text}" + (f" ({n} note{'s' if n > 1 else ''})" if n else ""), state="disabled")
+            if n:
+                last = model.grade_events(s, col.event, self.app.t)[-1]
+                menu.add_command(label=f"Annuler la dernière note ({model.grade_letter(last['v'])})", command=lambda: self.remove_last_grade(pid, col.key))
+
     def _counter_menu(self, menu, pid, col):
+        if col.kind == "grade":
+            return self._grade_menu(menu, pid, col)
         for v in col.increments:
             menu.add_command(label=f"{col.title} {columns.increment_label(v)}", command=lambda v=v: self.add_increment(pid, col.key, v))
         menu.add_command(label=f"{col.title} : saisir le total…", command=lambda: self.type_total(pid, col))

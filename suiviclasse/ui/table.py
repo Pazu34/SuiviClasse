@@ -10,8 +10,8 @@ from .theme import P
 
 # Dimensions selon la densité : hauteur de ligne, largeur des boutons d'incrément et du total.
 LAYOUTS = {
-    "compact": {"row_h": 26, "char": 6, "pad": 11, "min_btn": 17, "total": 34, "gap": 6},
-    "normal": {"row_h": 30, "char": 7, "pad": 14, "min_btn": 20, "total": 40, "gap": 8},
+    "compact": {"row_h": 26, "char": 6, "pad": 11, "min_btn": 17, "total": 34, "gap": 6, "avg": 58},
+    "normal": {"row_h": 30, "char": 7, "pad": 14, "min_btn": 20, "total": 40, "gap": 8, "avg": 66},
 }
 # Largeur par défaut (compact, normal) de chaque sorte de colonne
 WIDTHS = {"numero": (30, 40), "nom": (108, 150), "prenom": (94, 125), "infos": (104, 150), "note": (46, 64),
@@ -49,7 +49,7 @@ def build_columns(app):
     for key in columns.BUILTIN_ORDER:
         cfg = columns.builtin(settings, key, short=compact)
         if cfg["visible"]:
-            kind = "seance" if key.startswith("seance") else "counter"
+            kind = "grade" if key in columns.GRADE_KEYS else "seance" if key.startswith("seance") else "counter"
             defs[key] = [Col(key, kind, cfg["titre"], cfg["emoji"], cfg, event=columns.BUILTIN_EVENT[key], per_period=True)]
     customs = columns.customs(settings)
     for c in (c for c in customs if c["visible"]):
@@ -81,6 +81,12 @@ def wrapped_lines(text, font, width):
                 lines, used = lines + w // width, w % width
         total += lines
     return total
+
+
+def grade_state(app, col, student, t):
+    """(moyenne affichée, niveau d'alerte, nombre de notes) d'une colonne de notes de A à E pour un élève et une période."""
+    mean = model.grade_mean(student, col.event, t)
+    return model.grade_text(mean), model.grade_level(mean), len(model.grade_events(student, col.event, t))
 
 
 def parse_grade(text, maxi=20):
@@ -143,6 +149,10 @@ class ClassTable(ttk.Frame):
         self.head_font = tkfont.Font(family=self.font[0], size=self.font[1] - 1, weight="bold")
         self.icon_font = tkfont.Font(family="Segoe UI Emoji" if "Segoe UI Emoji" in tkfont.families() else self.font[0], size=self.font[1] + 4)
         self.linespace = self.measure.metrics("linespace")
+        probe = ttk.Button(self, text="A", style="Letter.Mini.TButton")  # largeur réelle d'un bouton de lettre
+        probe.update_idletasks()
+        self.letter_w = probe.winfo_reqwidth()
+        probe.destroy()
 
     # ---------- dimensions ----------
     def button_width(self, label):
@@ -158,6 +168,8 @@ class ClassTable(ttk.Frame):
         i = 0 if self.mode == "compact" else 1
         if col.kind == "note":
             width = WIDTHS["note"][i]
+        elif col.kind == "grade":  # cinq boutons A à E, puis la moyenne
+            width = len(model.GRADES) * (self.letter_w + 2) + self.layout["avg"] + self.layout["gap"]
         elif col.kind in COUNTER_KINDS:
             labels = [lab for _, lab in self.counter_labels(col)]
             width = sum(self.button_width(x) for x in labels) + self.layout["total"] + self.layout["gap"] + 2 * len(labels)
@@ -330,7 +342,7 @@ class Row:
         self.font, self.bold = table.font, table.bold
         self.bg = P["surface"] if r % 2 == 0 else P["zebra"]  # lignes alternées
         self.cells, self.height = [], table.row_h
-        self.note_vars, self.xvars, self.seance, self.counters, self.checks = {}, {}, [], {}, {}
+        self.note_vars, self.xvars, self.seance, self.counters, self.checks, self.grades = {}, {}, [], {}, {}, {}
         self.texts = []  # zones de texte à hauteur variable : (colonne, widget)
         self.comm = self.num = self.name = self.prenom = self.infos = None  # restent None si la colonne est masquée
         for i, col in enumerate(table.cols):
@@ -420,6 +432,17 @@ class Row:
         self._counter_cell(col, parent, total)
         self._editable(total, lambda total=total, col=col: self.edit_count(total, col.key))
         self.counters[col.key] = (parent, total)
+
+    def _build_grade(self, col, parent, i):
+        """Cinq boutons A à E (un clic = une note pour la séance) puis la moyenne de la période ; un clic sur la moyenne
+        propose d'annuler la dernière note ou d'ouvrir l'historique."""
+        for letter in model.GRADES:
+            ttk.Button(parent, text=letter, style="Letter.Mini.TButton",
+                       command=lambda l=letter, col=col: self.add(col.event, model.grade_value(l))).pack(side="left", padx=1, pady=2)
+        label = tk.Label(parent, font=self.bold, fg=P["text"], cursor="hand2")
+        label.pack(side="left", fill="both", expand=True, padx=(2, 1), pady=2)
+        label.bind("<Button-1>", lambda e, col=col: self.grade_menu(col, e))
+        self.grades[col.key] = (parent, label)
 
     def _build_xnote(self, col, parent, i):
         v = model.extra_value(self.s, col.cfg, self.app.t)
@@ -524,6 +547,12 @@ class Row:
                     orange, rouge = col.cfg.get("orange"), col.cfg.get("rouge")
                     level = model.level(n, orange or float("inf"), rouge or float("inf")) if (orange or rouge) else ""
                 self._paint_counter(col, n, level)
+            elif col.kind == "grade":
+                text, level, n = grade_state(self.app, col, s, t)
+                cell, label = self.grades[col.key]
+                color = self.color(level)
+                cell.configure(bg=color)
+                label.configure(text=text, bg=color, fg=P["text"] if n else P["muted"], font=self.bold if n else self.font)
             elif col.kind == "xcheck":
                 done = bool(model.extra_value(s, col.cfg, t))
                 self.checks[col.key].configure(text="☑" if done else "☐", bg=P["ok"] if done else self.bg)
@@ -654,6 +683,27 @@ class Row:
 
     def add(self, event, value):
         model.add_event(self.s, event, self.app.t, value)
+        self.after_change()
+
+    def grade_menu(self, col, e):
+        """Menu de la moyenne : les notes de la période, annuler la dernière, ouvrir l'historique (fiche de l'élève)."""
+        events = model.grade_events(self.s, col.event, self.app.t)
+        menu = tk.Menu(self.table, tearoff=0)
+        if events:
+            letters = [model.grade_letter(x["v"]) for x in events]
+            shown = ("… " if len(letters) > 12 else "") + " ".join(letters[-12:])
+            last = events[-1]
+            menu.add_command(label=f"{len(letters)} note(s) : {shown}", state="disabled")
+            menu.add_command(label=f"Annuler la dernière note ({model.grade_letter(last['v'])} du {model.event_datetime(last):%d/%m})",
+                             command=lambda: self.remove_last_grade(col))
+        else:
+            menu.add_command(label="Aucune note attribuée sur cette période", state="disabled")
+        menu.add_separator()
+        menu.add_command(label="Historique des notes (fiche de l'élève)…", command=self.open)
+        menu.tk_popup(e.x_root, e.y_root)
+
+    def remove_last_grade(self, col):
+        model.remove_last(self.s, col.event, self.app.t)
         self.after_change()
 
     def after_change(self):

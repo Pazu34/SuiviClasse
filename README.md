@@ -5,7 +5,7 @@ Application de suivi quotidien des élèves, qui remplace un classeur Excel de s
 - une **classe par onglet**, liste d'élèves (n°, nom, prénom, date de naissance, infos PAI / handicap / situation) ;
 - **notes de période** T1, T2, T3 (/20, ou S1 et S2, barème réglable) ;
 - **commentaires trimestriels** pour les bulletins (avec contrôle de la longueur maximale) ;
-- **implication en séance** (boutons +0,5 / +1 / −0,5 / −1), **travail non fait** et **oublis de matériel**, comptés **par trimestre**, avec couleurs d'alerte (seuils réglables) ;
+- **travail en séance** et **travail à la maison**, notés **de A à E** à chaque séance (A = excellent, E = très mauvais), avec la **moyenne de la période** ; **oublis de matériel** compté par trimestre, avec couleurs d'alerte (seuils réglables) ;
 - **fiche élève** avec journal daté de chaque événement ;
 - **échanges avec PRONOTE et les tableurs** (voir plus bas) ;
 - **données chiffrées par mot de passe**, **archives automatiques** pour revenir en arrière, **version portable** pour clé USB.
@@ -20,6 +20,7 @@ Application de suivi quotidien des élèves, qui remplace un classeur Excel de s
 - Quand on saisit directement un total (séance, travail, oublis), le programme ajoute ou retire des entrées du journal pour que le total corresponde (entrées « Ajustement manuel »).
 - Le pictogramme **📝** en bout de ligne ouvre la fiche de l'élève (identité, infos, notes, commentaires des 3 trimestres, journal daté). Sans pictogrammes (Préférences), il devient un bouton « Fiche ».
 - **Annuler / Rétablir** (boutons à icône en haut à gauche) (ou `Ctrl+Z` / `Ctrl+Y` hors d'un champ de saisie) : jusqu'à 100 modifications du tableau, des fiches, des imports et des suppressions de classe. L'historique est conservé tant que le programme est ouvert ; les **archives** couvrent le reste.
+- **Travail en séance / Travail à la maison, notes de A à E** : à chaque séance, un clic sur **A, B, C, D ou E** dans la colonne attribue une note à l'élève (chaque note est une entrée datée du journal, annulable avec **Annuler**). La colonne affiche la **moyenne des notes du trimestre** sous forme de lettre : A = 5 … E = 1, la lettre la plus proche de la moyenne, avec **+** ou **−** selon le tiers de l'intervalle (par exemple A et B donnent **A−**, A, B et E donnent **C+**). Un élève sans aucune note sur la période affiche **non noté**. Un clic sur la moyenne affiche les notes de la période et propose d'**annuler la dernière note** ou d'ouvrir l'historique dans la fiche de l'élève. La moyenne vit par trimestre ou semestre, comme les autres compteurs ; elle est colorée (A et B vert, D orange, E rouge) et s'exporte (« Travail en séance (moyenne) »).
 - Les colonnes à compteur ont un pictogramme (👍 👎 📝 🎒) ; il se désactive dans Préférences → Affichage → Pictogrammes.
 
 ## Colonnes personnalisables
@@ -27,7 +28,7 @@ Application de suivi quotidien des élèves, qui remplace un classeur Excel de s
 **Préférences → Colonnes** (les préférences sont rangées en onglets : Affichage, Colonnes, Alertes, Sauvegardes, Sécurité et bulletins) :
 
 - **Barème des notes** : « Notes sur 20 » par défaut, modifiable (10, 5…). En changeant le barème, le programme propose de convertir les notes déjà saisies (14/20 → 7/10).
-- **Colonnes intégrées** (séance +, séance −, travail non fait, oublis) : on peut changer leur titre, leur pictogramme et leurs **boutons d'incrément** (par exemple « −1 ; +2 »), ou les masquer.
+- **Colonnes intégrées** (travail en séance, travail à la maison, séance +, séance −, travail non fait, oublis) : on peut changer leur titre, leur pictogramme et, pour les compteurs, leurs **boutons d'incrément** (par exemple « −1 ; +2 »), ou les masquer. Les anciens compteurs *séance +*, *séance −* et *travail non fait* sont masqués par défaut (leurs données restent enregistrées) : cochez-les dans **Préférences → Colonnes** pour les retrouver.
 - **Ajouter une colonne** : titre, pictogramme (une sélection classée par thème, ou n'importe quel emoji saisi ou collé) et un type :
   - *Compteur* : un total avec des boutons d'incrément de votre choix (« +0,5 ; +2 », « −2 −1 +1 +2 »…), éventuellement des alertes orange/rouge ;
   - *Note* : sur 10, sur 5, sur ce que vous voulez ;
@@ -47,7 +48,7 @@ Application de suivi quotidien des élèves, qui remplace un classeur Excel de s
 
 ## Classe « Test »
 
-À la création d'un nouveau coffre, le programme contient une classe **Test** (8 élèves fictifs avec notes, commentaires, infos, oublis et séances) pour essayer toutes les fonctions sans toucher à vos vraies données. Elle se supprime comme n'importe quelle classe (bouton **Supprimer la classe** ; une archive des données est créée juste avant, donc **🕘 Archives** permet de revenir en arrière). Pour la retrouver plus tard : **🗂 Données → Ajouter la classe Test**.
+À la création d'un nouveau coffre, le programme contient une classe **Test** (8 élèves fictifs avec notes, commentaires, infos, oublis, séances et notes de travail A à E) pour essayer toutes les fonctions sans toucher à vos vraies données. Elle se supprime comme n'importe quelle classe (bouton **Supprimer la classe** ; une archive des données est créée juste avant, donc **🕘 Archives** permet de revenir en arrière). Pour la retrouver plus tard : **🗂 Données → Ajouter la classe Test**.
 
 ## Lancer le programme
 
@@ -89,7 +90,7 @@ Basés sur la documentation PRONOTE 2026 de l'éditeur (fiches « Exporter au fo
 - Les élèves sont reconnus par nom + prénom (accents, majuscules, tirets ignorés) ; les existants sont mis à jour, les autres créés si la case est cochée.
 - Les notes acceptent la virgule décimale et les annotations PRONOTE : `A D N I R` / `Abs Disp N.Not Inap N.Rdu` (non comptées : la note n'est pas modifiée) et `Z W` / `Abs* N.Rdu*` (comptées 0).
 
-**Exporter** (bouton « ⭱ Exporter (PRONOTE, tableur)… ») : choix du trimestre, des champs (nom, prénom, classe, infos, note, appréciation, séance +/−, travail, oublis), ligne de titres facultative, séparateur tabulation ou point‑virgule ; « Copier » place le tableau dans le presse‑papiers, « Enregistrer » crée un fichier texte UTF‑8.
+**Exporter** (bouton « ⭱ Exporter (PRONOTE, tableur)… ») : choix du trimestre, des champs (nom, prénom, classe, infos, note, appréciation, moyennes de travail A à E, séance +/−, travail, oublis), ligne de titres facultative, séparateur tabulation ou point‑virgule ; « Copier » place le tableau dans le presse‑papiers, « Enregistrer » crée un fichier texte UTF‑8.
 
 À savoir : d'après la documentation, l'import de listes dans PRONOTE est réservé au mode administratif ; côté professeur, les appréciations se saisissent dans *Bulletins > Saisie des appréciations*. Aucune fonction d'import des appréciations depuis un fichier n'est documentée pour les professeurs : l'export est donc prévu pour un copier‑coller ou une saisie assistée, à vérifier dans votre PRONOTE. La longueur maximale d'une appréciation (255 caractères par défaut dans PRONOTE, réglable par l'administration) est réglable dans les préférences ; les appréciations trop longues sont signalées en rouge et à l'export.
 

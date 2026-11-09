@@ -77,6 +77,9 @@ class StudentWindow(Dialog):
         app.student_window = self
         self.cls, self.s = cls, student
         self.protocol("WM_DELETE_WINDOW", self.close)
+        # barre de boutons posée en premier : si la fenêtre est trop basse, c'est le journal qui rétrécit, pas les boutons
+        self.buttons(("Fermer", self.close, "right"), ("Supprimer l’entrée sélectionnée", self.delete_entry, "left"),
+                     ("Supprimer cet élève", self.delete_student, "left"))
         t = app.t
         pad = dict(padx=10, pady=3)
         ttk.Label(self, text=f"{student['nom']} {student['prenom']}", font=("TkDefaultFont", 14, "bold")).pack(anchor="w", **pad)
@@ -156,6 +159,16 @@ class StudentWindow(Dialog):
         quick.pack(fill="x", padx=10)
         self.precision = tk.StringVar()
         ttk.Entry(quick, textvariable=self.precision).pack(fill="x", pady=2)
+        for key in columns.GRADE_KEYS:  # notes de A à E : une ligne par colonne affichée
+            cfg = columns.builtin(app.state["settings"], key)
+            if cfg["visible"]:
+                row = ttk.Frame(quick)
+                row.pack(fill="x")
+                ttk.Label(row, text=((cfg["emoji"] + " ") if cfg["emoji"] else "") + cfg["titre"], width=24).pack(side="left")
+                for letter in model.GRADES:
+                    ttk.Button(row, text=letter, style="Mini.TButton", width=3,
+                               command=lambda e=columns.BUILTIN_EVENT[key], v=model.grade_value(letter): self.add(e, v)).pack(side="left", padx=1, pady=2)
+                ttk.Label(row, text="A excellent … E très mauvais", style="Muted.TLabel").pack(side="left", padx=8)
         specs = self.quick_specs()
         for n in range(0, len(specs), 5):  # cinq boutons par ligne
             row = ttk.Frame(quick)
@@ -167,9 +180,11 @@ class StudentWindow(Dialog):
             self.journal.heading(col, text=text)
             self.journal.column(col, width=w)
         self.journal.pack(fill="both", expand=True, padx=10, pady=3)
-        self.buttons(("Fermer", self.close, "right"), ("Supprimer l’entrée sélectionnée", self.delete_entry, "left"),
-                     ("Supprimer cet élève", self.delete_student, "left"))
         self.refresh()
+        self.update_idletasks()  # la fenêtre grandit si son contenu l'exige, dans la limite de l'écran
+        need = self.winfo_reqheight()
+        if need > 700:
+            self.geometry(f"660x{min(need, self.winfo_screenheight() - 100)}")
 
     # ---------- affichage ----------
     def refresh(self):
@@ -187,14 +202,16 @@ class StudentWindow(Dialog):
         for e in reversed(s["events"]):
             if e["t"] == t:
                 name = columns.type_label(self.app.state["settings"], e["type"])
-                if e["type"] == "seance" or e["v"] != 1:  # la valeur d'un incrément simple (+1) n'est pas répétée
+                if e["type"] in columns.GRADE_KEYS:
+                    name += " : " + model.grade_letter(e["v"])
+                elif e["type"] == "seance" or e["v"] != 1:  # la valeur d'un incrément simple (+1) n'est pas répétée
                     name += " " + columns.increment_label(e["v"])
                 self.journal.insert("", "end", iid=e["id"], values=(model.event_datetime(e).strftime("%d/%m/%Y %H:%M"), name, e["note"]))
 
     def quick_specs(self):
         """Boutons d'ajout au journal : un par incrément de chaque colonne à compteur affichée (intégrée ou personnalisée)."""
         settings, out = self.app.state["settings"], []
-        for key in columns.BUILTIN_ORDER:
+        for key in (k for k in columns.BUILTIN_ORDER if k not in columns.GRADE_KEYS):
             cfg = columns.builtin(settings, key)
             if cfg["visible"]:
                 name = "Séance" if key.startswith("seance") and cfg["titre"] in (columns.BUILTINS[key]["titre"],) else cfg["titre"]
@@ -207,7 +224,14 @@ class StudentWindow(Dialog):
     def stats_text(self, k):
         s, settings = self.s, self.app.state["settings"]
         plus, moins = model.seance(s, k)
-        parts = [f"Séance + {exchange.fmt_num(plus)} · − {exchange.fmt_num(moins)}"]
+        parts = []
+        for key in columns.GRADE_KEYS:  # moyennes des notes de A à E
+            cfg = columns.builtin(settings, key)
+            if cfg["visible"]:
+                short = columns.builtin(settings, key, short=True)["titre"] if cfg["titre"] == columns.BUILTINS[key]["titre"] else cfg["titre"]
+                parts.append(f"{short.lower()} {model.grade_text(model.grade_mean(s, columns.BUILTIN_EVENT[key], k))}")
+        if any(columns.builtin(settings, key)["visible"] for key in ("seancePlus", "seanceMoins")):
+            parts.append(f"Séance + {exchange.fmt_num(plus)} · − {exchange.fmt_num(moins)}")
         for key in ("travail", "oubli"):
             cfg = columns.builtin(settings, key)
             if cfg["visible"]:
@@ -525,6 +549,12 @@ class ExportDialog(Dialog):
 
     def custom_exports(self):
         out = []
+        for key in columns.GRADE_KEYS:  # moyenne des notes de A à E (vide si l'élève n'a aucune note)
+            cfg = columns.builtin(self.app.state["settings"], key)
+            if cfg["visible"]:
+                event = columns.BUILTIN_EVENT[key]
+                out.append((key, cfg["titre"] + " (moyenne)", lambda s, t, event=event: (
+                    "" if model.grade_mean(s, event, t) is None else model.grade_text(model.grade_mean(s, event, t)))))
         for c in (c for c in columns.customs(self.app.state["settings"]) if c["visible"]):
             if c["type"] == "compteur":
                 fn = lambda s, t, c=c: exchange.fmt_num(model.total(s, c["id"], t))

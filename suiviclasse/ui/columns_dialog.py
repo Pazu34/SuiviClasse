@@ -62,7 +62,7 @@ class ColumnEditor(Dialog):
         self.on_ok, self.builtin, self.base, self.data = on_ok, builtin, base, dict(data)
         self.var_title = tk.StringVar(value=data.get("titre", ""))
         self.emoji = data.get("emoji", "")
-        self.var_type = tk.StringVar(value="Colonne de base" if base else TYPE_LABELS[data.get("type", "compteur")])
+        self.var_type = tk.StringVar(value="Colonne de base" if base else TYPE_LABELS.get(data.get("type", "compteur"), "Notes A à E (intégré)"))
         self.var_incs = tk.StringVar(value=columns.format_increments(data.get("increments", [-1, 1])).replace("+", "+"))
         self.var_scale = tk.StringVar(value=exchange.fmt_num(data.get("echelle", 10)))
         self.var_orange = tk.StringVar(value="" if not data.get("orange") else exchange.fmt_num(data["orange"]))
@@ -116,7 +116,10 @@ class ColumnEditor(Dialog):
             "fiche": "Le pictogramme est celui du bouton qui ouvre la fiche, en bout de ligne. Le titre peut rester vide.",
             "notes": "Les colonnes de notes s'appellent T1, T2, T3 (S1, S2 en semestres) : leur titre ne se change pas ici.",
             "nom": "Cette colonne ne peut pas être masquée : elle identifie l'élève."}.get(base, ""))
-        self.frames = (self.f_incs, self.f_scale, self.f_alert, self.f_choix, self.hint_type, self.hint_base)
+        self.hint_lettres = ttk.Label(f, style="Muted.TLabel", wraplength=440, justify="left", text=(
+            "À chaque séance, un clic sur A, B, C, D ou E attribue une note (A = excellent, E = très mauvais). "
+            "La colonne affiche la moyenne des notes de la période, ou « non noté » si l'élève n'en a aucune."))
+        self.frames = (self.f_incs, self.f_scale, self.f_alert, self.f_choix, self.hint_type, self.hint_base, self.hint_lettres)
         self.show_fields()
         self.buttons(("OK", self.ok, "right"), ("Annuler", self.destroy, "right"))
         title.focus_set()
@@ -127,10 +130,12 @@ class ColumnEditor(Dialog):
 
     def show_fields(self):
         """N'affiche que les réglages utiles au type de colonne choisi."""
-        typ = "compteur" if self.builtin else "base" if self.base else self.current_type()
+        typ = ("lettres" if self.builtin in columns.GRADE_KEYS else "compteur") if self.builtin else "base" if self.base else self.current_type()
         for fr in self.frames:
             fr.grid_forget()
-        if typ == "base":
+        if typ == "lettres":
+            self.hint_lettres.grid(row=3, column=0, columnspan=2, sticky="w", pady=(10, 0))
+        elif typ == "base":
             self.hint_base.grid(row=3, column=0, columnspan=2, sticky="w", pady=(10, 0))
         elif typ == "compteur":
             self.f_incs.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(10, 0))
@@ -157,7 +162,7 @@ class ColumnEditor(Dialog):
             self.err.configure(text="Donnez un titre à la colonne.")
             return
         out = {**self.data, "titre": title, "emoji": self.emoji}
-        if self.base:
+        if self.base or self.builtin in columns.GRADE_KEYS:  # titre et pictogramme seulement
             self.destroy()
             self.on_ok(out)
             return
@@ -307,8 +312,10 @@ class ColumnsTab(ttk.Frame):
                 self.tree.insert("", "end", iid=key, values=("☑" if c["visible"] else "☐", c["emoji"], c["titre"] or "(sans titre)", "Colonne de base", detail))
             elif key in columns.BUILTINS:
                 c = self._builtin_cfg(key)
-                self.tree.insert("", "end", iid=key, values=("☑" if c["visible"] else "☐", c["emoji"], c["titre"], "Compteur (intégré)",
-                                                             columns.format_increments(c["increments"])))
+                lettres = key in columns.GRADE_KEYS
+                self.tree.insert("", "end", iid=key, values=("☑" if c["visible"] else "☐", c["emoji"], c["titre"],
+                                                             "Notes A à E (intégré)" if lettres else "Compteur (intégré)",
+                                                             "Moyenne des notes de la période" if lettres else columns.format_increments(c["increments"])))
             else:
                 c = self.custom_of(key)
                 if c is None:
@@ -381,10 +388,10 @@ class ColumnsTab(ttk.Frame):
                     over["titre"] = out["titre"]
                 if out["emoji"] != base["emoji"]:
                     over["emoji"] = out["emoji"]
-                if out["increments"] != [float(v) for v in base["increments"]]:
+                if out.get("increments") and out["increments"] != [float(v) for v in base["increments"]]:
                     over["increments"] = out["increments"]
-                if not cfg["visible"]:
-                    over["visible"] = False
+                if cfg["visible"] != columns.builtin_visible(key):  # n'enregistre que ce qui s'écarte de l'affichage par défaut
+                    over["visible"] = cfg["visible"]
                 self.builtin[key] = over
                 self.refresh(key)
             ColumnEditor(self.app, self.dialog, cfg, done_builtin, builtin=iid)
@@ -407,10 +414,12 @@ class ColumnsTab(ttk.Frame):
         if iid in columns.BASE or iid in columns.BUILTINS:
             store = self.base if iid in columns.BASE else self.builtin
             over = store.setdefault(iid, {})
-            if over.get("visible", True) is False:
+            default = columns.builtin_visible(iid) if iid in columns.BUILTINS else True
+            shown = bool(over.get("visible", default))
+            if (not shown) == default:  # le nouvel état est celui par défaut : rien à enregistrer
                 over.pop("visible", None)
             else:
-                over["visible"] = False
+                over["visible"] = not shown
         else:
             col = self.custom_of(iid)
             col["visible"] = not col.get("visible", True)

@@ -7,6 +7,8 @@ La configuration est enregistrée dans les données chiffrées (state["settings"
     settings["ordre"]     ordre d'affichage de toutes les colonnes (clés) ; les colonnes absentes de la liste reprennent leur place habituelle
     settings["colonnes"]  colonnes personnalisées, dans l'ordre d'affichage :
         {"id", "titre", "emoji", "type", "visible", "increments", "echelle", "choix", "orange", "rouge", "preset"}
+Colonnes intégrées « Travail en séance » (qualSeance) et « Travail à la maison » (qualMaison) : à chaque séance on attribue une
+lettre de A (excellent) à E (très mauvais) ; la colonne affiche la moyenne des lettres de la période (« non noté » sans aucune lettre).
 Types de colonne personnalisée :
     compteur  total à boutons d'incrément (comme « travail non fait ») ; valeurs = entrées du journal
     note      note sur `echelle` (/10, /5…), une par période
@@ -25,15 +27,21 @@ TYPES = [("compteur", "Compteur (boutons + / −)"), ("note", "Note"), ("texte",
          ("liste", "Menu déroulant"), ("coche", "Case à cocher")]
 
 # Colonnes à compteur intégrées : clé -> réglages par défaut. « court » : titre de la présentation resserrée.
+# « visible » : affichage par défaut (les anciens compteurs de séance et de travail sont remplacés par les notes de A à E,
+# mais restent disponibles dans « Colonnes… » avec leurs données). « lettres » : colonne de notes de A à E.
 BUILTINS = {
-    "seancePlus": {"titre": "Séance +", "court": "Séance +", "emoji": "👍", "increments": [0.5, 1]},
-    "seanceMoins": {"titre": "Séance −", "court": "Séance −", "emoji": "👎", "increments": [-0.5, -1]},
-    "travail": {"titre": "Travail non fait", "court": "Travail", "emoji": "📝", "increments": [-1, 1]},
+    "qualSeance": {"titre": "Travail en séance", "court": "Séance", "emoji": "📚", "increments": [], "lettres": True},
+    "qualMaison": {"titre": "Travail à la maison", "court": "Maison", "emoji": "🏠", "increments": [], "lettres": True},
+    "seancePlus": {"titre": "Séance +", "court": "Séance +", "emoji": "👍", "increments": [0.5, 1], "visible": False},
+    "seanceMoins": {"titre": "Séance −", "court": "Séance −", "emoji": "👎", "increments": [-0.5, -1], "visible": False},
+    "travail": {"titre": "Travail non fait", "court": "Travail", "emoji": "📝", "increments": [-1, 1], "visible": False},
     "oubli": {"titre": "Oubli matériel", "court": "Oublis", "emoji": "🎒", "increments": [-1, 1]},
 }
-BUILTIN_ORDER = ["seancePlus", "seanceMoins", "travail", "oubli"]
+BUILTIN_ORDER = ["qualSeance", "qualMaison", "seancePlus", "seanceMoins", "travail", "oubli"]
+GRADE_KEYS = ("qualSeance", "qualMaison")  # colonnes de notes de A à E
 # Type d'entrée du journal associé à chaque colonne intégrée
-BUILTIN_EVENT = {"seancePlus": "seance", "seanceMoins": "seance", "travail": "travail", "oubli": "oubli"}
+BUILTIN_EVENT = {"qualSeance": "qualSeance", "qualMaison": "qualMaison", "seancePlus": "seance", "seanceMoins": "seance",
+                 "travail": "travail", "oubli": "oubli"}
 
 # Colonnes de base. « notes » désigne l'ensemble des colonnes de note de période (T1 à T3 ou S1 et S2).
 BASE = {
@@ -47,7 +55,8 @@ BASE = {
 }
 BASE_ORDER = ["numero", "nom", "prenom", "infos", "notes", "comm", "fiche"]
 # Ordre par défaut de toutes les colonnes ; les colonnes personnalisées s'insèrent avant « comm ».
-DEFAULT_ORDER = ["numero", "nom", "prenom", "infos", "notes", "seancePlus", "seanceMoins", "travail", "oubli", "comm", "fiche"]
+DEFAULT_ORDER = ["numero", "nom", "prenom", "infos", "notes", "qualSeance", "qualMaison", "seancePlus", "seanceMoins", "travail", "oubli",
+                 "comm", "fiche"]
 ALWAYS_VISIBLE = {"nom"}  # sans le nom, le tableau n'identifierait plus personne
 
 # Pictogrammes proposés (regroupés), l'utilisateur peut aussi en saisir un autre.
@@ -154,9 +163,14 @@ def builtin(settings, key, short=False):
         "titre": over.get("titre") or (base["court"] if short else base["titre"]),
         "emoji": over["emoji"] if "emoji" in over else base["emoji"],
         "increments": [float(v) for v in incs],
-        "visible": over.get("visible", True) is not False,
-        "type": "compteur",
+        "visible": bool(over.get("visible", builtin_visible(key))),
+        "type": "lettres" if key in GRADE_KEYS else "compteur",
     }
+
+
+def builtin_visible(key):
+    """Affichage par défaut d'une colonne intégrée."""
+    return BUILTINS[key].get("visible", True)
 
 
 def base(settings, key, short=False):
@@ -260,7 +274,7 @@ def event_type(settings, key):
 
 def type_label(settings, event_type_):
     """Nom lisible d'un type d'entrée du journal (pour la fiche élève)."""
-    for key in ("travail", "oubli"):
+    for key in ("travail", "oubli") + GRADE_KEYS:
         if event_type_ == key:
             return builtin(settings, key)["titre"]
     if event_type_ == "seance":

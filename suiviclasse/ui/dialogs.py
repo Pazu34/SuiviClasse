@@ -5,7 +5,7 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from .. import columns, exchange, model
 from ..vault import NeedPasswordError, WrongPasswordError
-from .table import parse_grade
+from .table import direct_levels, parse_grade
 from .theme import P
 
 REASONS = {"suppression": "avant suppression d’une classe", "auto": "automatique", "manuel": "manuelle", "demarrage": "à l’ouverture", "fermeture": "à la fermeture",
@@ -115,10 +115,10 @@ class StudentWindow(Dialog):
             e.bind("<FocusOut>", lambda ev, k=k: self.commit_note(k))
             e.bind("<Return>", lambda ev, k=k: self.commit_note(k))
             self.notes[k] = var
+            self.counters[k] = ttk.Label(row, foreground=P["muted"])
+            self.counters[k].pack(side="right")  # posé avant le résumé : c'est lui qui est rogné s'il est trop long
             self.stats[k] = ttk.Label(row, foreground=P["muted"])
             self.stats[k].pack(side="left", padx=8)
-            self.counters[k] = ttk.Label(row, foreground=P["muted"])
-            self.counters[k].pack(side="right")
             txt = tk.Text(self, height=3, wrap="word", undo=True)
             txt.pack(fill="x", padx=10)
             txt.insert("1.0", student["comms"][k])
@@ -159,16 +159,24 @@ class StudentWindow(Dialog):
         quick.pack(fill="x", padx=10)
         self.precision = tk.StringVar()
         ttk.Entry(quick, textvariable=self.precision).pack(fill="x", pady=2)
-        for key in columns.GRADE_KEYS:  # notes de A à E : une ligne par colonne affichée
-            cfg = columns.builtin(app.state["settings"], key)
-            if cfg["visible"]:
-                row = ttk.Frame(quick)
-                row.pack(fill="x")
-                ttk.Label(row, text=((cfg["emoji"] + " ") if cfg["emoji"] else "") + cfg["titre"], width=24).pack(side="left")
-                for letter in model.GRADES:
-                    ttk.Button(row, text=letter, style="Mini.TButton", width=3,
-                               command=lambda e=columns.BUILTIN_EVENT[key], v=model.grade_value(letter): self.add(e, v)).pack(side="left", padx=1, pady=2)
-                ttk.Label(row, text="A excellent … E très mauvais", style="Muted.TLabel").pack(side="left", padx=8)
+        for g in columns.grade_columns(app.state["settings"]):  # colonnes à niveaux : une ligne par colonne affichée
+            names = g["niveaux"]
+            n = len(names)
+            row = ttk.Frame(quick)
+            row.pack(fill="x")
+            ttk.Label(row, text=((g["emoji"] + " ") if g["emoji"] else "") + g["titre"], width=24).pack(side="left")
+            if direct_levels(names):
+                for i, name in enumerate(names):
+                    ttk.Button(row, text=name, style="Mini.TButton", width=3,
+                               command=lambda e=g["event"], v=n - i: self.add(e, v)).pack(side="left", padx=1, pady=2)
+                ttk.Label(row, text=f"{names[0]} meilleur … {names[-1]} moins bon", style="Muted.TLabel").pack(side="left", padx=8)
+            else:  # noms longs : un menu
+                mb = ttk.Menubutton(row, text="Noter ▾")
+                menu = tk.Menu(mb, tearoff=0)
+                for i, name in enumerate(names):
+                    menu.add_command(label=name, command=lambda e=g["event"], v=n - i: self.add(e, v))
+                mb["menu"] = menu
+                mb.pack(side="left", padx=1, pady=2)
         specs = self.quick_specs()
         for n in range(0, len(specs), 5):  # cinq boutons par ligne
             row = ttk.Frame(quick)
@@ -199,11 +207,12 @@ class StudentWindow(Dialog):
             var = self.extra_vars[c["id"]]
             var.set(bool(value) if c["type"] == "coche" else "" if value is None else exchange.fmt_num(value) if c["type"] == "note" else value)
         self.journal.delete(*self.journal.get_children())
+        levels_of = {g["event"]: g["niveaux"] for g in columns.grade_columns(self.app.state["settings"], visible_only=False)}
         for e in reversed(s["events"]):
             if e["t"] == t:
                 name = columns.type_label(self.app.state["settings"], e["type"])
-                if e["type"] in columns.GRADE_KEYS:
-                    name += " : " + model.grade_letter(e["v"])
+                if e["type"] in levels_of:
+                    name += " : " + model.grade_letter(e["v"], levels_of[e["type"]])
                 elif e["type"] == "seance" or e["v"] != 1:  # la valeur d'un incrément simple (+1) n'est pas répétée
                     name += " " + columns.increment_label(e["v"])
                 self.journal.insert("", "end", iid=e["id"], values=(model.event_datetime(e).strftime("%d/%m/%Y %H:%M"), name, e["note"]))
@@ -225,11 +234,11 @@ class StudentWindow(Dialog):
         s, settings = self.s, self.app.state["settings"]
         plus, moins = model.seance(s, k)
         parts = []
-        for key in columns.GRADE_KEYS:  # moyennes des notes de A à E
-            cfg = columns.builtin(settings, key)
-            if cfg["visible"]:
-                short = columns.builtin(settings, key, short=True)["titre"] if cfg["titre"] == columns.BUILTINS[key]["titre"] else cfg["titre"]
-                parts.append(f"{short.lower()} {model.grade_text(model.grade_mean(s, columns.BUILTIN_EVENT[key], k))}")
+        for g in columns.grade_columns(settings):  # notes finales des colonnes à niveaux
+            key = g["key"]
+            short = (columns.builtin(settings, key, short=True)["titre"]
+                     if key in columns.GRADE_KEYS and g["titre"] == columns.BUILTINS[key]["titre"] else g["titre"])
+            parts.append(f"{short.lower()} {model.grade_text(model.grade_final(s, g, k), g['niveaux'])}")
         if any(columns.builtin(settings, key)["visible"] for key in ("seancePlus", "seanceMoins")):
             parts.append(f"Séance + {exchange.fmt_num(plus)} · − {exchange.fmt_num(moins)}")
         for key in ("travail", "oubli"):
@@ -549,13 +558,10 @@ class ExportDialog(Dialog):
 
     def custom_exports(self):
         out = []
-        for key in columns.GRADE_KEYS:  # moyenne des notes de A à E (vide si l'élève n'a aucune note)
-            cfg = columns.builtin(self.app.state["settings"], key)
-            if cfg["visible"]:
-                event = columns.BUILTIN_EVENT[key]
-                out.append((key, cfg["titre"] + " (moyenne)", lambda s, t, event=event: (
-                    "" if model.grade_mean(s, event, t) is None else model.grade_text(model.grade_mean(s, event, t)))))
-        for c in (c for c in columns.customs(self.app.state["settings"]) if c["visible"]):
+        for g in columns.grade_columns(self.app.state["settings"]):  # note finale des colonnes à niveaux (vide si aucune note)
+            out.append((g["key"], g["titre"] + " (moyenne)", lambda s, t, g=g: (
+                "" if model.grade_final(s, g, t) is None else model.grade_text(model.grade_final(s, g, t), g["niveaux"]))))
+        for c in (c for c in columns.customs(self.app.state["settings"]) if c["visible"] and c["type"] != "niveaux"):
             if c["type"] == "compteur":
                 fn = lambda s, t, c=c: exchange.fmt_num(model.total(s, c["id"], t))
             elif c["type"] == "note":

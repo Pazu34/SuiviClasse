@@ -265,48 +265,95 @@ def extra_value(student, col, t):
     return coerce_extra(get_extra(student, col["id"], t), col["type"])
 
 
-# ---------------------------------------------------------------- notes de A à E (travail en séance, travail à la maison)
-GRADES = "ABCDE"  # A = excellent … E = très mauvais ; l'entrée du journal garde la valeur 5 (A) à 1 (E)
+# ---------------------------------------------------------------- notes par niveaux (A à E par défaut)
+# Une colonne « à niveaux » propose de 2 à 5 niveaux, du meilleur au moins bon. Chaque note attribuée est une entrée du journal
+# dont la valeur « v » est la position à partir du moins bon : le meilleur niveau vaut n (le nombre de niveaux), le moins bon vaut 1.
+GRADES = "ABCDE"  # niveaux par défaut : A = excellent … E = très mauvais ; A vaut 5, E vaut 1
+DEFAULT_LEVELS = list(GRADES)
 GRADE_NAMES = {"A": "excellent", "B": "bien", "C": "moyen", "D": "insuffisant", "E": "très mauvais"}
 NOT_GRADED = "non noté"
+# Règles de calcul de la note finale d'une période
+RULES = ("periode", "annee", "dernieres_periode", "dernieres_annee")
+DEFAULT_RULE, DEFAULT_X = "periode", 3
 
 
-def grade_value(letter):
-    """A -> 5 … E -> 1."""
-    return len(GRADES) - GRADES.index(letter)
+def grade_value(letter, levels=DEFAULT_LEVELS):
+    """Valeur enregistrée pour un niveau : le premier de la liste vaut len(levels), le dernier vaut 1 (A -> 5 … E -> 1)."""
+    return len(levels) - list(levels).index(letter)
 
 
-def grade_letter(value):
-    """5 -> A … 1 -> E (valeur arrondie et bornée)."""
-    return GRADES[len(GRADES) - min(len(GRADES), max(1, int(round(value))))]
+def grade_letter(value, levels=DEFAULT_LEVELS):
+    """Niveau correspondant à une valeur (arrondie et bornée)."""
+    n = len(levels)
+    return levels[n - min(n, max(1, int(value + 0.5)))]
 
 
-def grade_events(student, type_, t):
-    """Entrées de notes (de la plus ancienne à la plus récente) d'une colonne pour la période t."""
-    return [e for e in student["events"] if e["type"] == type_ and e["t"] == t and 1 <= e["v"] <= len(GRADES)]
+def grade_events(student, type_, t, rule="periode", x=DEFAULT_X):
+    """Notes prises en compte pour la note finale de la période t, de la plus ancienne à la plus récente.
+    periode : celles de la période · annee : celles de l'année jusqu'à la période t comprise (tous trimestres confondus) ·
+    dernieres_periode / dernieres_annee : seulement les x dernières attribuées (ordre chronologique) parmi les précédentes."""
+    year = rule in ("annee", "dernieres_annee")
+    events = [e for e in student["events"] if e["type"] == type_ and e["v"] >= 1 and (e["t"] <= t if year else e["t"] == t)]
+    events.sort(key=lambda e: e["date"])  # ordre d'attribution (le tri conserve l'ordre du journal en cas d'égalité)
+    if rule.startswith("dernieres"):
+        events = events[-max(1, int(x)):]
+    return events
 
 
-def grade_mean(student, type_, t):
-    """Moyenne (de 1 = E à 5 = A) des notes attribuées sur la période, ou None si l'élève n'a aucune note."""
-    values = [e["v"] for e in grade_events(student, type_, t)]
+def grade_mean(student, type_, t, rule="periode", x=DEFAULT_X, n=len(GRADES)):
+    """Moyenne (de 1 = moins bon niveau à n = meilleur) des notes prises en compte, ou None si l'élève n'en a aucune."""
+    values = [min(n, e["v"]) for e in grade_events(student, type_, t, rule, x)]
     return sum(values) / len(values) if values else None
 
 
-def grade_text(mean):
-    """Moyenne affichée sous forme de lettre avec + ou − (« B+ », « C », « D− »), ou « non noté » sans note.
-    La lettre est la plus proche de la moyenne ; le + ou le − indique le tiers de l'intervalle où elle se situe."""
+def grade_final(student, g, t):
+    """Moyenne (ou None) d'une colonne à niveaux décrite par g (voir columns.grade_columns) pour la période t."""
+    return grade_mean(student, g["event"], t, g["regle"], g["x"], len(g["niveaux"]))
+
+
+def grade_near(mean, n):
+    """Valeur entière (1 à n) la plus proche d'une moyenne."""
+    return min(n, max(1, int(mean + 0.5 + 1e-9)))
+
+
+def grade_text(mean, levels=DEFAULT_LEVELS):
+    """Moyenne affichée : nom du niveau le plus proche, avec + ou − (« B+ », « Bien− »), ou « non noté » sans note.
+    Le + ou le − indique le tiers de l'intervalle autour du niveau où se situe la moyenne."""
     if mean is None:
         return NOT_GRADED
-    near = min(len(GRADES), max(1, int(mean + 0.5 + 1e-9)))
+    near = grade_near(mean, len(levels))
     gap = mean - near
-    return grade_letter(near) + ("+" if gap > 1 / 6 else "−" if gap < -1 / 6 else "")
+    return grade_letter(near, levels) + ("+" if gap > 1 / 6 else "−" if gap < -1 / 6 else "")
 
 
-def grade_level(mean):
-    """Couleur d'alerte d'une moyenne : A et B 'ok', C neutre, D 'warn', E 'bad' ; '' sans note."""
+def grade_rank(mean, n):
+    """Rang (1 = meilleur niveau … n = moins bon) du niveau le plus proche de la moyenne."""
+    return n - grade_near(mean, n) + 1
+
+
+def grade_level(mean, n=len(GRADES)):
+    """Couleur d'alerte d'une moyenne : meilleurs niveaux 'ok', moins bon 'bad', bas de l'échelle 'warn', milieu neutre ; '' sans note.
+    Avec 5 niveaux : A et B vert, C neutre, D orange, E rouge."""
     if mean is None:
         return ""
-    return {"A": "ok", "B": "ok", "C": "", "D": "warn", "E": "bad"}[grade_letter(mean)]
+    pos = (grade_near(mean, n) - 1) / (n - 1)  # 1 = meilleur niveau, 0 = moins bon
+    return "ok" if pos >= 0.65 else "bad" if pos <= 0.05 else "warn" if pos < 0.35 else ""
+
+
+def rescale_levels(data, type_, old_n, new_n):
+    """Convertit les notes déjà attribuées quand le nombre de niveaux d'une colonne change (proportionnellement : 5 niveaux -> 3,
+    le meilleur reste le meilleur, le moins bon reste le moins bon). Retourne le nombre de notes changées."""
+    n = 0
+    if old_n < 2 or new_n < 2 or old_n == new_n:
+        return n
+    for cls in data["classes"]:
+        for s in cls["eleves"]:
+            for e in s["events"]:
+                if e["type"] == type_ and e["v"] >= 1:
+                    v = min(old_n, e["v"])
+                    e["v"] = int((v - 1) * (new_n - 1) / (old_n - 1) + 0.5) + 1
+                    n += 1
+    return n
 
 
 def remove_last(student, type_, t):

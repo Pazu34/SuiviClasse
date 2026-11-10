@@ -87,7 +87,7 @@ class ColumnEditor(Dialog):
         self.first_type = data.get("type", "compteur")
         self.hint_type = ttk.Label(f, style="Muted.TLabel", wraplength=440, justify="left", text=(
             "Changer le type conserve les valeurs déjà saisies : elles réapparaissent si elles sont compatibles "
-            "(note ↔ texte ↔ menu ↔ case ; un compteur garde son journal)."))
+            "(note ↔ texte ↔ menu ↔ case ; un compteur ou des niveaux gardent leur journal)."))
         self.f_incs = ttk.Frame(f)
         ttk.Label(self.f_incs, text="Boutons d'incrément").grid(row=0, column=0, sticky="w")
         ttk.Entry(self.f_incs, textvariable=self.var_incs, width=30).grid(row=0, column=1, padx=8)
@@ -116,10 +116,39 @@ class ColumnEditor(Dialog):
             "fiche": "Le pictogramme est celui du bouton qui ouvre la fiche, en bout de ligne. Le titre peut rester vide.",
             "notes": "Les colonnes de notes s'appellent T1, T2, T3 (S1, S2 en semestres) : leur titre ne se change pas ici.",
             "nom": "Cette colonne ne peut pas être masquée : elle identifie l'élève."}.get(base, ""))
-        self.hint_lettres = ttk.Label(f, style="Muted.TLabel", wraplength=440, justify="left", text=(
-            "À chaque séance, un clic sur A, B, C, D ou E attribue une note (A = excellent, E = très mauvais). "
-            "La colonne affiche la moyenne des notes de la période, ou « non noté » si l'élève n'en a aucune."))
-        self.frames = (self.f_incs, self.f_scale, self.f_alert, self.f_choix, self.hint_type, self.hint_base, self.hint_lettres)
+        # colonne à niveaux : nombre et noms des niveaux (du meilleur au moins bon), règle de calcul de la note finale
+        g = columns.grade_cfg(data)
+        word = app.per["word"]
+        self.f_niv = ttk.Frame(f)
+        ttk.Label(self.f_niv, text="Nombre de niveaux").grid(row=0, column=0, sticky="w")
+        self.var_nlev = tk.StringVar(value=str(len(g["niveaux"])))
+        nlev = ttk.Combobox(self.f_niv, state="readonly", width=4, values=[str(i) for i in range(columns.MIN_LEVELS, columns.MAX_LEVELS + 1)],
+                            textvariable=self.var_nlev)
+        nlev.grid(row=0, column=1, sticky="w", padx=8, pady=2)
+        nlev.bind("<<ComboboxSelected>>", lambda e: self.show_levels())
+        self.level_vars, self.level_rows = [], []
+        for i in range(columns.MAX_LEVELS):
+            var = tk.StringVar(value=g["niveaux"][i] if i < len(g["niveaux"]) else columns.DEFAULT_LEVELS[i])
+            lab = ttk.Label(self.f_niv, text="")
+            ent = ttk.Entry(self.f_niv, textvariable=var, width=22)
+            self.level_vars.append(var)
+            self.level_rows.append((lab, ent))
+        ttk.Label(self.f_niv, style="Muted.TLabel", wraplength=440, justify="left", text=(
+            "Du meilleur au moins bon. À chaque séance un clic attribue un niveau ; la note finale est la moyenne des niveaux "
+            "(1 point d'écart entre deux niveaux). Avec des noms de plus de 3 caractères, un menu « Noter » remplace les boutons."
+        )).grid(row=7, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        self.f_regle = ttk.LabelFrame(f, text="Note finale du " + word, padding=8)
+        self.combo_regle = ttk.Combobox(self.f_regle, state="readonly", width=52, values=[l.replace("trimestre", word) for _, l in columns.RULES])
+        self.combo_regle.current(next(i for i, (k, _) in enumerate(columns.RULES) if k == g["regle"]))
+        self.combo_regle.grid(row=0, column=0, columnspan=3, sticky="w")
+        self.combo_regle.bind("<<ComboboxSelected>>", lambda e: self.show_rule())
+        ttk.Label(self.f_regle, text="X =").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        self.var_x = tk.StringVar(value=str(g["x"]))
+        self.spin_x = ttk.Spinbox(self.f_regle, from_=1, to=columns.MAX_X, increment=1, width=5, textvariable=self.var_x, justify="center")
+        self.spin_x.grid(row=1, column=1, sticky="w", padx=6, pady=(6, 0))
+        ttk.Label(self.f_regle, style="Muted.TLabel", text="notes retenues pour les règles « X dernières notes » (3 par défaut)").grid(
+            row=1, column=2, sticky="w", pady=(6, 0))
+        self.frames = (self.f_incs, self.f_scale, self.f_alert, self.f_choix, self.hint_type, self.hint_base, self.f_niv, self.f_regle)
         self.show_fields()
         self.buttons(("OK", self.ok, "right"), ("Annuler", self.destroy, "right"))
         title.focus_set()
@@ -130,11 +159,14 @@ class ColumnEditor(Dialog):
 
     def show_fields(self):
         """N'affiche que les réglages utiles au type de colonne choisi."""
-        typ = ("lettres" if self.builtin in columns.GRADE_KEYS else "compteur") if self.builtin else "base" if self.base else self.current_type()
+        typ = ("niveaux" if self.builtin in columns.GRADE_KEYS else "compteur") if self.builtin else "base" if self.base else self.current_type()
         for fr in self.frames:
             fr.grid_forget()
-        if typ == "lettres":
-            self.hint_lettres.grid(row=3, column=0, columnspan=2, sticky="w", pady=(10, 0))
+        if typ == "niveaux":
+            self.f_niv.grid(row=3, column=0, columnspan=2, sticky="w", pady=(10, 0))
+            self.f_regle.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+            self.show_levels()
+            self.show_rule()
         elif typ == "base":
             self.hint_base.grid(row=3, column=0, columnspan=2, sticky="w", pady=(10, 0))
         elif typ == "compteur":
@@ -149,6 +181,22 @@ class ColumnEditor(Dialog):
             self.hint_type.grid(row=5, column=0, columnspan=2, sticky="w", pady=(8, 0))
         self.btn_emoji.configure(text=self.emoji or "(aucun)")
 
+    def show_levels(self):
+        """Affiche autant de champs de nom que de niveaux choisis (les noms déjà saisis sont conservés)."""
+        n = int(self.var_nlev.get())
+        for i, (lab, ent) in enumerate(self.level_rows):
+            if i < n:
+                lab.configure(text="Niveau 1 (le meilleur)" if i == 0 else f"Niveau {i + 1} (le moins bon)" if i == n - 1 else f"Niveau {i + 1}")
+                lab.grid(row=i + 1, column=0, sticky="w", pady=1)
+                ent.grid(row=i + 1, column=1, sticky="w", padx=8, pady=1)
+            else:
+                lab.grid_forget()
+                ent.grid_forget()
+
+    def show_rule(self):
+        """X ne sert qu'aux règles « X dernières notes »."""
+        self.spin_x.state(["!disabled"] if columns.RULES[self.combo_regle.current()][0].startswith("dernieres") else ["disabled"])
+
     def choose_emoji(self):
         EmojiPicker(self.app, self, self.emoji, self.set_emoji)
 
@@ -162,11 +210,11 @@ class ColumnEditor(Dialog):
             self.err.configure(text="Donnez un titre à la colonne.")
             return
         out = {**self.data, "titre": title, "emoji": self.emoji}
-        if self.base or self.builtin in columns.GRADE_KEYS:  # titre et pictogramme seulement
+        if self.base:
             self.destroy()
             self.on_ok(out)
             return
-        typ = "compteur" if self.builtin else self.current_type()
+        typ = ("niveaux" if self.builtin in columns.GRADE_KEYS else "compteur") if self.builtin else self.current_type()
         out["type"] = typ
         try:
             if typ == "compteur":
@@ -187,6 +235,22 @@ class ColumnEditor(Dialog):
                             out.pop(k, None)
                     if out.get("orange") and out.get("rouge") and out["orange"] > out["rouge"]:
                         raise ValueError("Le seuil orange doit être inférieur ou égal au seuil rouge.")
+            elif typ == "niveaux":
+                names = [" ".join(v.get().split()) for v in self.level_vars[:int(self.var_nlev.get())]]
+                if not all(names):
+                    raise ValueError("Donnez un nom à chacun des niveaux.")
+                if any(len(x) > columns.MAX_LEVEL_LEN for x in names):
+                    raise ValueError(f"Un nom de niveau fait au plus {columns.MAX_LEVEL_LEN} caractères.")
+                if len({x.lower() for x in names}) < len(names):
+                    raise ValueError("Les niveaux doivent avoir des noms différents.")
+                out["niveaux"] = names
+                out["regle"] = columns.RULES[self.combo_regle.current()][0]
+                try:
+                    out["x"] = int(self.var_x.get())
+                except ValueError:
+                    out["x"] = 0
+                if not 1 <= out["x"] <= columns.MAX_X:
+                    raise ValueError(f"X doit être un nombre entier entre 1 et {columns.MAX_X}.")
             elif typ == "liste":
                 out["choix"] = columns.parse_choices(self.txt_choix.get("1.0", "end"))
                 if not out["choix"]:
@@ -248,6 +312,7 @@ class ColumnsTab(ttk.Frame):
         st = app.state["settings"]
         self.orig_scale = columns.scale(st)
         self.orig_note_scales = {c["id"]: c["echelle"] for c in columns.customs(st) if c["type"] == "note"}
+        self.orig_levels = {g["event"]: len(g["niveaux"]) for g in columns.grade_columns(st, visible_only=False)}  # nombre de niveaux par colonne
         self.var_scale = tk.StringVar(value=exchange.fmt_num(self.orig_scale))
         self.builtin = copy.deepcopy(st.get("builtin") or {})
         self.base = copy.deepcopy(st.get("base") or {})
@@ -312,22 +377,25 @@ class ColumnsTab(ttk.Frame):
                 self.tree.insert("", "end", iid=key, values=("☑" if c["visible"] else "☐", c["emoji"], c["titre"] or "(sans titre)", "Colonne de base", detail))
             elif key in columns.BUILTINS:
                 c = self._builtin_cfg(key)
-                lettres = key in columns.GRADE_KEYS
+                niveaux = key in columns.GRADE_KEYS
                 self.tree.insert("", "end", iid=key, values=("☑" if c["visible"] else "☐", c["emoji"], c["titre"],
-                                                             "Notes A à E (intégré)" if lettres else "Compteur (intégré)",
-                                                             "Moyenne des notes de la période" if lettres else columns.format_increments(c["increments"])))
+                                                             "Niveaux (intégré)" if niveaux else "Compteur (intégré)",
+                                                             self.levels_detail(c) if niveaux else columns.format_increments(c["increments"])))
             else:
                 c = self.custom_of(key)
                 if c is None:
                     continue
                 detail = (columns.format_increments(c["increments"]) if c["type"] == "compteur" else f"/{exchange.fmt_num(c['echelle'])}" if c["type"] == "note"
-                          else " · ".join(c["choix"]) if c["type"] == "liste" else "")
+                          else " · ".join(c["choix"]) if c["type"] == "liste" else self.levels_detail(c) if c["type"] == "niveaux" else "")
                 if c["type"] == "compteur" and (c.get("orange") or c.get("rouge")):
                     detail += f"  · alertes : {exchange.fmt_num(c['orange']) if c.get('orange') else '–'} / {exchange.fmt_num(c['rouge']) if c.get('rouge') else '–'}"
                 self.tree.insert("", "end", iid=c["id"], values=("☑" if c.get("visible", True) else "☐", c["emoji"], c["titre"],
                                                                  TYPE_LABELS[c["type"]].split(" (")[0], detail))
         if select and self.tree.exists(select):
             self.tree.selection_set(select)
+
+    def levels_detail(self, c):
+        return f"{' · '.join(c['niveaux'])} — {columns.rule_label(c['regle'], c['x'], self.app.per['word']).lower()}"
 
     def selected(self):
         sel = self.tree.selection()
@@ -390,6 +458,13 @@ class ColumnsTab(ttk.Frame):
                     over["emoji"] = out["emoji"]
                 if out.get("increments") and out["increments"] != [float(v) for v in base["increments"]]:
                     over["increments"] = out["increments"]
+                if key in columns.GRADE_KEYS:  # niveaux et règle : seulement ce qui s'écarte des valeurs par défaut
+                    if out["niveaux"] != columns.DEFAULT_LEVELS:
+                        over["niveaux"] = out["niveaux"]
+                    if out["regle"] != "periode":
+                        over["regle"] = out["regle"]
+                    if out["x"] != 3:
+                        over["x"] = out["x"]
                 if cfg["visible"] != columns.builtin_visible(key):  # n'enregistre que ce qui s'écarte de l'affichage par défaut
                     over["visible"] = cfg["visible"]
                 self.builtin[key] = over
@@ -474,6 +549,15 @@ class ColumnsTab(ttk.Frame):
                 if messagebox.askyesno("Barème de la colonne", f"« {c['titre']} » passe de /{exchange.fmt_num(old)} à /{exchange.fmt_num(c['echelle'])}.\n\n"
                                        "Convertir les valeurs déjà saisies ?", parent=self.dialog):
                     model.rescale_extra(app.state, c["id"], old, c["echelle"])
+        # nombre de niveaux modifié : proposer de convertir les notes déjà attribuées (le meilleur niveau reste le meilleur)
+        now = {g["event"]: g for g in columns.grade_columns({"builtin": self.builtin, "colonnes": self.customs}, visible_only=False)}
+        for event, g in now.items():
+            old, new = self.orig_levels.get(event), len(g["niveaux"])
+            if old and old != new and any(e["type"] == event and e["v"] >= 1 for k in app.state["classes"] for s in k["eleves"] for e in s["events"]):
+                if messagebox.askyesno("Nombre de niveaux", f"« {g['titre']} » passe de {old} à {new} niveaux.\n\n"
+                                       "Convertir les notes déjà attribuées (le meilleur niveau reste le meilleur, le moins bon reste le moins bon) ?\n"
+                                       "Non : les valeurs restent telles quelles.", parent=self.dialog):
+                    model.rescale_levels(app.state, event, old, new)
         st["echelle"] = new_scale
         st["builtin"] = {k: v for k, v in self.builtin.items() if v}
         st["base"] = {k: v for k, v in self.base.items() if v}
@@ -482,4 +566,5 @@ class ColumnsTab(ttk.Frame):
         # la configuration est appliquée : un second « Enregistrer » ne doit pas reconvertir les notes
         self.orig_scale = new_scale
         self.orig_note_scales = {c["id"]: c["echelle"] for c in self.customs if c["type"] == "note"}
+        self.orig_levels = {event: len(g["niveaux"]) for event, g in now.items()}
         return True

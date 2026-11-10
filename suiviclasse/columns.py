@@ -7,14 +7,19 @@ La configuration est enregistrée dans les données chiffrées (state["settings"
     settings["ordre"]     ordre d'affichage de toutes les colonnes (clés) ; les colonnes absentes de la liste reprennent leur place habituelle
     settings["colonnes"]  colonnes personnalisées, dans l'ordre d'affichage :
         {"id", "titre", "emoji", "type", "visible", "increments", "echelle", "choix", "orange", "rouge", "preset"}
-Colonnes intégrées « Travail en séance » (qualSeance) et « Travail à la maison » (qualMaison) : à chaque séance on attribue une
-lettre de A (excellent) à E (très mauvais) ; la colonne affiche la moyenne des lettres de la période (« non noté » sans aucune lettre).
+Colonnes à niveaux : à chaque séance on attribue un niveau choisi parmi 2 à 5 (A à E par défaut, du meilleur au moins bon). La colonne
+affiche la note finale de la période, calculée selon une règle (moyenne de la période, de l'année, ou des X dernières notes) ;
+« non noté » si aucune note ne compte. Les colonnes intégrées « Travail en séance » (qualSeance) et « Travail à la maison » (qualMaison)
+sont de ce type ; leurs réglages (niveaux, regle, x) sont dans settings["builtin"] comme leur titre.
+    niveaux   noms des niveaux, du meilleur au moins bon (2 à 5)        regle   periode | annee | dernieres_periode | dernieres_annee
+    x         nombre de notes retenues par les règles « dernières » (3 par défaut)
 Types de colonne personnalisée :
     compteur  total à boutons d'incrément (comme « travail non fait ») ; valeurs = entrées du journal
     note      note sur `echelle` (/10, /5…), une par période
     texte     texte libre, un par période
     liste     menu déroulant : une valeur parmi `choix` (saisis par l'utilisateur), une par période
     coche     case à cocher, une par période
+    niveaux   menu de 2 à 5 niveaux à attribuer à chaque séance (entrées du journal, comme un compteur) ; voir ci-dessus
 Les valeurs des notes, textes et cases sont rangées dans eleve["extra"][id][période].
 """
 import re
@@ -24,7 +29,15 @@ DEFAULT_SCALE = 20
 MAX_INCREMENTS = 6
 MAX_CHOICES, MAX_CHOICE_LEN = 20, 40
 TYPES = [("compteur", "Compteur (boutons + / −)"), ("note", "Note"), ("texte", "Texte"),
-         ("liste", "Menu déroulant"), ("coche", "Case à cocher")]
+         ("liste", "Menu déroulant"), ("coche", "Case à cocher"), ("niveaux", "Niveaux par séance (2 à 5)")]
+MIN_LEVELS, MAX_LEVELS, MAX_LEVEL_LEN = 2, 5, 20
+DEFAULT_LEVELS = ["A", "B", "C", "D", "E"]
+# Règles de calcul de la note finale d'une période (le libellé complet remplace X et « trimestre » à l'affichage)
+RULES = [("periode", "Moyenne des notes du trimestre"),
+         ("annee", "Moyenne des notes depuis le début de l'année"),
+         ("dernieres_periode", "Moyenne des X dernières notes du trimestre"),
+         ("dernieres_annee", "Moyenne des X dernières notes de l'année")]
+MAX_X = 99
 
 # Colonnes à compteur intégrées : clé -> réglages par défaut. « court » : titre de la présentation resserrée.
 # « visible » : affichage par défaut (les anciens compteurs de séance et de travail sont remplacés par les notes de A à E,
@@ -116,6 +129,40 @@ def parse_choices(text):
     return out[:MAX_CHOICES]
 
 
+# ---------------------------------------------------------------- niveaux et règle de la note finale
+def parse_levels(items):
+    """Noms de niveaux (liste ou un par ligne) -> de 2 à 5 noms distincts (20 caractères au plus). Moins de 2 noms valides : A à E."""
+    items = items if isinstance(items, (list, tuple)) else re.split(r"[\n;]", str(items))
+    out = []
+    for item in items:
+        name = " ".join(str(item).split())[:MAX_LEVEL_LEN]
+        if name and name.lower() not in [o.lower() for o in out]:
+            out.append(name)
+    return out[:MAX_LEVELS] if len(out) >= MIN_LEVELS else list(DEFAULT_LEVELS)
+
+
+def parse_rule(regle, x):
+    """(règle, X) valides : règle inconnue -> moyenne de la période ; X entier de 1 à 99, 3 par défaut."""
+    regle = regle if regle in dict(RULES) else "periode"
+    try:
+        x = int(float(str(x).replace(",", ".")))
+    except (TypeError, ValueError):
+        x = 3
+    return regle, min(MAX_X, max(1, x)) if x else 3
+
+
+def rule_label(regle, x, word="trimestre"):
+    """Libellé d'une règle, avec X et le mot « trimestre » (ou « semestre ») remplacés."""
+    label = dict(RULES)[regle].replace("trimestre", word).replace(" X ", f" {x} ")
+    return label
+
+
+def grade_cfg(cfg):
+    """Réglages normalisés (niveaux, règle, X) d'une colonne à niveaux (colonne intégrée ou personnalisée)."""
+    regle, x = parse_rule(cfg.get("regle"), cfg.get("x"))
+    return {"niveaux": parse_levels(cfg.get("niveaux") or DEFAULT_LEVELS), "regle": regle, "x": x}
+
+
 # ---------------------------------------------------------------- incréments
 _NUM = re.compile(r"([+\-−–]?)\s*(\d+(?:[.,]\d+)?)")
 
@@ -158,14 +205,17 @@ def builtin(settings, key, short=False):
     base = BUILTINS[key]
     over = (settings.get("builtin") or {}).get(key) or {}
     incs = over.get("increments") or base["increments"]
-    return {
+    out = {
         "key": key,
         "titre": over.get("titre") or (base["court"] if short else base["titre"]),
         "emoji": over["emoji"] if "emoji" in over else base["emoji"],
         "increments": [float(v) for v in incs],
         "visible": bool(over.get("visible", builtin_visible(key))),
-        "type": "lettres" if key in GRADE_KEYS else "compteur",
+        "type": "niveaux" if key in GRADE_KEYS else "compteur",
     }
+    if key in GRADE_KEYS:
+        out.update(grade_cfg(over))
+    return out
 
 
 def builtin_visible(key):
@@ -233,6 +283,8 @@ def sanitize_column(raw):
             v = None
         if v is not None and v > 0:
             col[k] = v
+    if raw.get("niveaux") or typ == "niveaux":
+        col.update(grade_cfg(raw))
     if raw.get("choix") or typ == "liste":
         col["choix"] = parse_choices(raw.get("choix") or [])
     if raw.get("echelle") or typ == "note":
@@ -265,6 +317,18 @@ def from_preset(preset):
     col = {k: v for k, v in preset.items() if k != "description"}
     col["preset"] = preset["id"]
     return sanitize_column(col)
+
+
+def grade_columns(settings, visible_only=True):
+    """Colonnes à niveaux (intégrées puis personnalisées) : dictionnaires {key, event, titre, emoji, niveaux, regle, x, visible}."""
+    out = []
+    for key in GRADE_KEYS:
+        cfg = builtin(settings, key)
+        out.append({**cfg, "event": BUILTIN_EVENT[key]})
+    for col in customs(settings):
+        if col["type"] == "niveaux":
+            out.append({**col, "key": col["id"], "event": col["id"]})
+    return [c for c in out if c["visible"] or not visible_only]
 
 
 def event_type(settings, key):

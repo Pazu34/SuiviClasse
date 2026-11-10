@@ -12,7 +12,7 @@ from tkinter import messagebox, simpledialog, ttk
 from .. import columns, exchange, model
 from .. import plan as P
 from . import dialogs
-from .table import COUNTER_KINDS, build_columns, counter_state, grade_state
+from .table import COUNTER_KINDS, build_columns, counter_state, direct_levels, grade_mean_of, grade_state
 from .theme import P as PAL
 
 LEVEL_COLORS = {"ok": "ok", "warn": "warn", "bad": "bad"}
@@ -199,9 +199,11 @@ class PlanView(ttk.Frame):
         ch = self.f_chip.metrics("linespace") + 4
         labels = []
         for col in cols:
-            if col.kind == "grade":  # moyenne des notes A à E ; « – » tant que l'élève n'a aucune note (la place est comptée)
+            if col.kind == "grade":  # note finale d'une colonne à niveaux ; « – » tant qu'aucune note ne compte
                 text, level, n = grade_state(self.app, col, s, t)
-                title = columns.builtin(self.app.state["settings"], col.key, short=True)["titre"]
+                if n and not direct_levels(col.levels):  # noms longs : le rang (« 2/4 ») garde la pastille étroite
+                    text = f"{model.grade_rank(grade_mean_of(col, s, t), len(col.levels))}/{len(col.levels)}"
+                title = (columns.builtin(self.app.state["settings"], col.key, short=True)["titre"] if col.key in columns.BUILTINS else col.title)
                 icon = col.icon if icons and col.icon else P.initial_text(title)
                 labels.append((col, f"{icon}{text if n else '–'}", level))
                 continue
@@ -397,11 +399,11 @@ class PlanView(ttk.Frame):
         if w is not None and w.winfo_exists() and w.s is s:
             w.refresh()
 
-    def add_grade(self, pid, key, letter):
+    def add_grade(self, pid, key, value):
         col, s = self.col_by_key(key), self.student(self.plan["places"].get(pid))
         if col is None or s is None:
             return
-        model.add_event(s, col.event, self.app.t, model.grade_value(letter))
+        model.add_event(s, col.event, self.app.t, value)
         self.after_student_change(s)
 
     def remove_last_grade(self, pid, key):
@@ -412,17 +414,21 @@ class PlanView(ttk.Frame):
         self.after_student_change(s)
 
     def _grade_menu(self, menu, pid, col):
-        """Notes de A à E à attribuer, moyenne actuelle, annulation de la dernière note."""
+        """Niveaux à attribuer, note finale actuelle (avec sa règle), annulation de la dernière note."""
         s = self.student(self.plan["places"].get(pid))
-        for letter in model.GRADES:
-            menu.add_command(label=f"{col.title} : {letter} — {model.GRADE_NAMES[letter]}", command=lambda l=letter: self.add_grade(pid, col.key, l))
+        names = col.levels
+        for i, name in enumerate(names):
+            menu.add_command(label=f"{col.title} : {name}", command=lambda v=len(names) - i: self.add_grade(pid, col.key, v))
         if s is not None:
+            g = columns.grade_cfg(col.cfg)
             text, _, n = grade_state(self.app, col, s, self.app.t)
             menu.add_separator()
-            menu.add_command(label=f"Moyenne : {text}" + (f" ({n} note{'s' if n > 1 else ''})" if n else ""), state="disabled")
-            if n:
-                last = model.grade_events(s, col.event, self.app.t)[-1]
-                menu.add_command(label=f"Annuler la dernière note ({model.grade_letter(last['v'])})", command=lambda: self.remove_last_grade(pid, col.key))
+            menu.add_command(label=f"Note finale : {text}" + (f" ({n} note{'s' if n > 1 else ''})" if n else ""), state="disabled")
+            menu.add_command(label=columns.rule_label(g["regle"], g["x"], self.app.per["word"]), state="disabled")
+            period = model.grade_events(s, col.event, self.app.t)
+            if period:
+                menu.add_command(label=f"Annuler la dernière note ({model.grade_letter(period[-1]['v'], names)})",
+                                 command=lambda: self.remove_last_grade(pid, col.key))
 
     def _counter_menu(self, menu, pid, col):
         if col.kind == "grade":

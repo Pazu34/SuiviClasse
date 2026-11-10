@@ -31,6 +31,11 @@ class Col:
     def increments(self):
         return self.cfg.get("increments", [])
 
+    @property
+    def levels(self):
+        """Niveaux de la colonne (colonne à niveaux), du meilleur au moins bon."""
+        return columns.grade_cfg(self.cfg)["niveaux"]
+
 
 def build_columns(app):
     """Liste ordonnée des colonnes selon la configuration (données) et la période (trimestres / semestres)."""
@@ -53,7 +58,7 @@ def build_columns(app):
             defs[key] = [Col(key, kind, cfg["titre"], cfg["emoji"], cfg, event=columns.BUILTIN_EVENT[key], per_period=True)]
     customs = columns.customs(settings)
     for c in (c for c in customs if c["visible"]):
-        kind = {"compteur": "counter", "note": "xnote", "texte": "xtext", "liste": "xlist", "coche": "xcheck"}[c["type"]]
+        kind = {"compteur": "counter", "note": "xnote", "texte": "xtext", "liste": "xlist", "coche": "xcheck", "niveaux": "grade"}[c["type"]]
         defs[c["id"]] = [Col(c["id"], kind, c["titre"], c["emoji"], c, per_period=True)]
     b = columns.base(settings, "comm", short=compact)
     if b["visible"]:
@@ -99,10 +104,23 @@ def counter_state(app, col, student, t):
     return n, model.level(n, orange or float("inf"), rouge or float("inf")) if (orange or rouge) else ""
 
 
+def grade_mean_of(col, student, t):
+    """Moyenne (de 1 à n, ou None) d'une colonne à niveaux selon sa règle de calcul."""
+    g = columns.grade_cfg(col.cfg)
+    return model.grade_mean(student, col.event, t, g["regle"], g["x"], len(g["niveaux"]))
+
+
 def grade_state(app, col, student, t):
-    """(moyenne affichée, niveau d'alerte, nombre de notes) d'une colonne de notes de A à E pour un élève et une période."""
-    mean = model.grade_mean(student, col.event, t)
-    return model.grade_text(mean), model.grade_level(mean), len(model.grade_events(student, col.event, t))
+    """(note finale affichée, niveau d'alerte, nombre de notes prises en compte) d'une colonne à niveaux pour un élève et une période."""
+    g = columns.grade_cfg(col.cfg)
+    mean = grade_mean_of(col, student, t)
+    return (model.grade_text(mean, g["niveaux"]), model.grade_level(mean, len(g["niveaux"])),
+            len(model.grade_events(student, col.event, t, g["regle"], g["x"])))
+
+
+def direct_levels(levels):
+    """Noms assez courts pour avoir chacun son bouton dans le tableau ; sinon un seul bouton ouvre un menu."""
+    return all(len(name) <= 3 for name in levels)
 
 
 def parse_grade(text, maxi=20):
@@ -184,8 +202,8 @@ class ClassTable(ttk.Frame):
         i = 0 if self.mode == "compact" else 1
         if col.kind == "note":
             width = WIDTHS["note"][i]
-        elif col.kind == "grade":  # cinq boutons A à E, puis la moyenne
-            width = len(model.GRADES) * (self.letter_w + 2) + self.layout["avg"] + self.layout["gap"]
+        elif col.kind == "grade":  # un bouton par niveau (ou « Noter ▾ »), puis la note finale
+            width = sum(self.grade_button_widths(col)) + self.grade_avg_width(col) + self.layout["gap"]
         elif col.kind in COUNTER_KINDS:
             labels = [lab for _, lab in self.counter_labels(col)]
             width = sum(self.button_width(x) for x in labels) + self.layout["total"] + self.layout["gap"] + 2 * len(labels)
@@ -198,6 +216,18 @@ class ClassTable(ttk.Frame):
         longest = max((self.head_font.measure(w) for w in title.upper().split()), default=0) + 16
         # titre court : tenir sur une ligne ; titre long : au moins son plus long mot (le reste passe à la ligne)
         return max(width, whole if whole <= 130 else min(longest, 220))
+
+    def grade_button_widths(self, col):
+        """Largeur de chaque bouton d'une colonne à niveaux (un par niveau si les noms sont courts, sinon un seul « Noter ▾ »)."""
+        names = col.levels
+        if direct_levels(names):
+            return [max(self.letter_w, self.measure.measure(n) + 12) + 2 for n in names]
+        return [self.measure.measure("Noter ▾") + 16]
+
+    def grade_avg_width(self, col):
+        """Largeur de la note finale : « non noté » ou le plus long niveau avec son + ou −."""
+        widest = max(self.measure.measure(n + "−") for n in col.levels) + 14
+        return max(self.layout["avg"], widest)
 
     def cell(self, parent, row, col, bg=None):
         """Case de largeur fixe : garantit l'alignement des en-têtes avec les lignes."""
@@ -450,11 +480,18 @@ class Row:
         self.counters[col.key] = (parent, total)
 
     def _build_grade(self, col, parent, i):
-        """Cinq boutons A à E (un clic = une note pour la séance) puis la moyenne de la période ; un clic sur la moyenne
-        propose d'annuler la dernière note ou d'ouvrir l'historique."""
-        for letter in model.GRADES:
-            ttk.Button(parent, text=letter, style="Letter.Mini.TButton",
-                       command=lambda l=letter, col=col: self.add(col.event, model.grade_value(l))).pack(side="left", padx=1, pady=2)
+        """Un bouton par niveau (un clic = une note pour la séance), ou « Noter ▾ » qui ouvre le menu des niveaux quand les noms sont
+        longs, puis la note finale ; un clic sur la note finale propose d'annuler la dernière note ou d'ouvrir l'historique."""
+        names = col.levels
+        n = len(names)
+        if direct_levels(names):
+            for i, name in enumerate(names):
+                ttk.Button(parent, text=name, style="Letter.Mini.TButton",
+                           command=lambda v=n - i, col=col: self.add(col.event, v)).pack(side="left", padx=1, pady=2)
+        else:
+            btn = ttk.Button(parent, text="Noter ▾", style="Letter.Mini.TButton")
+            btn.configure(command=lambda b=btn, col=col: self.level_menu(col, b))
+            btn.pack(side="left", padx=1, pady=2)
         label = tk.Label(parent, font=self.bold, fg=P["text"], cursor="hand2")
         label.pack(side="left", fill="both", expand=True, padx=(2, 1), pady=2)
         label.bind("<Button-1>", lambda e, col=col: self.grade_menu(col, e))
@@ -689,19 +726,34 @@ class Row:
         model.add_event(self.s, event, self.app.t, value)
         self.after_change()
 
-    def grade_menu(self, col, e):
-        """Menu de la moyenne : les notes de la période, annuler la dernière, ouvrir l'historique (fiche de l'élève)."""
-        events = model.grade_events(self.s, col.event, self.app.t)
+    def level_menu(self, col, button):
+        """Menu des niveaux d'une colonne dont les noms sont trop longs pour avoir chacun son bouton."""
+        names = col.levels
         menu = tk.Menu(self.table, tearoff=0)
-        if events:
-            letters = [model.grade_letter(x["v"]) for x in events]
-            shown = ("… " if len(letters) > 12 else "") + " ".join(letters[-12:])
-            last = events[-1]
-            menu.add_command(label=f"{len(letters)} note(s) : {shown}", state="disabled")
-            menu.add_command(label=f"Annuler la dernière note ({model.grade_letter(last['v'])} du {model.event_datetime(last):%d/%m})",
-                             command=lambda: self.remove_last_grade(col))
+        for i, name in enumerate(names):
+            menu.add_command(label=name, command=lambda v=len(names) - i: self.add(col.event, v))
+        menu.tk_popup(button.winfo_rootx(), button.winfo_rooty() + button.winfo_height())
+
+    def grade_menu(self, col, e):
+        """Menu de la note finale : règle de calcul, notes prises en compte, annuler la dernière note, historique (fiche de l'élève)."""
+        g = columns.grade_cfg(col.cfg)
+        names, t = g["niveaux"], self.app.t
+        used = model.grade_events(self.s, col.event, t, g["regle"], g["x"])
+        menu = tk.Menu(self.table, tearoff=0)
+        menu.add_command(label=columns.rule_label(g["regle"], g["x"], self.app.per["word"]), state="disabled")
+        if used:
+            letters = [model.grade_letter(x["v"], names) for x in used]
+            shown = ("… " if len(letters) > 10 else "") + " · ".join(letters[-10:])
+            mean = grade_mean_of(col, self.s, t)
+            menu.add_command(label=f"{len(letters)} note(s) prise(s) en compte : {shown}", state="disabled")
+            menu.add_command(label=f"Moyenne : {model.grade_text(mean, names)} ({exchange.fmt_num(mean)} sur {len(names)})", state="disabled")
         else:
-            menu.add_command(label="Aucune note attribuée sur cette période", state="disabled")
+            menu.add_command(label="Aucune note prise en compte", state="disabled")
+        period = model.grade_events(self.s, col.event, t)
+        if period:
+            last = period[-1]
+            menu.add_command(label=f"Annuler la dernière note ({model.grade_letter(last['v'], names)} du {model.event_datetime(last):%d/%m})",
+                             command=lambda: self.remove_last_grade(col))
         menu.add_separator()
         menu.add_command(label="Historique des notes (fiche de l'élève)…", command=self.open)
         menu.tk_popup(e.x_root, e.y_root)

@@ -245,7 +245,7 @@ class NotesLettresTest(unittest.TestCase):
     def test_affichage_par_defaut(self):
         visible = [k for k in C.BUILTIN_ORDER if C.builtin({}, k)["visible"]]
         self.assertEqual(visible, ["qualSeance", "qualMaison", "oubli"])
-        self.assertEqual(C.builtin({}, "qualMaison")["type"], "lettres")
+        self.assertEqual(C.builtin({}, "qualMaison")["type"], "niveaux")
         # un ancien compteur masqué par défaut se réaffiche à la demande
         self.assertTrue(C.builtin({"builtin": {"travail": {"visible": True}}}, "travail")["visible"])
         self.assertFalse(C.builtin({"builtin": {"qualSeance": {"visible": False}}}, "qualSeance")["visible"])
@@ -260,3 +260,94 @@ class NotesLettresTest(unittest.TestCase):
         self.assertEqual(mean["Noah"], "non noté")
         self.assertEqual(mean["Emma"], "A−")
         self.assertEqual(model.grade_text(model.grade_mean(next(s for s in cls["eleves"] if s["prenom"] == "Jules"), "qualMaison", 1)), "non noté")
+
+
+class NiveauxPersonnalisesTest(unittest.TestCase):
+    """Colonnes à niveaux ajoutées par l'utilisateur : 2 à 5 niveaux nommés, règle de la note finale (moyenne ou X dernières notes)."""
+
+    def eleve(self, notes):
+        """notes : [(période, valeur)] dans l'ordre d'attribution ; les dates croissent avec l'ordre."""
+        s = model.new_student("Martin", "Léa")
+        for i, (t, v) in enumerate(notes):
+            model.add_event(s, "c1", t, v)
+            s["events"][-1]["date"] = f"2026-09-{10 + i:02d}T10:00:00.000Z"
+        return s
+
+    def final(self, s, t, regle, x=3, n=5):
+        return model.grade_mean(s, "c1", t, regle, x, n)
+
+    def test_les_quatre_regles(self):
+        # T1 : 5, 1, 3 ; T2 : 4, 2, 5, 5
+        s = self.eleve([(1, 5), (1, 1), (1, 3), (2, 4), (2, 2), (2, 5), (2, 5)])
+        self.assertEqual(self.final(s, 1, "periode"), 3)
+        self.assertEqual(self.final(s, 2, "periode"), 4)                               # (4+2+5+5)/4
+        self.assertAlmostEqual(self.final(s, 2, "annee"), 25 / 7)                      # tout depuis le début de l'année
+        self.assertEqual(self.final(s, 1, "annee"), 3)                                 # le T2 ne compte pas pour le bulletin du T1
+        self.assertAlmostEqual(self.final(s, 2, "dernieres_periode", 3), 4)            # 2, 5, 5 -> 4
+        self.assertAlmostEqual(self.final(s, 2, "dernieres_periode", 2), 5)            # 5, 5
+        self.assertAlmostEqual(self.final(s, 2, "dernieres_annee", 5), 19 / 5)         # 3, 4, 2, 5, 5 -> les 5 dernières, toutes périodes
+        self.assertAlmostEqual(self.final(s, 1, "dernieres_annee", 2), 2)              # 1 et 3 : seules les notes jusqu'au T1 comptent
+
+    def test_moins_de_notes_que_x(self):
+        s = self.eleve([(1, 4), (1, 2)])
+        self.assertEqual(self.final(s, 1, "dernieres_periode", 5), 3)                  # on moyenne ce qui existe
+        self.assertIsNone(self.final(s, 2, "dernieres_periode", 3))                    # rien au T2 : non noté
+        self.assertEqual(model.grade_text(self.final(s, 2, "periode")), "non noté")
+        self.assertEqual(self.final(s, 2, "annee"), 3)                                 # mais l'année a des notes
+
+    def test_ordre_chronologique_et_pas_ordre_du_journal(self):
+        s = self.eleve([(1, 5), (1, 1), (1, 3)])
+        s["events"][0]["date"] = "2026-10-01T10:00:00.000Z"                            # la note « 5 » est en fait la plus récente
+        self.assertEqual(self.final(s, 1, "dernieres_periode", 1), 5)
+
+    def test_noms_de_niveaux_personnalises(self):
+        niv = ["Très bien", "Bien", "À revoir"]
+        self.assertEqual([model.grade_text(m, niv) for m in (None, 3, 2.7, 2, 1.2, 1)],
+                         ["non noté", "Très bien", "Très bien−", "Bien", "À revoir+", "À revoir"])
+        self.assertEqual([model.grade_value(x, niv) for x in niv], [3, 2, 1])
+        self.assertEqual(model.grade_rank(2.2, 3), 2)
+
+    def test_couleurs_selon_le_nombre_de_niveaux(self):
+        self.assertEqual([model.grade_level(v, 2) for v in (2, 1)], ["ok", "bad"])
+        self.assertEqual([model.grade_level(v, 3) for v in (3, 2, 1)], ["ok", "", "bad"])
+        self.assertEqual([model.grade_level(v, 4) for v in (4, 3, 2, 1)], ["ok", "ok", "warn", "bad"])
+        self.assertEqual([model.grade_level(v, 5) for v in (5, 4, 3, 2, 1)], ["ok", "ok", "", "warn", "bad"])
+
+    def test_note_hors_echelle_ramenee_au_meilleur_niveau(self):
+        s = self.eleve([(1, 5)])                                                       # enregistrée quand il y avait 5 niveaux
+        self.assertEqual(self.final(s, 1, "periode", n=3), 3)
+
+    def test_analyse_des_niveaux(self):
+        self.assertEqual(C.parse_levels("Très bien\nBien\n\nbien\nMoyen\nFaible\nTrès faible\nde trop"), ["Très bien", "Bien", "Moyen", "Faible", "Très faible"])
+        self.assertEqual(C.parse_levels(["Seul"]), C.DEFAULT_LEVELS)                  # moins de deux niveaux : A à E
+        self.assertEqual(len(C.parse_levels(["x" * 50, "y"])[0]), C.MAX_LEVEL_LEN)
+
+    def test_analyse_de_la_regle(self):
+        self.assertEqual(C.parse_rule("dernieres_annee", "5"), ("dernieres_annee", 5))
+        self.assertEqual(C.parse_rule("n'importe quoi", None), ("periode", 3))        # X vaut 3 par défaut
+        self.assertEqual(C.parse_rule("annee", "250"), ("annee", 99))
+        self.assertEqual(C.parse_rule("annee", "-4"), ("annee", 1))
+        self.assertEqual(C.rule_label("dernieres_periode", 4, "semestre"), "Moyenne des 4 dernières notes du semestre")
+        self.assertEqual(C.rule_label("annee", 3), "Moyenne des notes depuis le début de l'année")
+
+    def test_colonne_personnalisee_a_niveaux(self):
+        col = C.sanitize_column({"id": "c1", "type": "niveaux", "titre": "Oral", "niveaux": ["Oui", "Moyen", "Non"], "regle": "dernieres_annee", "x": 2})
+        self.assertEqual((col["niveaux"], col["regle"], col["x"]), (["Oui", "Moyen", "Non"], "dernieres_annee", 2))
+        defaut = C.sanitize_column({"id": "c2", "type": "niveaux"})
+        self.assertEqual((defaut["niveaux"], defaut["regle"], defaut["x"]), (C.DEFAULT_LEVELS, "periode", 3))
+        st = {"colonnes": [col, {"id": "c3", "type": "compteur"}], "builtin": {"qualMaison": {"niveaux": ["Oui", "Non"], "regle": "annee"}}}
+        got = C.grade_columns(st)
+        self.assertEqual([g["key"] for g in got], ["qualSeance", "qualMaison", "c1"])
+        self.assertEqual([g["event"] for g in got], ["qualSeance", "qualMaison", "c1"])
+        self.assertEqual((got[1]["niveaux"], got[1]["regle"]), (["Oui", "Non"], "annee"))
+        self.assertEqual(len(C.grade_columns({"builtin": {"qualSeance": {"visible": False}}})), 1)
+
+    def test_changement_du_nombre_de_niveaux(self):
+        data = {"classes": [{"eleves": [self.eleve([(1, 5), (1, 4), (1, 3), (1, 2), (1, 1)])]}]}
+        other = model.new_student("X", "Y")
+        model.add_event(other, "autre", 1, 5)
+        data["classes"][0]["eleves"].append(other)
+        self.assertEqual(model.rescale_levels(data, "c1", 5, 3), 5)
+        self.assertEqual([e["v"] for e in data["classes"][0]["eleves"][0]["events"]], [3, 3, 2, 2, 1])   # 5->3, 4->3 (2,25+1), 3->2, 2->2, 1->1
+        self.assertEqual(data["classes"][0]["eleves"][1]["events"][0]["v"], 5)                          # une autre colonne n'est pas touchée
+        self.assertEqual(model.rescale_levels(data, "c1", 3, 3), 0)

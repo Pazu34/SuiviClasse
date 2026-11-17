@@ -183,7 +183,7 @@ td.xcheck.done { background: var(--ok) !important; }
 .sideplan h4 { margin: 4px 0 8px; }
 .pupil { padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; background: var(--surface); touch-action: none; user-select: none; }
 .pupil:active { background: var(--hover); }
-.ghost { position: fixed; z-index: 90; pointer-events: none; padding: 6px 12px; border-radius: 8px; background: var(--accent); color: var(--accent-fg); box-shadow: var(--shadow); font-weight: 700; }
+.dragghost { position: fixed; z-index: 90; pointer-events: none; padding: 6px 12px; border-radius: 8px; background: var(--accent); color: var(--accent-fg); box-shadow: var(--shadow); font-weight: 700; }
 .sideplan.over { outline: 3px solid var(--accent); outline-offset: -3px; }
 
 /* éditeur de salle */

@@ -311,7 +311,7 @@ test("préférences : découpage en semestres et sauvegarde des réglages", asyn
   await page.click(".tabs >> text=Alertes");
   await page.locator(".settingrow", { hasText: "Orange à partir de" }).first().locator("input").fill("1");
   await page.click(".dialog footer >> text=Enregistrer");
-  await page.waitForFunction(() => app.values.periodes === "semestres");
+  await page.waitForSelector('[aria-label="Période"] button:has-text("S1")');
   assert.deepEqual(await page.$$eval('[aria-label="Période"] button', (b) => b.map((x) => x.textContent)), ["S1", "S2"]);
   assert.equal(await page.locator("th", { hasText: "S1" }).count() >= 1, true);
   const stored = JSON.parse(await page.evaluate(() => app.storage.get("preferences.json")));

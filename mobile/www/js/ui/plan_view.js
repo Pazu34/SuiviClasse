@@ -223,7 +223,7 @@ export function renderPlan(app, cls, shell) {
         if (!active && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) > MOVE_PX) {
           active = true;
           clearTimeout(longTimer);
-          ghost = h("div", { class: "ghost" }, names[s.id] || P.listName(s));
+          ghost = h("div", { class: "dragghost" }, names[s.id] || P.listName(s));
           document.body.append(ghost);
           el.style.opacity = ".4";
         }

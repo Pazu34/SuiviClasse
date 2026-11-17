@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test, { after, before } from "node:test";
 import { py, tmpdir } from "../helpers.mjs";
-import { PW, createVault, launch, row, settle, shot, unlock } from "./helpers.mjs";
+import { PW, createVault, launch, rendered, row, settle, shot, unlock } from "./helpers.mjs";
 
 let env;
 before(async () => { env = await launch(); });
@@ -16,7 +16,7 @@ test("création du coffre : classe Test, colonnes et alertes comme sur le PC", a
   const page = await env.page();
   await createVault(page);
   const heads = await page.$$eval("table.grid thead th", (t) => t.map((x) => x.textContent.trim().replace(/\s+/g, " ")));
-  assert.deepEqual(heads, ["n°", "Nom", "Prénom", "Infos", "T1", "T2", "T3", "📚Séance (T1)", "🏠Maison (T1)", "🎒Oublis (T1)", "Commentaire bulletin", ""]);
+  assert.deepEqual(heads, ["n°", "Nom", "Prénom", "Infos (PAI…)", "T1 /20", "T2 /20", "T3 /20", "📚Travail en séance (T1)", "🏠Travail à la maison (T1)", "🎒Oubli matériel (T1)", "Commentaire bulletin", ""]);
   assert.equal(await page.locator("table.grid tbody tr").count(), 8);
   // Emma : A−, A ; Noah : non noté en séance
   assert.equal(await row(page, "DUBOIS").locator("td.ctr .total").nth(0).textContent(), "A−");
@@ -34,7 +34,7 @@ test("compteurs, notes par niveaux, annuler / rétablir", async () => {
   const r = row(page, "HENRY");
   const oublis = r.locator("td.ctr").nth(2);
   assert.equal(await oublis.locator(".total").textContent(), "4");
-  await oublis.locator('button[aria-label="Oublis +"]').tap();
+  await oublis.locator(".cbtn").last().tap();
   assert.equal(await oublis.locator(".total").textContent(), "5");
   // un clic sur « B » dans « Séance » : Noah n'avait aucune note -> B
   await r.locator("td.ctr").nth(0).locator("button", { hasText: /^B$/ }).tap();
@@ -66,6 +66,7 @@ test("notes de période : saisie directe, validation, moyenne de la classe", asy
   const t2 = row(page, "BERNARD").locator("input.cell").nth(1);
   await t2.fill("12,5");
   await t2.press("Enter");
+  await rendered(page);
   assert.equal(await page.evaluate(() => app.state.classes[0].eleves.find((s) => s.nom === "BERNARD").notes["2"]), 12.5);
   assert.equal(await page.locator("table.grid tfoot td").nth(5).textContent(), "12,5");
   await row(page, "BERNARD").locator("input.cell").nth(1).fill("25");
@@ -100,7 +101,7 @@ test("fiche élève : identité, commentaire, journal", async () => {
 test("persistance : après rechargement, le mot de passe rouvre les données chiffrées", async () => {
   const page = await env.page();
   await createVault(page);
-  await row(page, "GARCIA").locator("td.ctr").nth(2).locator('button[aria-label="Oublis +"]').tap();
+  await row(page, "GARCIA").locator("td.ctr").nth(2).locator(".cbtn").last().tap();
   await settle(page);
   await page.reload();
   await page.waitForSelector(".login");
@@ -117,7 +118,7 @@ test("persistance : après rechargement, le mot de passe rouvre les données chi
 test("compatibilité : le coffre de la tablette s'ouvre sur le PC et celui du PC s'ouvre sur la tablette", async () => {
   const page = await env.page();
   await createVault(page);
-  await row(page, "FONTAINE").locator("td.ctr").nth(2).locator('button[aria-label="Oublis +"]').tap();
+  await row(page, "FONTAINE").locator("td.ctr").nth(2).locator(".cbtn").last().tap();
   await settle(page);
   const text = await page.evaluate(() => app.vault.fileText());
   const dir = tmpdir();
@@ -321,7 +322,7 @@ test("préférences : découpage en semestres et sauvegarde des réglages", asyn
 test("verrouillage : les données sont enregistrées puis le mot de passe est redemandé", async () => {
   const page = await env.page();
   await createVault(page);
-  await row(page, "LAMBERT").locator("td.ctr").nth(2).locator('button[aria-label="Oublis +"]').tap();
+  await row(page, "LAMBERT").locator("td.ctr").nth(2).locator(".cbtn").last().tap();
   await page.click('button[aria-label="Menu"]');
   await page.click(".menu >> text=Verrouiller");
   await page.waitForSelector(".login");

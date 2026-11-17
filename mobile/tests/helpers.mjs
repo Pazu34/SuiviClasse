@@ -22,7 +22,7 @@ export const tmpdir = () => fs.mkdtempSync(path.join(os.tmpdir(), "suivi-"));
 
 /** Exécute du code Python (programme du PC importable) ; retourne la sortie JSON analysée. */
 export function py(code, input = null) {
-  const r = spawnSync("python3.12", ["-I", "-c", `import sys; sys.path.insert(0, ${JSON.stringify(ROOT)})\n${code}`],
+  const r = spawnSync(process.env.PYTHON || "python3.12", ["-I", "-c", `import sys; sys.path.insert(0, ${JSON.stringify(ROOT)})\n${code}`],
                       { input: input === null ? undefined : JSON.stringify(input), encoding: "utf8", maxBuffer: 1 << 28 });
   if (r.status !== 0) throw new Error("Python a échoué :\n" + r.stderr);
   return r.stdout.trim() ? JSON.parse(r.stdout) : null;

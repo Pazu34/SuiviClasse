@@ -1,0 +1,68 @@
+name: Build Android (tablette)
+
+on:
+  push:
+    branches: [main, "claude/**"]
+    paths: ["mobile/**", "suiviclasse/**", ".github/workflows/build-android.yml"]
+  workflow_dispatch:
+
+jobs:
+  tests:
+    name: Tests (compatibilité avec le PC, logique, interface)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install cryptography
+      - run: npm install --no-audit --no-fund
+      - name: Tests croisés Python <-> JavaScript
+        run: npm test
+        env:
+          PYTHON: python
+      - name: Tests de l'interface (Chromium, écran de tablette)
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:ui
+
+  apk:
+    name: APK Android
+    runs-on: ubuntu-latest
+    needs: []
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: npm install --no-audit --no-fund
+      - name: Projet Android (Capacitor)
+        run: |
+          npx cap add android
+          python tools/patch_android.py
+          npx cap sync android
+        env:
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+      - name: Construction de l'APK
+        working-directory: mobile/android
+        run: ./gradlew assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SuiviClasse-android-apk
+          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk

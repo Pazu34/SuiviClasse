@@ -1,0 +1,7 @@
+{
+  "appId": "fr.suiviclasse.app",
+  "appName": "SuiviClasse",
+  "webDir": "www",
+  "server": { "androidScheme": "https" },
+  "android": { "allowMixedContent": false, "backgroundColor": "#f3f4f8" }
+}

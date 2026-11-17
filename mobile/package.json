@@ -1,0 +1,25 @@
+{
+  "name": "suiviclasse-android",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SuiviClasse pour tablette Android : même coffre chiffré que la version PC.",
+  "license": "GPL-3.0-only",
+  "scripts": {
+    "test": "node --test tests/vault_compat.test.mjs tests/golden.test.mjs tests/golden_plan_exchange.test.mjs",
+    "test:ui": "node --test tests/ui/app.test.mjs",
+    "serve": "node -e \"import('./tests/ui/server.mjs').then(async m => { const s = await m.serve(8080); console.log(s.url); })\"",
+    "android:add": "cap add android && python3 tools/patch_android.py",
+    "android:sync": "cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "6.2.3",
+    "@capacitor/app": "6.0.3",
+    "@capacitor/core": "6.2.3",
+    "@capacitor/filesystem": "6.0.4",
+    "@capacitor/share": "6.0.4"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "6.2.3",
+    "playwright": "1.63.0"
+  }
+}

@@ -13,6 +13,7 @@ export async function launch() {
     server, browser,
     async page(opts = {}) {
       const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, hasTouch: true, locale: "fr-FR", timezoneId: "Europe/Paris", acceptDownloads: true, ...opts });
+      ctx.setDefaultTimeout(8000);
       const page = await ctx.newPage();
       const errors = [];
       page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
@@ -44,3 +45,6 @@ export async function unlock(page, pw = PW) {
 export const row = (page, nom) => page.locator("table.grid tbody tr", { has: page.locator(`td.nom:text-is("${nom}")`) });
 export const settle = (page) => page.waitForFunction(() => window.app && !window.app.dirty && window.app.status.includes("Enregistré"), null, { timeout: 15000 });
 export const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}.png` }); };
+
+/** Attend que l'interface ait fini de se reconstruire après une modification. */
+export const rendered = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 30)))));

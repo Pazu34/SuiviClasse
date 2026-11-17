@@ -156,7 +156,7 @@ export function renderPlan(app, cls, shell) {
 
   const buildChips = (s) => {
     const labels = chipLabels(s).map((l) => ({ ...l, w: measure(l.text, chipFont) + 16 }));
-    const avail = sw - 10, rows = Math.max(1, Math.floor((sh - 36) / 32)), gap = 4, moreW = 38;
+    const avail = sw - 10, rows = Math.max(1, Math.floor((sh - 30) / 31)), gap = 3, moreW = 38;  // deux rangées de pastilles sur une place de 92 px
     // remplissage rangée par rangée : tout tient-il ? sinon on garde de la place pour la pastille « ⋯ »
     const flow = (items, limit) => { let r = 0, used = 0, n = 0; for (const it of items) { if (used && used + gap + it.w > limit) { r++; used = 0; } if (r >= rows) break; used += (used ? gap : 0) + it.w; n++; } return n; };
     let shown = labels.length;

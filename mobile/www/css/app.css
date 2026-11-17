@@ -173,7 +173,7 @@ td.xcheck.done { background: var(--ok) !important; }
 .seat.dim { opacity: .35; }
 .seat.over { outline: 3px solid var(--accent); }
 .seat .nm { font-weight: 700; padding: 4px 6px 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: grab; }
-.seat .chips2 { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 5px; }
+.seat .chips2 { display: flex; flex-wrap: wrap; gap: 3px; padding: 1px 5px; }
 .pchip { border: 1px solid var(--border); border-radius: 7px; background: var(--surface2); padding: 2px 7px; min-height: 28px; font-size: 13px; line-height: 1.2; }
 .pchip.ok { background: var(--ok); } .pchip.warn { background: var(--warn); } .pchip.bad { background: var(--bad); }
 .marker { position: absolute; border: 1px dashed var(--border); background: var(--surface2); color: var(--muted); display: flex; align-items: center; justify-content: center;

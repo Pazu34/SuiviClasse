@@ -57,6 +57,18 @@ Bouton **Plan de classe** (à côté de « Tableau », sur la ligne de la classe
 - **Répartitions** : une classe peut avoir plusieurs répartitions nommées (« Plan T1 », « Plan T2 »…), chacune dans une salle ; boutons *Nouvelle*, *Dupliquer*, *Renommer*, *Supprimer*. **Répartir les élèves…** les place automatiquement (ordre alphabétique rangée par rangée, ou au hasard, en gardant ou non ceux déjà placés) ; **Vider la répartition** les retire tous.
 - Salles et répartitions sont enregistrées avec le reste des **données chiffrées**, archivées et annulables (Annuler / Rétablir). Un nouveau coffre contient une salle d'exemple et une répartition pour la classe Test.
 
+## Version Android (tablette)
+
+Le dossier `mobile/` contient l'application **Android** (testée pour une Samsung Galaxy Tab S6, utilisable sur toute tablette) : mêmes fonctions que le programme du PC — classes, tableau, notes par niveaux, colonnes personnalisables, fiche élève et journal, plan de classe et éditeur de salle, import/export PRONOTE, archives, préférences — avec une interface adaptée au doigt et au stylet.
+
+**Les données sont les mêmes que sur le PC.** Le fichier `suivi.enc` (dossier `SuiviClasse-Donnees` du PC) s'ouvre tel quel sur la tablette, et inversement, avec le même mot de passe : même chiffrement (scrypt + AES-256-GCM), même format, mêmes archives, mêmes calculs. Menu ⋮ → **Données** : *Exporter* envoie `suivi.enc` (câble USB, Drive, courriel, Partage rapide…), *Importer* reprend celui du PC (une archive de l'état précédent est créée), et le fichier `preferences.json` du PC peut aussi être repris. La compatibilité est vérifiée automatiquement : chaque fonction de calcul est exécutée en Python et en JavaScript sur les mêmes entrées, et les coffres sont ouverts dans les deux sens (`npm test` dans `mobile/`).
+
+**Installer l'APK** : télécharger l'artefact `SuiviClasse-android-apk` d'une exécution du workflow « Build Android (tablette) » (onglet Actions de GitHub), le copier sur la tablette et l'ouvrir (autoriser l'installation depuis cette source). L'APK est signé avec une clé de débogage : à usage personnel.
+
+**Particularités tactiles** : colonnes n°, nom et prénom figées à gauche pendant le défilement ; boutons de 38 px ; notes saisies directement dans la case ; textes longs dans une fenêtre de saisie ; fiche élève en feuille latérale ; sur le plan de classe, glisser un élève au doigt pour le placer ou l'échanger, **appui long** sur une place pour son menu, toucher une place libre pour y placer un élève ; l'éditeur de salle a des poignées de 26 px, un mode « sélection » et des flèches de déplacement. Le bouton retour d'Android ferme les fenêtres ouvertes.
+
+**Développement** : application web sans dépendance (`mobile/www`), empaquetée avec [Capacitor](https://capacitorjs.com). `npm test` (logique et compatibilité, nécessite Python et `cryptography`), `npm run test:ui` (parcours complet dans Chromium, écran de 1280 × 800), `npm run serve` pour l'essayer dans un navigateur. Le workflow `.github/workflows/build-android.yml` lance les tests et construit l'APK.
+
 ## Trimestres ou semestres
 
 **Préférences → Affichage → Découpage de l'année** : *Trimestres (T1 à T3)* par défaut, ou *Semestres (S1 et S2)*. En semestres, les boutons, les titres du tableau, la fiche élève, l'import et l'export parlent de S1 et S2, et la colonne de la 3ᵉ note disparaît. Les données gardent leur numéro de période (période 1 = T1 ou S1, période 2 = T2 ou S2) : choisissez le découpage en début d'année. Les données de la 3ᵉ période ne sont pas supprimées, elles réapparaissent si vous revenez aux trimestres. Les titres d'import « S1 », « Semestre 2 », « 1er semestre »… sont reconnus comme « T1 », « Trimestre 2 », etc.

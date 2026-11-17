@@ -154,21 +154,23 @@ export function renderPlan(app, cls, shell) {
     return items;
   };
 
-  const buildChips = (s, dim) => {
-    const labels = chipLabels(s);
-    const cw = Math.max(30, ...labels.map((l) => measure(l.text, chipFont))) + 16;
-    const perRow = Math.max(1, Math.floor((sw - 10) / (cw + 4))), rows = Math.max(1, Math.floor((sh - 34) / 32));
-    const cap = perRow * rows;
-    const shown = labels.length <= cap ? labels : labels.slice(0, cap - 1);
-    const els = shown.map((l) => h("button", { class: "pchip " + l.level, type: "button", style: { width: cw + "px", fontSize: "13px" }, "aria-label": l.col.title, dataset: { chip: l.col.key },
+  const buildChips = (s) => {
+    const labels = chipLabels(s).map((l) => ({ ...l, w: measure(l.text, chipFont) + 16 }));
+    const avail = sw - 10, rows = Math.max(1, Math.floor((sh - 36) / 32)), gap = 4, moreW = 38;
+    // remplissage rangée par rangée : tout tient-il ? sinon on garde de la place pour la pastille « ⋯ »
+    const flow = (items, limit) => { let r = 0, used = 0, n = 0; for (const it of items) { if (used && used + gap + it.w > limit) { r++; used = 0; } if (r >= rows) break; used += (used ? gap : 0) + it.w; n++; } return n; };
+    let shown = labels.length;
+    if (flow(labels, avail) < labels.length) shown = flow([...labels.slice(0, labels.length), { w: moreW }].slice(0, labels.length + 1), avail) - 1;
+    while (shown > 0 && flow([...labels.slice(0, shown), { w: moreW }], avail) < shown + 1) shown--;
+    const els = labels.slice(0, shown).map((l) => h("button", { class: "pchip " + l.level, type: "button", "aria-label": l.col.title, dataset: { chip: l.col.key },
       onpointerdown: (e) => e.stopPropagation(),
       onclick: (e) => {
         e.stopPropagation();
         if (l.col.kind === "grade") menu(e.currentTarget, counterMenuItems(s, l.col));
         else { M.addEvent(s, l.col.event, t, P.primaryIncrement(l.col.increments)); commit(); }
       } }, l.text));
-    if (labels.length > cap) els.push(h("button", { class: "pchip", type: "button", style: { width: cw + "px" }, "aria-label": "Autres colonnes", onpointerdown: (e) => e.stopPropagation(),
-      onclick: (e) => { e.stopPropagation(); menu(e.currentTarget, labels.slice(cap - 1).flatMap((l) => [{ header: `${l.col.icon || ""} ${l.col.title}`.trim() }, ...counterMenuItems(s, l.col)])); } }, "⋯"));
+    if (shown < labels.length) els.push(h("button", { class: "pchip", type: "button", "aria-label": "Autres colonnes", onpointerdown: (e) => e.stopPropagation(),
+      onclick: (e) => { e.stopPropagation(); menu(e.currentTarget, labels.slice(shown).flatMap((l) => [{ header: `${l.col.icon || ""} ${l.col.title}`.trim() }, ...counterMenuItems(s, l.col)])); } }, "⋯"));
     return h("div", { class: "chips2" }, els);
   };
 

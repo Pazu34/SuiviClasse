@@ -28,6 +28,7 @@ export class Shell {
   }
 
   schedule() {
+    if (window.__syncRender && this.app.state) { this.render(); return; }  // tests : reconstruction immédiate
     if (this.scheduled || !this.app.state) return;
     this.scheduled = true;
     requestAnimationFrame(() => { this.scheduled = false; if (this.app.state) this.render(); });

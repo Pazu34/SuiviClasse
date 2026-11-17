@@ -35,6 +35,7 @@ test("compteurs, notes par niveaux, annuler / rétablir", async () => {
   const oublis = r.locator("td.ctr").nth(2);
   assert.equal(await oublis.locator(".total").textContent(), "4");
   await oublis.locator(".cbtn").last().tap();
+  await rendered(page);
   assert.equal(await oublis.locator(".total").textContent(), "5");
   // un clic sur « B » dans « Séance » : Noah n'avait aucune note -> B
   await r.locator("td.ctr").nth(0).locator("button", { hasText: /^B$/ }).tap();
@@ -106,7 +107,7 @@ test("persistance : après rechargement, le mot de passe rouvre les données chi
   await page.reload();
   await page.waitForSelector(".login");
   await page.fill('input[aria-label="Mot de passe"]', "mauvais");
-  await page.click("text=Déverrouiller");
+  await page.click('button:has-text("Déverrouiller")');
   await page.waitForFunction(() => document.querySelector(".error") && document.querySelector(".error").textContent.length > 0);
   assert.match(await page.locator(".error").textContent(), /incorrect/);
   await unlock(page);
@@ -171,7 +172,7 @@ test("colonne à niveaux personnalisée : 3 niveaux nommés, règle « 2 derniè
   await page.locator(".dialog").first().locator("footer .btn.primary", { hasText: "Enregistrer" }).click();
   await page.waitForSelector('th:has-text("Oral")');
   const r = row(page, "ANDRÉ");
-  const cell = r.locator("td.ctr").nth(2);  // après Séance et Maison
+  const cell = r.locator("td.ctr").nth(3);  // après Séance, Maison et Oublis (les colonnes ajoutées se placent avant le commentaire)
   await cell.locator("button", { hasText: "Noter ▾" }).tap();
   await page.locator(".menu >> text=Très bien").tap();
   await cell.locator("button", { hasText: "Noter ▾" }).tap();
@@ -198,9 +199,9 @@ test("import d'une liste PRONOTE collée : classes et élèves créés", async (
   await page.fill(".dialog textarea", "Élève\tNé(e) le\tClasse\nDUPONT Marie\t01/02/2014\t6B\nMARTIN Léa\t03/04/2013\t6B\nBERNARD Zoé\t\t5A");
   await page.waitForSelector(".previewtable table");
   assert.match(await page.locator(".dialog").last().textContent(), /3 élève\(s\) à créer.*2 classe\(s\) à créer/);
-  await page.click(".dialog >> text=Importer");
-  await page.waitForSelector(".dialog >> text=Import terminé");
-  await page.click(".dialog >> text=OK");
+  await page.click(".dialog footer .btn.primary");
+  await page.waitForSelector("h3:has-text('Import terminé')");
+  await page.click(".dialog footer .btn.primary");
   assert.deepEqual(await page.$$eval(".chips .chip", (c) => c.map((x) => x.textContent)), ["Test", "5A", "6B"]);
   await page.click('.chip:has-text("6B")');
   assert.equal(await page.locator("table.grid tbody tr").count(), 2);
@@ -311,7 +312,7 @@ test("préférences : découpage en semestres et sauvegarde des réglages", asyn
   await page.locator(".settingrow", { hasText: "Orange à partir de" }).first().locator("input").fill("1");
   await page.click(".dialog footer >> text=Enregistrer");
   await page.waitForFunction(() => app.values.periodes === "semestres");
-  assert.deepEqual(await page.$$eval(".seg:nth-of-type(2) button", (b) => b.map((x) => x.textContent)), ["S1", "S2"]);
+  assert.deepEqual(await page.$$eval('[aria-label="Période"] button', (b) => b.map((x) => x.textContent)), ["S1", "S2"]);
   assert.equal(await page.locator("th", { hasText: "S1" }).count() >= 1, true);
   const stored = JSON.parse(await page.evaluate(() => app.storage.get("preferences.json")));
   assert.equal(stored.periodes, "semestres");

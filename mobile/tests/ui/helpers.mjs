@@ -14,6 +14,7 @@ export async function launch() {
     async page(opts = {}) {
       const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, hasTouch: true, locale: "fr-FR", timezoneId: "Europe/Paris", acceptDownloads: true, ...opts });
       ctx.setDefaultTimeout(8000);
+      await ctx.addInitScript(() => { window.__syncRender = true; });
       const page = await ctx.newPage();
       const errors = [];
       page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
@@ -31,14 +32,14 @@ export async function createVault(page, pw = PW) {
   await page.waitForSelector(".login");
   await page.fill('input[aria-label="Mot de passe"]', pw);
   await page.fill('input[aria-label="Confirmer le mot de passe"]', pw);
-  await page.click("text=Créer le coffre");
+  await page.click('button:has-text("Créer le coffre")');
   await page.waitForSelector("table.grid", { timeout: 30000 });
 }
 
 export async function unlock(page, pw = PW) {
   await page.waitForSelector(".login");
   await page.fill('input[aria-label="Mot de passe"]', pw);
-  await page.click("text=Déverrouiller");
+  await page.click('button:has-text("Déverrouiller")');
   await page.waitForSelector("table.grid", { timeout: 30000 });
 }
 

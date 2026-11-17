@@ -52,6 +52,9 @@ export function closeTop() {
 
 export function closeAll() { while (closeTop()); }
 
+// Échap (clavier externe, stylet) ferme la fenêtre ou le menu du dessus
+if (typeof document !== "undefined") document.addEventListener("keydown", (e) => { if (e.key === "Escape" && closeTop()) e.preventDefault(); });
+
 /**
  * modal({title, body, actions, size, side, onClose}) -> {close, el, body}
  * actions : [{label, kind: "primary"|"danger"|"", onClick: (ctl) => void|false, close: true, left: false}]

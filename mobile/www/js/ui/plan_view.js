@@ -4,7 +4,7 @@ import * as C from "../core/columns.js";
 import * as M from "../core/model.js";
 import * as P from "../core/plan.js";
 import { fmtNum, norm } from "../core/util.js";
-import { COUNTER_KINDS, buildColumns, counterState, directLevels, gradeMeanOf, gradeState } from "./columns_build.js";
+import { COUNTER_KINDS, buildColumns, chipTexts, counterState, gradeState } from "./columns_build.js";
 import { confirmDialog, h, menu, modal, promptDialog, alertDialog, select } from "./dom.js";
 import { openStudentSheet } from "./student.js";
 
@@ -119,17 +119,7 @@ export function renderPlan(app, cls, shell) {
   for (const m of salle.reperes) canvas.append(markerEl(m));
 
   const chipFont = "13px system-ui, sans-serif";
-  const chipLabels = (s) => cols.map((col) => {
-    if (col.kind === "grade") {
-      const [text, level, n] = gradeState(app, col, s, t);
-      let label = n ? text : "–";
-      if (n && !directLevels(col.levels)) label = `${M.gradeRank(gradeMeanOf(col, s, t), col.levels.length)}/${col.levels.length}`;  // noms longs : le rang
-      const title = C.GRADE_KEYS.includes(col.key) ? C.builtin(app.state.settings, col.key, true).titre : col.title;
-      return { col, level, text: `${icons && col.icon ? col.icon : P.initialText(title)}${label}` };
-    }
-    const [value, level] = counterState(app, col, s, t);
-    return { col, level, text: `${icons && col.icon ? col.icon : P.initialText(col.title)}${fmtNum(value)}` };
-  });
+  const chipLabels = (s) => chipTexts(app, cols, s, t);
 
   const counterMenuItems = (s, col) => {
     if (col.kind === "grade") {

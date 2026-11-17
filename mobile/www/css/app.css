@@ -217,6 +217,41 @@ td.xcheck.done { background: var(--ok) !important; }
 .previewtable tr.skipped td { color: var(--muted); background: var(--surface2); }
 .previewtable select { min-height: 36px; padding: 2px 6px; }
 
+/* ---------- mode séance ---------- */
+.sbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; padding: 8px 12px; background: var(--surface); border-top: 1px solid var(--border); flex: none; }
+.palette { display: flex; gap: 8px; flex-wrap: wrap; flex: 1 1 560px; }
+.tgroup { display: flex; align-items: center; gap: 6px; padding: 5px 8px; background: var(--surface2); border-radius: 14px; flex-wrap: wrap; }
+.tgroup .tt { font-weight: 700; font-size: .85em; margin-right: 2px; }
+.tool { min-width: 48px; min-height: 48px; padding: 0 12px; border-radius: 10px; border: 2px solid transparent; background: var(--surface); font-weight: 700; font-size: 1.05em; }
+.tool:active { transform: scale(.95); }
+.tool[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent-hover); }
+.scontrols { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.sprog { padding: 6px 14px; background: var(--surface); border-bottom: 1px solid var(--border); flex: none; font-size: .95em; }
+.seancewrap { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 12px; background: var(--bg); -webkit-overflow-scrolling: touch; }
+.sgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.scard { position: relative; background: var(--surface); border: 2px solid var(--border); border-radius: 14px; padding: 10px 12px; min-height: 108px; display: flex; flex-direction: column;
+  gap: 6px; user-select: none; touch-action: manipulation; cursor: pointer; }
+.scard:active { transform: scale(.98); }
+.scard.todo { border-style: dashed; border-color: var(--accent); }
+.scard.done { background: var(--ok); border-color: transparent; }
+.scard.dim { opacity: .35; }
+.scard.flash { animation: flash .7s ease-out; }
+@keyframes flash { 0% { transform: scale(.94); box-shadow: 0 0 0 6px var(--accent); } 100% { transform: none; box-shadow: 0 0 0 0 transparent; } }
+.scard .nm { font-weight: 700; font-size: 1.12em; padding-right: 28px; }
+.scard .no { color: var(--muted); font-size: .8em; }
+.scard .chips3 { display: flex; flex-wrap: wrap; gap: 4px; }
+.scard .chips3 .pchip { min-height: 24px; padding: 1px 7px; font-size: 13px; }
+.scard .today { display: flex; gap: 5px; flex-wrap: wrap; margin-top: auto; }
+.tbadge { background: var(--accent); color: var(--accent-fg); border-radius: 9px; padding: 1px 10px; font-weight: 700; min-width: 26px; text-align: center; }
+.scard .info { position: absolute; top: 4px; right: 4px; width: 32px; height: 32px; border: 0; border-radius: 16px; background: transparent; color: var(--muted); font-size: 1.15em; }
+.scard.compact { position: absolute; min-height: 0; padding: 4px 6px; gap: 3px; border-radius: 10px; overflow: hidden; }
+.scard.compact .nm { font-size: 1em; padding-right: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.scard.compact .chips3 .pchip { min-height: 22px; font-size: 12px; padding: 0 5px; }
+.scard.compact .info { width: 26px; height: 26px; top: 2px; right: 2px; font-size: 1em; }
+.scard.compact .today { margin-top: auto; gap: 3px; }
+.scard.compact .tbadge { padding: 0 7px; font-size: 12px; min-width: 22px; }
+.scard.empty { background: transparent; border-style: dashed; cursor: default; }
+
 /* ---------- petits écrans (téléphone) : repli simple, version dédiée à venir ---------- */
 @media (max-width: 700px) {
   .searchbox { width: 130px; }

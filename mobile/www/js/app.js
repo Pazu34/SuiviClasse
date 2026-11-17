@@ -4,7 +4,7 @@ import * as M from "./core/model.js";
 import * as PR from "./core/prefs.js";
 import { clone } from "./core/util.js";
 import { Vault } from "./core/vault.js";
-import { prefersDark } from "./platform.js";
+import { keepAwake, prefersDark } from "./platform.js";
 
 export const SAVE_DELAY_MS = 700;
 export const UNDO_MAX = 100;
@@ -27,6 +27,9 @@ export class App {
     this.lockHook = null;
     this.statusHook = null;
     this.saving = Promise.resolve();
+    this.seance = false;       // mode séance actif (propre à cet appareil : n'est pas enregistré dans les données)
+    this.seanceTool = null;    // outil choisi dans le mode séance
+    this.wake = null;
   }
 
   // ---------- démarrage ----------
@@ -111,6 +114,7 @@ export class App {
     if (!this.currentClass) this.state.ui.classe = this.state.classes.length ? this.state.classes[0].id : null;
     this.dirty = false;
     this.search = "";
+    this.seance = false; this.seanceTool = null;
     this.resetHistory();
     this._lastArchive = this._lastActivity = Date.now();
     this.setStatus("Enregistré ✓");
@@ -244,7 +248,20 @@ export class App {
 
   selectClass(id) { this.state.ui.classe = id; this.requestRender(); this.markUi(); }
   setPeriod(t) { this.state.ui.trimestre = t; this.markUi(); this.requestRender(); }
-  setView(v) { this.state.ui.vue = v; this.markUi(); this.requestRender(); }
+  /** Vues : « tableau » et « plan » sont mémorisées avec les données ; « seance » ne l'est pas (la version PC ne la connaît pas). */
+  setView(v) {
+    if (v === "seance") {
+      this.seance = true;
+      keepAwake().then((w) => { if (this.seance) this.wake = w; else if (w && w.release) w.release(); });  // l'écran reste allumé pendant la séance
+    } else {
+      this.seance = false;
+      if (this.wake && this.wake.release) { this.wake.release().catch(() => {}); }
+      this.wake = null;
+      this.state.ui.vue = v;
+      this.markUi();
+    }
+    this.requestRender();
+  }
 
   /** Les choix d'affichage (classe, période, vue) sont enregistrés avec les données mais ne comptent pas comme une modification. */
   markUi() {

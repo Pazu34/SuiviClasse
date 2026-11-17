@@ -334,3 +334,57 @@ test("verrouillage : les données sont enregistrées puis le mot de passe est re
   noErrors(page);
   await page.context().close();
 });
+
+test("mode séance : choisir un outil, toucher les élèves, progression, annuler, bilan", async () => {
+  const page = await env.page();
+  await createVault(page);
+  await page.click('.seg button:has-text("Séance")');
+  await page.waitForSelector(".scard");
+  assert.equal(await page.locator(".scard").count(), 8);
+  // sans outil, toucher un élève ouvre sa fiche
+  await page.locator('.scard:has(.nm:text("Jules Fontaine"))').click();
+  await page.waitForSelector(".dialog.side");
+  await page.keyboard.press("Escape");
+  // outil « Maison B » : Jules n'a aucune note de travail à la maison
+  await page.click('.tool[data-tool="qualMaison:1"]');
+  assert.match(await page.locator(".sprog").textContent(), /7 \/ 8 avec une entrée aujourd'hui · Maison B/);
+  assert.equal(await page.locator(".scard.todo").count(), 1);
+  const jules = page.locator('.scard:has(.nm:text("Jules Fontaine"))');
+  await jules.click();
+  assert.match(await page.locator(".sprog").textContent(), /8 \/ 8/);
+  const stored = () => page.evaluate(() => { const s = app.state.classes[0].eleves.find((x) => x.nom === "FONTAINE"); return s.events.filter((e) => e.type === "qualMaison").map((e) => [e.v, e.t, e.date.slice(0, 10) === new Date().toISOString().slice(0, 10)]); });
+  assert.deepEqual(await stored(), [[4, 1, true]]);
+  assert.match(await jules.locator(".tbadge").first().textContent(), /B/);
+  // annuler : retour à 7 / 8
+  await page.click("text=↶ Annuler");
+  assert.match(await page.locator(".sprog").textContent(), /7 \/ 8/);
+  assert.deepEqual(await stored(), []);
+  // un compteur : « oublis + » sur Noah
+  await page.click('.tool[data-tool="oubli:1"]');
+  await page.locator('.scard:has(.nm:text("Noah Henry"))').click();
+  assert.equal(await page.evaluate(() => app.state.classes[0].eleves.find((s) => s.nom === "HENRY").events.filter((e) => e.type === "oubli").length), 5);
+  // appui long : menu avec annulation de la dernière entrée du jour
+  const noah = page.locator('.scard:has(.nm:text("Noah Henry"))');
+  const bb = await noah.boundingBox();
+  await page.mouse.move(bb.x + 40, bb.y + 40); await page.mouse.down(); await page.waitForTimeout(700); await page.mouse.up();
+  await page.locator(".menu >> text=Annuler la dernière entrée du jour").click();
+  assert.equal(await page.evaluate(() => app.state.classes[0].eleves.find((s) => s.nom === "HENRY").events.filter((e) => e.type === "oubli").length), 4);
+  // l'outil se désélectionne en le touchant de nouveau
+  await page.click('.tool[data-tool="oubli:1"]');
+  assert.match(await page.locator(".sprog").textContent(), /Choisissez un outil/);
+  // disposition de la salle
+  await page.click('[aria-label="Disposition"] button:has-text("Plan")');
+  assert.equal(await page.locator(".scard.compact").count(), 8);
+  assert.equal(await page.locator(".scard.empty").count(), 4);
+  await shot(page, "seance-plan");
+  // bilan du jour
+  await page.click("text=Bilan du jour");
+  assert.match(await page.locator(".dialog").last().textContent(), /élève\(s\) avec des entrées aujourd'hui/);
+  await page.keyboard.press("Escape");
+  // le mode séance n'est pas enregistré dans les données (la version PC ne le connaît pas)
+  assert.notEqual(await page.evaluate(() => app.state.ui.vue), "seance");
+  await page.click('.seg button:has-text("Tableau")');
+  await page.waitForSelector("table.grid");
+  noErrors(page);
+  await page.context().close();
+});

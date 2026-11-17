@@ -1,6 +1,7 @@
 // Liste ordonnée des colonnes du tableau selon la configuration (données) et la période (port de ui/table.py : build_columns).
 import * as C from "../core/columns.js";
 import * as M from "../core/model.js";
+import { initialText } from "../core/plan.js";
 import { fmtNum } from "../core/util.js";
 
 export const COUNTER_KINDS = ["seance", "counter"];
@@ -70,6 +71,23 @@ export function gradeState(app, col, student, t) {
 }
 
 export const directLevels = (levels) => levels.every((n) => Array.from(n).length <= 3);
+
+/** Pastilles d'un élève (une par colonne à compteur ou à niveaux) : [{col, level, text}]. Commun au plan de classe et au mode séance.
+ *  « – » tant qu'aucune note ne compte ; pour des noms de niveaux longs, le rang (« 2/4 »). */
+export function chipTexts(app, cols, s, t) {
+  const icons = app.values.pictogrammes === "oui";
+  return cols.map((col) => {
+    if (col.kind === "grade") {
+      const [text, level, n] = gradeState(app, col, s, t);
+      let label = n ? text : "–";
+      if (n && !directLevels(col.levels)) label = `${M.gradeRank(gradeMeanOf(col, s, t), col.levels.length)}/${col.levels.length}`;
+      const title = C.GRADE_KEYS.includes(col.key) ? C.builtin(app.state.settings, col.key, true).titre : col.title;
+      return { col, level, text: `${icons && col.icon ? col.icon : initialText(title)}${label}` };
+    }
+    const [value, level] = counterState(app, col, s, t);
+    return { col, level, text: `${icons && col.icon ? col.icon : initialText(col.title)}${fmtNum(value)}` };
+  });
+}
 
 /** '' -> null ; '14,5' -> 14.5 ; texte invalide ou hors de 0..maxi -> lève une erreur. */
 export function parseGrade(text, maxi = 20) {

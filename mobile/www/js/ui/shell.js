@@ -1,5 +1,6 @@
 // Structure de l'écran principal : barre du haut (vues, périodes, recherche, annuler/rétablir, menu), barre des classes, contenu.
 import { overlayCount, confirmDialog, h, menu, promptDialog, toast, modal } from "./dom.js";
+import { renderSeance } from "./seance.js";
 import { renderTable } from "./table.js";
 
 const lazy = {
@@ -41,15 +42,15 @@ export class Shell {
     if (!s) return;
     if (Number(s.ui.trimestre) > app.per.n) s.ui.trimestre = 1;  // passage de trimestres à semestres
     const cls = app.currentClass;
-    const old = this.root.querySelector(".tablewrap, .canvaswrap");
+    const old = this.root.querySelector(".tablewrap, .canvaswrap, .seancewrap");
     const scroll = old ? [old.scrollLeft, old.scrollTop] : null;
-    const view = s.ui.vue === "plan" ? "plan" : "tableau";
+    const view = app.seance ? "seance" : s.ui.vue === "plan" ? "plan" : "tableau";
 
     const undo = h("button", { class: "btn icon", type: "button", "aria-label": "Annuler", disabled: !app.undo.length, onclick: () => app.undoAction() }, "↶");
     const redo = h("button", { class: "btn icon", type: "button", "aria-label": "Rétablir", disabled: !app.redo.length, onclick: () => app.redoAction() }, "↷");
     const topbar = h("div", { class: "topbar" },
       h("div", { class: "brand" }, "📚 SuiviClasse"),
-      cls ? h("div", { class: "seg", role: "group", "aria-label": "Vue" }, [["tableau", "Tableau"], ["plan", "Plan de classe"]].map(([v, l]) =>
+      cls ? h("div", { class: "seg", role: "group", "aria-label": "Vue" }, [["tableau", "Tableau"], ["plan", "Plan de classe"], ["seance", "Séance"]].map(([v, l]) =>
         h("button", { type: "button", "aria-pressed": view === v, onclick: () => app.setView(v) }, l))) : null,
       cls ? h("div", { class: "seg", role: "group", "aria-label": "Période" }, app.per.keys.map((k) =>
         h("button", { type: "button", "aria-pressed": app.t === Number(k), onclick: () => app.setPeriod(Number(k)) }, `${app.per.prefix}${k}`))) : null,
@@ -75,7 +76,7 @@ export class Shell {
   renderContent(scroll = null) {
     const app = this.app, cls = app.currentClass;
     if (!this.content) return;
-    const old = this.content.querySelector(".tablewrap, .canvaswrap");
+    const old = this.content.querySelector(".tablewrap, .canvaswrap, .seancewrap");
     if (!scroll && old) scroll = [old.scrollLeft, old.scrollTop];
     if (!cls) {
       this.content.replaceChildren(h("div", { class: "empty" }, "Aucune classe. Touchez « + » pour en créer une, ou le menu ⋮ → « Importer une liste PRONOTE »."));
@@ -84,11 +85,12 @@ export class Shell {
     const info = h("div", { class: "classinfo" }, h("h2", {}, cls.nom), h("span", { class: "muted" }, `${cls.eleves.length} élève${cls.eleves.length > 1 ? "s" : ""}`),
       h("div", { class: "grow" }));
     let body;
-    if (app.state.ui.vue === "plan") {
+    if (app.seance) body = renderSeance(app, cls, this);
+    else if (app.state.ui.vue === "plan") {
       body = this.planModule ? this.planModule.renderPlan(app, cls, this) : h("div", { class: "empty" }, "Chargement du plan de classe…");
     } else body = renderTable(app, cls);
     this.content.replaceChildren(info, body);
-    const wrap = this.content.querySelector(".tablewrap, .canvaswrap");
+    const wrap = this.content.querySelector(".tablewrap, .canvaswrap, .seancewrap");
     if (scroll && wrap) { wrap.scrollLeft = scroll[0]; wrap.scrollTop = scroll[1]; }
   }
 

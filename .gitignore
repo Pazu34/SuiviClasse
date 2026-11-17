@@ -6,3 +6,7 @@ dist/
 SuiviClasse-Donnees/
 SuiviClasse-config.json
 .venv/
+mobile/node_modules/
+mobile/android/
+mobile/dist/
+mobile/tests/.tmp/

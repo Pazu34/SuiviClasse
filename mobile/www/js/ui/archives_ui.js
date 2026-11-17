@@ -1,6 +1,6 @@
 // Archives : copies chiffrées horodatées du coffre, avec les mêmes noms que sur le PC (les deux programmes les lisent).
 import { NeedPasswordError, WrongPasswordError } from "../core/vault.js";
-import { shareFile } from "../platform.js";
+import { shareOrWarn } from "./share.js";
 import { alertDialog, confirmDialog, h, modal, promptDialog, toast } from "./dom.js";
 
 export const REASONS = { suppression: "avant suppression d’une classe", auto: "automatique", manuel: "manuelle", demarrage: "à l’ouverture", fermeture: "à la fermeture",
@@ -23,7 +23,7 @@ export async function openArchives(app) {
       const when = a.date.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
       list.append(h("div", { class: "item" }, h("div", { class: "t" }, when, h("small", {}, `${REASONS[a.reason] || a.reason || "—"} · ${Math.max(1, Math.round(a.size / 1024))} Ko`)),
         h("button", { class: "btn small", type: "button", onclick: () => restore(a, when) }, "Restaurer"),
-        h("button", { class: "btn small", type: "button", "aria-label": "Envoyer cette archive", onclick: async () => { await shareFile(a.name, await app.vault.archiveText(a.name), "application/json"); } }, "⭱"),
+        h("button", { class: "btn small", type: "button", "aria-label": "Envoyer cette archive", onclick: async () => { await shareOrWarn(a.name, await app.vault.archiveText(a.name), "application/json"); } }, "⭱"),
         h("button", { class: "btn small danger", type: "button", "aria-label": "Supprimer cette archive", onclick: async () => {
           if (await confirmDialog("Supprimer cette archive ?", { okLabel: "Supprimer", danger: true })) { await app.vault.deleteArchive(a.name); draw(); }
         } }, "🗑")));

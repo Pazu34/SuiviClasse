@@ -4,19 +4,27 @@ import { b64encode, utf8 } from "./core/bytes.js";
 
 const cap = () => (typeof window !== "undefined" ? window.Capacitor : undefined);
 export const isNative = () => { const c = cap(); return !!(c && c.isNativePlatform && c.isNativePlatform()); };
-const plugin = (name) => { const c = cap(); return c && c.Plugins ? c.Plugins[name] : undefined; };
+/** Plugin Capacitor par son nom. registerPlugin (API officielle du « window.Capacitor » injecté par Android) fonctionne sans outil de
+ *  compilation ; Capacitor.Plugins sert de repli. */
+const plugin = (name) => {
+  const c = cap();
+  if (!c) return undefined;
+  if (c.registerPlugin) { try { return c.registerPlugin(name); } catch (e) { /* repli ci-dessous */ } }
+  return c.Plugins ? c.Plugins[name] : undefined;
+};
 
-/** Enregistre un fichier texte pour l'utilisateur : feuille de partage Android (Drive, Fichiers, courriel…) ou téléchargement. */
+/** Enregistre un fichier texte pour l'utilisateur : feuille de partage Android (Drive, Fichiers, courriel…) ou téléchargement.
+ *  Retourne "shared", "downloaded", "cancelled" ou "failed". */
 export async function shareFile(name, text, mime = "text/plain") {
-  if (isNative() && plugin("Filesystem") && plugin("Share")) {
+  if (isNative()) {
     try {
-      const fs = plugin("Filesystem");
-      const w = await fs.writeFile({ path: `export/${name}`, data: b64encode(utf8(text)), directory: "CACHE", recursive: true });
+      const w = await plugin("Filesystem").writeFile({ path: `export/${name}`, data: b64encode(utf8(text)), directory: "CACHE", recursive: true });
       await plugin("Share").share({ title: name, dialogTitle: "Enregistrer ou envoyer", files: [w.uri] });
       return "shared";
     } catch (e) {
       if (String(e && e.message || e).toLowerCase().includes("cancel")) return "cancelled";
-      // repli : téléchargement ci-dessous
+      console.error("partage impossible", e);
+      return "failed";  // un téléchargement par lien ne fonctionne pas dans la WebView : on le dit à l'utilisateur
     }
   }
   const blob = new Blob([text], { type: mime + ";charset=utf-8" });

@@ -4,7 +4,8 @@ import { addDemoPlan } from "../core/plan.js";
 import { norm } from "../core/util.js";
 import { WrongPasswordError } from "../core/vault.js";
 import { MIN_PW } from "./login.js";
-import { pickFile, shareFile } from "../platform.js";
+import { pickFile } from "../platform.js";
+import { shareOrWarn } from "./share.js";
 import { alertDialog, confirmDialog, h, modal, promptDialog, toast } from "./dom.js";
 
 export function openData(app, shell) {
@@ -20,8 +21,8 @@ export function openData(app, shell) {
 
   async function exportVault() {
     await app.flush();
-    const r = await shareFile("suivi.enc", await app.vault.fileText(), "application/json");
-    if (r !== "cancelled") toast(r === "shared" ? "Fichier prêt à envoyer ✓" : "Fichier téléchargé ✓");
+    const r = await shareOrWarn("suivi.enc", await app.vault.fileText(), "application/json");
+    if (r === "shared" || r === "downloaded") toast(r === "shared" ? "Fichier prêt à envoyer ✓" : "Fichier téléchargé ✓");
   }
 
   async function importVault() {

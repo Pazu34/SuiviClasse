@@ -2,7 +2,8 @@
 import * as C from "../core/columns.js";
 import * as M from "../core/model.js";
 import * as X from "../core/exchange.js";
-import { copyText, shareFile } from "../platform.js";
+import { copyText } from "../platform.js";
+import { shareOrWarn } from "./share.js";
 import { h, modal, select, toast } from "./dom.js";
 
 /** Colonnes ajoutées par l'utilisateur (et notes par niveaux) : exportables comme les autres. */
@@ -53,6 +54,6 @@ export function openExport(app, cls) {
       const t = build();
       if (t === null) return;
       const ext = sep.value === ";" ? "csv" : "txt";
-      await shareFile(`${cls.nom}-${per.prefix}${period.value}.${ext}`, "﻿" + t, "text/plain");
+      await shareOrWarn(`${cls.nom}-${per.prefix}${period.value}.${ext}`, "\ufeff" + t, "text/plain");
     } }] });
 }

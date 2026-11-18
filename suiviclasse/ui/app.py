@@ -66,6 +66,7 @@ class App:
     def __init__(self, root):
         self.root = root
         root.title("SuiviClasse")
+        self._set_icon(root)
         root.geometry("1280x800")
         root.minsize(900, 560)
         self.vault = Vault(paths.data_dir())
@@ -560,6 +561,16 @@ class App:
             self.archive("fermeture")
             self.vault.lock()
         self.root.destroy()
+
+
+    @staticmethod
+    def _set_icon(root):
+        """Icône de la fenêtre (barre de titre, barre des tâches) : dessinée dans appicon.py, rien à embarquer à côté du programme."""
+        try:
+            from . import appicon
+            root.iconphoto(True, tk.PhotoImage(data=appicon.PNG_128), tk.PhotoImage(data=appicon.PNG_32))
+        except Exception:
+            pass  # sans icône, l'application fonctionne tout de même
 
 
 def main():

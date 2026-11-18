@@ -94,6 +94,10 @@ py suiviclasse
 
 (`py -m suiviclasse` fonctionne aussi, ainsi qu'un double‑clic sur `lancer.pyw` sous Windows.) Au premier lancement, choisissez un mot de passe.
 
+## Icône
+
+L'icône (un cahier de suivi ouvert : élèves à gauche, tableau de notes colorées à droite, un crayon) est dessinée dans `assets/icon.svg` (et `assets/icon-small.svg`, simplifiée pour les très petites tailles). `python3 tools/make_app_icon.py` en tire l'icône de l'exécutable Windows (`assets/suiviclasse.ico`), celle de la fenêtre (`suiviclasse/ui/appicon.py`), les icônes Android (`mobile/tools/android-res/`, dont l'icône adaptative) et celles de la version web. Les fichiers produits sont versionnés : il n'y a à relancer le script que si le dessin change.
+
 ## Version portable (clé USB, Windows)
 
 - **Sans rien installer** : sur GitHub, onglet *Actions* → « Build Windows portable » → télécharger l'artefact `SuiviClasse-portable` (contient `SuiviClasse.exe`).

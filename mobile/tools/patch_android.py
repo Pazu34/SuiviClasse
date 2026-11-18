@@ -1,13 +1,14 @@
 """Réglages du projet Android généré par « cap add android » : icônes, numéro de version (numéro de la construction)."""
 import os
 import re
-import subprocess
-import sys
+import shutil
 from pathlib import Path
 
 here = Path(__file__).resolve().parent
 android = here.parent / "android"
-subprocess.check_call([sys.executable, str(here / "make_icons.py"), str(android / "app" / "src" / "main" / "res")])
+# icônes : dessinées à partir de assets/icon.svg (voir tools/make_app_icon.py) ; on remplace celles du modèle Capacitor
+res = android / "app" / "src" / "main" / "res"
+shutil.copytree(here / "android-res", res, dirs_exist_ok=True)
 gradle = android / "app" / "build.gradle"
 text = gradle.read_text(encoding="utf-8")
 run = os.environ.get("GITHUB_RUN_NUMBER", "1")

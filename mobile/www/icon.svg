@@ -1,10 +1,67 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="96" fill="#2f5fd0"/>
-  <g fill="#fff">
-    <rect x="96" y="112" width="140" height="92" rx="14"/>
-    <rect x="276" y="112" width="140" height="92" rx="14" opacity=".85"/>
-    <rect x="96" y="232" width="140" height="92" rx="14" opacity=".85"/>
-    <rect x="276" y="232" width="140" height="92" rx="14"/>
-    <rect x="156" y="364" width="200" height="36" rx="10" opacity=".7"/>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a6be0"/><stop offset="1" stop-color="#2150b8"/></linearGradient>
+    <clipPath id="L"><path d="M256 160C200 128 120 124 62 146L62 392C120 372 200 376 256 410Z"/></clipPath>
+    <clipPath id="R"><path d="M256 160C312 128 392 124 450 146L450 392C392 372 312 376 256 410Z"/></clipPath>
+  </defs>
+  <!-- fond -->
+  <g id="bgshape"><rect width="512" height="512" rx="112" fill="url(#bg)"/></g>
+  <g id="art">
+    <!-- cahier ouvert : couverture, tranche des pages, pages -->
+    <g stroke-linejoin="round">
+      <path d="M256 160C200 128 120 124 62 146L62 392C120 372 200 376 256 410C312 376 392 372 450 392L450 146C392 124 312 128 256 160Z" fill="#0f2a6b" stroke="#0f2a6b" stroke-width="30"/>
+      <path d="M256 168C200 138 120 134 62 156L62 402C120 382 200 386 256 420C312 386 392 382 450 402L450 156C392 134 312 138 256 168Z" fill="#cfd8ee"/>
+    </g>
+    <path d="M256 160C200 128 120 124 62 146L62 392C120 372 200 376 256 410Z" fill="#fffdf7"/>
+    <path d="M256 160C312 128 392 124 450 146L450 392C392 372 312 376 256 410Z" fill="#fffdf7"/>
+    <!-- ombre de la reliure -->
+    <path d="M256 160L256 410" stroke="#b9c4e0" stroke-width="5"/>
+    <g clip-path="url(#L)">
+      <rect x="226" y="120" width="30" height="300" fill="#000" opacity=".06"/>
+    </g>
+    <g clip-path="url(#R)">
+      <rect x="256" y="120" width="30" height="300" fill="#000" opacity=".05"/>
+    </g>
+    <!-- page de gauche : élèves (silhouette + ligne de nom) -->
+    <g id="names">
+      <g fill="#2f5fd0">
+        <circle cx="98" cy="210" r="12"/><path d="M77 238a21 19 0 0 1 42 0z"/>
+        <circle cx="98" cy="270" r="12"/><path d="M77 298a21 19 0 0 1 42 0z"/>
+        <circle cx="98" cy="330" r="12"/><path d="M77 358a21 19 0 0 1 42 0z"/>
+      </g>
+      <g fill="#b9c4e0">
+        <rect x="136" y="214" width="84" height="12" rx="6"/>
+        <rect x="136" y="274" width="68" height="12" rx="6"/>
+        <rect x="136" y="334" width="78" height="12" rx="6"/>
+      </g>
+    </g>
+    <!-- page de droite : tableau de notes -->
+    <g id="grid">
+      <g fill="#dfe6f6">
+        <rect x="282" y="178" width="42" height="16" rx="5"/><rect x="330" y="178" width="42" height="16" rx="5"/><rect x="378" y="178" width="42" height="16" rx="5"/>
+      </g>
+      <g>
+        <rect x="282" y="202" width="42" height="34" rx="6" fill="#7fcf94"/><rect x="330" y="202" width="42" height="34" rx="6" fill="#7fcf94"/><rect x="378" y="202" width="42" height="34" rx="6" fill="#ffc46b"/>
+        <rect x="282" y="262" width="42" height="34" rx="6" fill="#ffc46b"/><rect x="330" y="262" width="42" height="34" rx="6" fill="#7fcf94"/><rect x="378" y="262" width="42" height="34" rx="6" fill="#ee8a8a"/>
+        <rect x="282" y="322" width="42" height="34" rx="6" fill="#7fcf94"/><rect x="330" y="322" width="42" height="34" rx="6" fill="#ee8a8a"/><rect x="378" y="322" width="42" height="34" rx="6" fill="#7fcf94"/>
+      </g>
+      <g stroke="#b9c4e0" stroke-width="4" stroke-linecap="round">
+        <path d="M282 249H420M282 309H420"/>
+      </g>
+    </g>
+    <!-- stylo -->
+    <g transform="translate(342 416) rotate(-38)">
+      <g transform="translate(5 9)" opacity=".28" fill="#0a1d4d">
+        <path d="M-52 0L0 -18H150V18H0Z"/><rect x="150" y="-18" width="32" height="36" rx="10"/>
+      </g>
+      <path d="M-52 0L0 -18V18Z" fill="#f2d5a6"/>
+      <path d="M-52 0L-33 -7V7Z" fill="#33384a"/>
+      <rect x="0" y="-18" width="150" height="36" fill="#f6c63f"/>
+      <rect x="0" y="-18" width="150" height="10" fill="#fbdc72"/>
+      <rect x="0" y="8" width="150" height="10" fill="#e0a82a"/>
+      <rect x="132" y="-18" width="22" height="36" fill="#b7bfd0"/>
+      <rect x="132" y="-18" width="5" height="36" fill="#9aa4ba"/><rect x="144" y="-18" width="5" height="36" fill="#9aa4ba"/>
+      <rect x="154" y="-18" width="30" height="36" rx="10" fill="#f08f9c"/>
+    </g>
   </g>
 </svg>

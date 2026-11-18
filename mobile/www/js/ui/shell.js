@@ -1,5 +1,6 @@
 // Structure de l'écran principal : barre du haut (vues, périodes, recherche, annuler/rétablir, menu), barre des classes, contenu.
 import { overlayCount, confirmDialog, h, menu, promptDialog, toast, modal } from "./dom.js";
+import { LABELS, current, getMode, nextMode, setMode } from "../orientation.js";
 import { renderSeance } from "./seance.js";
 import { renderTable } from "./table.js";
 
@@ -49,7 +50,7 @@ export class Shell {
     const undo = h("button", { class: "btn icon", type: "button", "aria-label": "Annuler", disabled: !app.undo.length, onclick: () => app.undoAction() }, "↶");
     const redo = h("button", { class: "btn icon", type: "button", "aria-label": "Rétablir", disabled: !app.redo.length, onclick: () => app.redoAction() }, "↷");
     const topbar = h("div", { class: "topbar" },
-      h("div", { class: "brand" }, "📚 SuiviClasse"),
+      h("div", { class: "brandbox" }, this.orientButton(), h("div", { class: "brand" }, "📚 SuiviClasse")),
       cls ? h("div", { class: "seg", role: "group", "aria-label": "Vue" }, [["tableau", "Tableau"], ["plan", "Plan de classe"], ["seance", "Séance"]].map(([v, l]) =>
         h("button", { type: "button", "aria-pressed": view === v, onclick: () => app.setView(v) }, l))) : null,
       cls ? h("div", { class: "seg", role: "group", "aria-label": "Période" }, app.per.keys.map((k) =>
@@ -92,6 +93,20 @@ export class Shell {
     this.content.replaceChildren(info, body);
     const wrap = this.content.querySelector(".tablewrap, .canvaswrap, .seancewrap");
     if (scroll && wrap) { wrap.scrollLeft = scroll[0]; wrap.scrollTop = scroll[1]; }
+  }
+
+  /** Petit bouton en haut à gauche : Automatique → Paysage → Portrait. Le dessin montre l'orientation actuelle ; « A » = automatique. */
+  orientButton() {
+    const mode = getMode();
+    const b = h("button", { class: "btn icon orientbtn", type: "button", "data-mode": mode,
+      title: `Orientation : ${LABELS[mode]}`, "aria-label": `Orientation de l'écran : ${LABELS[mode]}. Toucher pour changer.`,
+      onclick: async () => {
+        const m = await setMode(nextMode(getMode()));
+        toast(m === "auto" ? "Orientation automatique : suit la rotation de la tablette" : `Écran verrouillé en ${LABELS[m].toLowerCase()}`);
+        this.render();
+      } },
+      h("span", { class: "rot", "data-o": current() }), mode === "auto" ? h("span", { class: "rotauto" }, "A") : null);
+    return b;
   }
 
   // ---------- actions ----------

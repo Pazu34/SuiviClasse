@@ -57,6 +57,13 @@ label.field { display: block; margin: 10px 0 4px; font-weight: 600; font-size: .
 
 /* ---------- barres ---------- */
 .topbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface); border-bottom: 1px solid var(--border); flex: none; }
+.brandbox { display: flex; align-items: center; gap: 6px; flex: none; }
+.orientbtn { position: relative; min-width: 40px; padding: 0; }
+.orientbtn .rot { display: block; border: 2px solid currentColor; border-radius: 3px; }
+.orientbtn .rot[data-o="paysage"] { width: 20px; height: 13px; }
+.orientbtn .rot[data-o="portrait"] { width: 13px; height: 20px; }
+.orientbtn .rotauto { position: absolute; right: 2px; bottom: 1px; font-size: 10px; font-weight: 700; line-height: 1; color: var(--accent); }
+.orientbtn[data-mode="auto"] .rot { border-style: dashed; }
 .brand { font-weight: 700; font-size: 1.1em; margin-right: 4px; white-space: nowrap; }
 .searchbox { position: relative; width: 190px; flex: none; }
 .searchbox input { padding-left: 34px; }
@@ -260,5 +267,19 @@ td.xcheck.done { background: var(--ok) !important; }
   .periodrow { grid-template-columns: 1fr 1fr; }
   .grid2 { grid-template-columns: 1fr; }
   .settingrow { grid-template-columns: 1fr; }
+}
+/* ---------- orientations ---------- */
+/* portrait : barre du haut sur deux lignes, plan de classe avec la liste « Sans place » sous le plan */
+:root[data-orient="portrait"] .topbar { flex-wrap: wrap; row-gap: 6px; }
+:root[data-orient="portrait"] .searchbox { flex: 1 1 150px; width: auto; min-width: 120px; }
+:root[data-orient="portrait"] .planbody { flex-direction: column; }
+:root[data-orient="portrait"] .sideplan { width: auto; max-height: 34%; border-left: 0; border-top: 1px solid var(--border); }
+:root[data-orient="portrait"] .sgrid { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+/* paysage très bas (téléphone) : barres plus basses pour garder de la place au contenu */
+@media (max-height: 520px) {
+  .topbar { padding: 4px 10px; }
+  .classbar { padding: 2px 10px; }
+  .classinfo { display: none; }
+  .seg button { min-height: 32px; }
 }
 @media print { .topbar, .classbar { display: none; } }

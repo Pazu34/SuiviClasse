@@ -388,3 +388,56 @@ test("mode séance : choisir un outil, toucher les élèves, progression, annule
   noErrors(page);
   await page.context().close();
 });
+
+test("orientation : bouton à côté du titre (Automatique → Paysage → Portrait), choix mémorisé", async () => {
+  const page = await env.page();
+  await createVault(page);
+  const btn = page.locator(".brandbox .orientbtn");
+  assert.equal(await btn.getAttribute("data-mode"), "auto");
+  assert.equal(await page.evaluate(() => document.documentElement.dataset.orient), "paysage");
+  // le bouton est en haut à gauche, avant le titre
+  const [bb, tb] = await Promise.all([btn.boundingBox(), page.locator(".brand").boundingBox()]);
+  assert.ok(bb.x < tb.x && bb.y < 80 && bb.width <= 48, "petit bouton avant le titre");
+  await btn.click();
+  await page.waitForSelector('.orientbtn[data-mode="paysage"]');
+  assert.match(await page.locator(".toast").last().textContent(), /verrouillé en paysage/);
+  await btn.click();
+  await page.waitForSelector('.orientbtn[data-mode="portrait"]');
+  assert.equal(await page.evaluate(() => localStorage.getItem("orientation")), "portrait");
+  await btn.click();
+  await page.waitForSelector('.orientbtn[data-mode="auto"]');
+  assert.match(await page.locator(".toast").last().textContent(), /automatique/);
+  await btn.click();  // paysage, puis rechargement : le choix est retrouvé
+  await page.waitForSelector('.orientbtn[data-mode="paysage"]');
+  await page.reload();
+  await unlock(page);
+  assert.equal(await page.locator(".brandbox .orientbtn").getAttribute("data-mode"), "paysage");
+  noErrors(page);
+  await page.context().close();
+});
+
+test("portrait : la mise en page suit la rotation, sans défilement horizontal de la page", async () => {
+  const page = await env.page();
+  await createVault(page);
+  const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  await page.setViewportSize({ width: 800, height: 1280 });
+  await page.waitForFunction(() => document.documentElement.dataset.orient === "portrait");
+  assert.ok((await overflow()) <= 0, "tableau en portrait");
+  await shot(page, "portrait-tableau");
+  await page.click('.seg button:has-text("Plan de classe")');
+  await page.waitForSelector(".canvaswrap");
+  assert.ok((await overflow()) <= 0, "plan en portrait");
+  // la liste « Sans place » passe sous le plan
+  const [c, s] = await Promise.all([page.locator(".canvaswrap").boundingBox(), page.locator(".sideplan").boundingBox()]);
+  assert.ok(s.y >= c.y + c.height - 2 && s.width >= 700, "liste sous le plan");
+  await shot(page, "portrait-plan");
+  await page.click('.seg button:has-text("Séance")');
+  await page.waitForSelector(".scard");
+  assert.ok((await overflow()) <= 0, "séance en portrait");
+  await shot(page, "portrait-seance");
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.waitForFunction(() => document.documentElement.dataset.orient === "paysage");
+  assert.ok((await overflow()) <= 0, "retour en paysage");
+  noErrors(page);
+  await page.context().close();
+});

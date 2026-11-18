@@ -75,6 +75,24 @@ export function onNative({ back, pause, resume }) {
   window.addEventListener("pagehide", () => pause && pause());
 }
 
+/** Verrouille l'orientation de l'écran : "paysage", "portrait" ou null (= libre : suit la rotation automatique d'Android).
+ *  Retourne true si le système a accepté (toujours faux dans un navigateur ordinaire, qui ne l'autorise guère). */
+export async function lockOrientation(kind) {
+  try {
+    if (isNative()) {
+      const so = plugin("ScreenOrientation");
+      if (!so) return false;
+      if (kind) await so.lock({ orientation: kind === "paysage" ? "landscape" : "portrait" });
+      else await so.unlock();
+      return true;
+    }
+    const o = window.screen && window.screen.orientation;
+    if (!o) return false;
+    if (kind) await o.lock(kind === "paysage" ? "landscape" : "portrait"); else o.unlock();
+    return true;
+  } catch (e) { return false; }
+}
+
 export function prefersDark() {
   return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
 }

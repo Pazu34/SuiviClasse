@@ -140,22 +140,25 @@ HORIZONTAL_HEADS = ("num", "nom", "prenom", "infos", "comment", "fiche")  # titr
 
 
 class Tooltip:
-    """Bulle d'aide affichée après un court délai (titre complet d'une colonne dont on ne voit que le pictogramme)."""
+    """Bulle d'aide affichée après un court délai (titre complet d'une colonne dont on ne voit que le pictogramme ou un titre raccourci).
+    Avec `text`, elle suit le survol du widget ; sans, on l'appelle à la main (`schedule` / `hide`), par exemple pour les éléments d'un canvas."""
 
-    def __init__(self, widget, text):
-        self.widget, self.text, self.tip, self.job = widget, text, None, None
-        widget.bind("<Enter>", self._schedule, add="+")
-        for ev in ("<Leave>", "<ButtonPress>", "<Destroy>"):
-            widget.bind(ev, self._hide, add="+")
+    def __init__(self, widget, text=None):
+        self.widget, self.text, self.pos, self.tip, self.job = widget, text, None, None, None
+        if text is not None:
+            widget.bind("<Enter>", lambda e: self.schedule(self.text), add="+")
+            for ev in ("<Leave>", "<ButtonPress>", "<Destroy>"):
+                widget.bind(ev, self.hide, add="+")
 
-    def _schedule(self, e=None):
-        self._hide()
+    def schedule(self, text, pos=None):
+        self.hide()
+        self.text, self.pos = text, pos
         self.job = self.widget.after(450, self._show)
 
     def _show(self):
         self.job = None
         try:
-            x, y = self.widget.winfo_rootx() + 10, self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+            x, y = self.pos or (self.widget.winfo_rootx() + 10, self.widget.winfo_rooty() + self.widget.winfo_height() + 4)
             self.tip = tk.Toplevel(self.widget)
             self.tip.wm_overrideredirect(True)
             self.tip.wm_geometry(f"+{x}+{y}")
@@ -163,7 +166,7 @@ class Tooltip:
         except tk.TclError:
             self.tip = None
 
-    def _hide(self, e=None):
+    def hide(self, e=None):
         try:
             if self.job:
                 self.widget.after_cancel(self.job)
@@ -205,7 +208,8 @@ class ClassTable(ttk.Frame):
         self.guide = tk.Frame(self, width=2, bg=P["accent"])  # repère affiché pendant le redimensionnement d'une colonne
         # Deux zones côte à côte : les colonnes figées (à gauche, ne défilent pas horizontalement) et les autres (à droite).
         # Le défilement vertical est commun ; seules les colonnes de droite défilent vers la gauche ou la droite.
-        self.nfix, self.fix_w = 0, 0
+        self.nfix, self.fix_w, self.head_extra = 0, 0, 0
+        self._tips = {}
         self.hdrL = tk.Canvas(self, height=self.row_h, width=1, highlightthickness=0, bg=P["surface2"])
         self.bodyL = tk.Canvas(self, width=1, highlightthickness=0, bg=P["surface"])
         self.sep = tk.Frame(self, width=2, bg=P["border"])  # trait entre les colonnes figées et les autres
@@ -288,11 +292,12 @@ class ClassTable(ttk.Frame):
         """Pictogramme seul ? (les colonnes qui n'ont pas de pictogramme gardent leur titre)"""
         return self.titres == "icones" and bool(col.icon)
 
-    def rotated_text(self, col, width):
-        """Titre incliné, raccourci (…) pour tenir dans la colonne et sous la hauteur maximale ; (texte, longueur en pixels)."""
+    def rotated_text(self, col):
+        """Titre incliné, raccourci (…) pour tenir sous la hauteur maximale ; (texte, longueur en pixels).
+        Il peut déborder sur les colonnes voisines, comme sur un carnet papier."""
         text = col.title.upper()
-        room = 2 * max(10, width - 26)                       # place horizontale : texte à 60°, départ décalé du trait de séparation
-        room = min(room, (self.head_cap() - 16) / math.sin(math.radians(ANGLE)))
+        t = self.head_font.metrics("linespace")
+        room = (self.head_cap() - t * math.cos(math.radians(ANGLE)) - 10) / math.sin(math.radians(ANGLE))
         if self.head_font.measure(text) > room:
             while text and self.head_font.measure(text + "…") > room:
                 text = text[:-1]
@@ -300,12 +305,79 @@ class ClassTable(ttk.Frame):
         return text, self.head_font.measure(text)
 
     def head_cap(self):
-        return 120 if self.mode == "compact" else 150
+        return 140 if self.mode == "compact" else 170
 
-    def _draw_rotated(self, cv, text, h):
-        cv.delete("all")
-        cv.create_line(0, h, h / math.tan(math.radians(ANGLE)), 0, fill=P["border"])  # trait de séparation incliné
-        cv.create_text(20, h - 5, text=text, angle=ANGLE, anchor="sw", font=self.head_font, fill=P["muted"])
+    def _slanted_head(self, pre, t):
+        """En-tête « carnet papier » : un seul dessin par zone (colonnes figées / défilantes). Chaque titre de données est incliné à 60°,
+        centré entre deux traits inclinés ; nom, prénom, infos et commentaire restent à l'horizontale, alignés en bas."""
+        sin, cos, tan = (f(math.radians(ANGLE)) for f in (math.sin, math.cos, math.tan))
+        lh = self.head_font.metrics("linespace")
+        items, need, longest = [], self.row_h, 0
+        for i, col in enumerate(self.cols):
+            title = col.title + (f" ({pre}{t})" if col.per_period else "")
+            if self.rotated(col):
+                text, length = self.rotated_text(col)
+                need, longest = max(need, math.ceil(length * sin + lh * cos + 4 + 6)), max(longest, length)
+                items.append((i, True, text, title))
+            else:
+                text = title.upper()
+                need = max(need, wrapped_lines(text, self.head_font, max(10, self.widths[i] - 14)) * lh + 14)
+                items.append((i, False, text, title))
+        self.head_h = H = need
+        self.head_extra = int(longest * cos / 1 + lh) + 10  # place pour le débordement du dernier titre incliné
+        edges = {self.hdrL: [], self.hdr: []}
+        for i, rot, text, title in items:
+            cv = self.hdrL if i < self.nfix else self.hdr
+            x = sum(self.widths[:i]) if i < self.nfix else sum(self.widths[self.nfix:i])
+            w = self.widths[i]
+            edges[cv].append((x + w, i))
+            if rot:
+                cv.create_line(x, H, x + H / tan, 0, fill=P["border"], tags="head")
+                px = x + w / 2 + (lh / 2) / sin + 4 / tan  # la ligne médiane du titre passe par le milieu de la colonne
+                cv.create_text(px, H - 4, text=text, angle=ANGLE, anchor="sw", font=self.head_font, fill=P["muted"], tags=("head", f"t{i}"))
+                self._canvas_tip(cv, f"t{i}", title)
+            else:
+                cv.create_text(x + w / 2, H - 6, text=text, anchor="s", width=max(10, w - 14), justify="center", font=self.head_font,
+                               fill=P["muted"], tags="head")
+                cv.create_line(x + w - 1, H - lh - 10, x + w - 1, H - 4, fill=P["border"], tags="head")
+        for cv, lst in edges.items():
+            self._bind_edges(cv, lst, H)
+
+    def _canvas_tip(self, cv, tag, title):
+        tip = self._tips.setdefault(cv, Tooltip(cv))
+        cv.tag_bind(tag, "<Enter>", lambda e: tip.schedule(title, (e.x_root + 10, e.y_root + 16)))
+        cv.tag_bind(tag, "<Leave>", lambda e: tip.hide())
+
+    def _bind_edges(self, cv, edges, H):
+        """Poignées de redimensionnement d'un en-tête dessiné : bord droit de chaque colonne, dans la bande du bas (là où commencent les traits)."""
+        def hit(e):
+            x = cv.canvasx(e.x)
+            if e.y < H - 30:
+                return None
+            for edge, i in edges:
+                if abs(x - edge) <= 4 and self.cols[i].kind != "fiche":
+                    return i
+            return None
+
+        def motion(e):
+            cv.configure(cursor="sb_h_double_arrow" if hit(e) is not None else "")
+
+        def press(e):
+            i = hit(e)
+            if i is not None:
+                self._drag_start(i, e)
+
+        def double(e):
+            i = hit(e)
+            if i is not None:
+                self._drag = None
+                self.reset_width(i)
+
+        cv.bind("<Motion>", motion)
+        cv.bind("<ButtonPress-1>", press)
+        cv.bind("<B1-Motion>", self._drag_move)
+        cv.bind("<ButtonRelease-1>", self._drag_end)
+        cv.bind("<Double-Button-1>", double)
 
     def grade_button_widths(self, col):
         """Largeur de chaque bouton d'une colonne à niveaux (un par niveau si les noms sont courts, sinon un seul « Noter ▾ »)."""
@@ -345,7 +417,7 @@ class ClassTable(ttk.Frame):
 
     def _set_regions(self):
         h = self.bf.winfo_reqheight()
-        self.body.configure(scrollregion=(0, 0, self.total_w - self.fix_w, h))
+        self.body.configure(scrollregion=(0, 0, self.total_w - self.fix_w + self.head_extra, h))
         self.bodyL.configure(scrollregion=(0, 0, self.fix_w, self.bfL.winfo_reqheight()), width=max(1, self.fix_w))
 
     # ---------- colonnes figées ----------
@@ -411,45 +483,14 @@ class ClassTable(ttk.Frame):
         else:
             for w in (self.hdrL, self.bodyL, self.sep):
                 w.grid_remove()
-        heads = []
-        head_font = self.head_font
-        icons = self.app.values["pictogrammes"] == "oui"
-        rot = []
-        rot_need = 0
-        for i, col in enumerate(self.cols):
-            title = col.title + (f" ({pre}{t})" if col.per_period else "")
-            c = self.cell(self.hparent(i), 0, i, P["surface2"])
-            text = title.upper()
-            if self.rotated(col):  # titre incliné : dessiné sur un canvas, le trait de séparation incliné fait partie du dessin
-                rtext, length = self.rotated_text(col, self.widths[i])
-                rot_need = max(rot_need, length * math.sin(math.radians(ANGLE)) + 12 * math.cos(math.radians(ANGLE)) + 16)
-                cv = tk.Canvas(c, highlightthickness=0, bg=P["surface2"])
-                cv.place(x=0, y=0, relwidth=1.0, relheight=1.0)
-                rot.append((cv, rtext))
-                Tooltip(cv, title)
-            elif self.iconic(col):  # pictogramme seul ; le titre complet s'affiche au survol
-                lab = tk.Label(c, text=col.icon, bg=P["surface2"], fg=P["text"], font=self.icon_font)
-                lab.pack(fill="both", expand=True)
-                Tooltip(lab, title)
-                Tooltip(c, title)
-            else:
-                fits = head_font.measure(text) <= self.widths[i] - 12
-                if icons and col.icon and self.titres == "texte":  # le pictogramme est placé au-dessus du titre
-                    tk.Label(c, text=col.icon, bg=P["surface2"], fg=P["text"], font=self.icon_font).pack(side="top", pady=(3, 0))
-                lab = tk.Label(c, text=text, bg=P["surface2"], fg=P["muted"], font=head_font, justify="center",
-                               anchor="s" if self.titres == "inclines" else "center",
-                               wraplength=0 if fits else max(10, self.widths[i] - 10))  # titre centré, à la ligne s'il est trop long
-                lab.pack(fill="both", expand=True, padx=2, pady=(0, 4) if self.titres == "inclines" else 0)
-            if col.kind != "fiche":
-                self._add_handle(c, i)
-            heads.append(c)
-        # hauteur de l'en-tête : celle du titre le plus haut (pictogramme + titre sur plusieurs lignes, ou titres inclinés)
-        self.head_h = max(self.row_h, int(rot_need), max(sum(w.winfo_reqheight() for w in c.winfo_children() if isinstance(w, tk.Label)) for c in heads) + 8)
-        for c in heads:
-            c.configure(height=self.head_h)
-        for cv, rtext in rot:
-            self._draw_rotated(cv, rtext, self.head_h)
-        self.hdr.configure(height=self.head_h, scrollregion=(0, 0, self.total_w - self.fix_w, self.head_h))
+        self.head_extra = 0
+        self.hdr.delete("head")
+        self.hdrL.delete("head")
+        if self.titres == "inclines":
+            self._slanted_head(pre, t)
+        else:
+            self._framed_head(pre, t)
+        self.hdr.configure(height=self.head_h, scrollregion=(0, 0, self.total_w - self.fix_w + self.head_extra, self.head_h))
         self.hdrL.configure(height=self.head_h, width=max(1, self.fix_w), scrollregion=(0, 0, self.fix_w, self.head_h))
         q = exchange.norm(self.app.search.get())
         r = 0
@@ -476,6 +517,35 @@ class ClassTable(ttk.Frame):
         self.body.yview_moveto(y)
 
     # ---------- redimensionnement des colonnes ----------
+    def _framed_head(self, pre, t):
+        """En-tête classique : une case par colonne (pictogramme au-dessus du titre, ou pictogramme seul)."""
+        heads = []
+        head_font = self.head_font
+        icons = self.app.values["pictogrammes"] == "oui"
+        for i, col in enumerate(self.cols):
+            title = col.title + (f" ({pre}{t})" if col.per_period else "")
+            c = self.cell(self.hparent(i), 0, i, P["surface2"])
+            text = title.upper()
+            if self.iconic(col):  # pictogramme seul ; le titre complet s'affiche au survol
+                lab = tk.Label(c, text=col.icon, bg=P["surface2"], fg=P["text"], font=self.icon_font)
+                lab.pack(fill="both", expand=True)
+                Tooltip(lab, title)
+                Tooltip(c, title)
+            else:
+                fits = head_font.measure(text) <= self.widths[i] - 12
+                if icons and col.icon and self.titres == "texte":  # le pictogramme est placé au-dessus du titre
+                    tk.Label(c, text=col.icon, bg=P["surface2"], fg=P["text"], font=self.icon_font).pack(side="top", pady=(3, 0))
+                lab = tk.Label(c, text=text, bg=P["surface2"], fg=P["muted"], font=head_font, justify="center", anchor="center",
+                               wraplength=0 if fits else max(10, self.widths[i] - 10))  # titre centré, à la ligne s'il est trop long
+                lab.pack(fill="both", expand=True, padx=2)
+            if col.kind != "fiche":
+                self._add_handle(c, i)
+            heads.append(c)
+        # hauteur de l'en-tête : celle du titre le plus haut (pictogramme + titre sur plusieurs lignes)
+        self.head_h = max(self.row_h, max(sum(w.winfo_reqheight() for w in c.winfo_children() if isinstance(w, tk.Label)) for c in heads) + 8)
+        for c in heads:
+            c.configure(height=self.head_h)
+
     def _add_handle(self, cell, i):
         """Poignée sur le bord droit d'un titre : glisser pour élargir/rétrécir, double-clic pour la largeur par défaut."""
         handle = tk.Frame(cell, width=6, bg=P["surface2"], cursor="sb_h_double_arrow")

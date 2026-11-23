@@ -28,10 +28,16 @@ function measureHead(text) {
   return Math.ceil(ctx.measureText(text).width + text.length * px * 0.02);
 }
 
-/** Titre incliné raccourci (…) pour tenir dans la colonne et sous la hauteur maximale ; retourne [texte, longueur en pixels]. */
-function rotatedText(title, width, cap) {
+const SIN = Math.sin(ANGLE * Math.PI / 180), COS = Math.cos(ANGLE * Math.PI / 180), MARGIN = 4;
+
+/** Hauteur d'en-tête nécessaire à un titre incliné de cette longueur (px), pour une police de hauteur `t`. */
+const rotatedHeight = (len, t) => Math.ceil(len * SIN + t * COS + MARGIN + 6);
+
+/** Titre incliné, raccourci (…) pour tenir sous la hauteur maximale ; il peut déborder sur les colonnes voisines (comme sur le papier).
+ *  Retourne [texte, longueur en pixels]. */
+function rotatedText(title, cap, t) {
   let text = title.toLocaleUpperCase("fr");
-  const room = Math.min(2 * Math.max(10, width - 26), (cap - 16) / Math.sin(ANGLE * Math.PI / 180));
+  const room = (cap - t * COS - MARGIN - 6) / SIN;
   if (measureHead(text) > room) {
     while (text && measureHead(text + "…") > room) text = text.slice(0, -1);
     text = text.trimEnd() + "…";
@@ -254,14 +260,17 @@ export function renderTable(app, cls) {
   const total = widths.reduce((a, b) => a + b, 0);
 
   // en-têtes : titre (avec pictogramme si activé), pictogramme seul, ou titre incliné à 60° comme dans un carnet papier
-  const cap = compact ? 120 : 150;
+  const cap = compact ? 140 : 170, fontPx = parseFloat(getComputedStyle(document.body).fontSize) * 0.78;
   let rotH = 0;
   const heads = cols.map((c, i) => {
     const sa = stickyAttrs(i), cls = sa.class ? sa.class.split(" ") : [], full = headerTitle(app, c);
     if (rotated(app, c)) {
-      const [text, len] = rotatedText(c.title, widths[i], cap);
-      rotH = Math.max(rotH, Math.ceil(len * Math.sin(ANGLE * Math.PI / 180) + 12 * Math.cos(ANGLE * Math.PI / 180) + 16));
-      return h("th", { class: [...cls, "rot"].join(" "), style: sa.style, title: full, "aria-label": full }, h("div", { class: "rt" }, h("span", {}, text)));
+      const [text, len] = rotatedText(c.title, cap, fontPx);
+      rotH = Math.max(rotH, rotatedHeight(len, fontPx));
+      // le texte est centré entre deux traits inclinés : sa ligne médiane passe par le milieu de la colonne, au bas de l'en-tête
+      const left = Math.round(widths[i] / 2 + (fontPx / 2) / SIN + MARGIN / Math.tan(ANGLE * Math.PI / 180));
+      return h("th", { class: [...cls, "rot"].join(" "), style: { ...sa.style, zIndex: String(10 + cols.length - i) }, title: full, "aria-label": full },
+        h("div", { class: "rt" }, h("span", { style: { left: left + "px", bottom: MARGIN + "px" } }, text)));
     }
     if (iconic(app, c)) return h("th", { class: [...cls, "iconly"].join(" "), style: sa.style, title: full, "aria-label": full }, h("span", { class: "ico" }, c.icon));
     const icon = c.icon && app.values.pictogrammes === "oui" && app.values.titresColonnes === "texte";
@@ -287,7 +296,7 @@ export function renderTable(app, cls) {
   const table = h("table", { class: "grid", style: { width: total + "px", ...(rotH ? { "--rot-h": rotH + "px" } : {}) } },
     h("colgroup", {}, widths.map((w) => h("col", { style: { width: w + "px" } }))),
     h("thead", {}, head), h("tbody", {}, rows), h("tfoot", {}, foot));
-  const wrap = h("div", { class: "tablewrap" }, table);
+  const wrap = h("div", { class: "tablewrap", style: rotH ? { paddingRight: Math.ceil(rotH * 0.6) + "px" } : {} }, table);
   if (!students.length) {
     wrap.append(h("div", { class: "empty" }, cls.eleves.length ? "Aucun élève ne correspond à la recherche." : "Aucun élève. Utilisez « Importer des élèves… » dans le menu ⋮."));
   }

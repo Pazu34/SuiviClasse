@@ -490,6 +490,9 @@ test("titres de colonnes : pictogrammes seuls ou titres inclinés à 60°", asyn
   assert.ok((await rot.count()) >= 5, "colonnes à titre incliné");
   assert.equal(await page.locator("table.grid thead th.rot", { hasText: "Nom" }).count(), 0, "le nom reste horizontal");
   const tr = await rot.first().locator("span").evaluate((el) => getComputedStyle(el).transform);
+  // centré : la ligne médiane du titre passe par le milieu de la colonne (au bas de l'en-tête, à quelques pixels près)
+  const mid = await rot.nth(2).evaluate((th) => { const c = th.getBoundingClientRect(), s = th.querySelector("span").getBoundingClientRect(); return [c.left + c.width / 2, s.left + s.width / 2, c.width]; });
+  assert.ok(Math.abs(mid[1] - mid[0]) < mid[2] * 0.9, "titre centré sur la colonne : " + mid);
   assert.match(tr, /matrix\(0\.5/);  // rotation de −60° : cos = 0,5
   const box = await rot.first().boundingBox();
   assert.ok(box.height > 60 && box.height <= 160, "hauteur d'en-tête adaptée : " + box.height);

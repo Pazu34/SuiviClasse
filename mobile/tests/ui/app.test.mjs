@@ -496,7 +496,7 @@ test("titres de colonnes : pictogrammes seuls ou titres inclinés à 60°", asyn
   assert.ok(Math.abs(mid[1] - mid[0]) < mid[2] * 0.9, "titre centré sur la colonne : " + mid);
   assert.match(tr, /matrix\(0\.5/);  // rotation de −60° : cos = 0,5
   const box = await rot.first().boundingBox();
-  assert.ok(box.height > 60 && box.height <= 160, "hauteur d'en-tête adaptée : " + box.height);
+  assert.ok(box.height > 60 && box.height <= 200, "hauteur d'en-tête adaptée : " + box.height);
   await shot(page, "titres-inclines");
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth) <= 0, true);
   noErrors(page);

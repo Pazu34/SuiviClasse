@@ -15,6 +15,30 @@ function measure(text, bold = false) {
   return Math.ceil(ctx.measureText(text).width);
 }
 
+const ANGLE = 60;
+const HORIZONTAL_HEADS = ["num", "nom", "prenom", "infos", "comment", "fiche"];  // titres qui restent à l'horizontale en mode incliné
+const rotated = (app, c) => app.values.titresColonnes === "inclines" && !HORIZONTAL_HEADS.includes(c.kind) && !!c.title;
+const iconic = (app, c) => app.values.titresColonnes === "icones" && !!c.icon;
+
+/** Largeur d'un titre d'en-tête (majuscules, gras, 0,78 em, espacement 0,02 em : voir le CSS). */
+function measureHead(text) {
+  if (!ctx) ctx = document.createElement("canvas").getContext("2d");
+  const cs = getComputedStyle(document.body), px = parseFloat(cs.fontSize) * 0.78;
+  ctx.font = `700 ${px}px ${cs.fontFamily}`;
+  return Math.ceil(ctx.measureText(text).width + text.length * px * 0.02);
+}
+
+/** Titre incliné raccourci (…) pour tenir dans la colonne et sous la hauteur maximale ; retourne [texte, longueur en pixels]. */
+function rotatedText(title, width, cap) {
+  let text = title.toLocaleUpperCase("fr");
+  const room = Math.min(2 * Math.max(10, width - 26), (cap - 16) / Math.sin(ANGLE * Math.PI / 180));
+  if (measureHead(text) > room) {
+    while (text && measureHead(text + "…") > room) text = text.slice(0, -1);
+    text = text.trimEnd() + "…";
+  }
+  return [text, measureHead(text)];
+}
+
 /** Colonnes qui peuvent rester figées à gauche (début du tableau, jusqu'à la colonne choisie dans les préférences). */
 const FREEZE = { aucune: [], nom: ["numero", "nom"], prenom: ["numero", "nom", "prenom"], infos: ["numero", "nom", "prenom", "infos"] };
 
@@ -229,10 +253,21 @@ export function renderTable(app, cls) {
   const stickyAttrs = (i) => (i < nSticky ? { class: "stick" + (i === nSticky - 1 ? " last" : ""), style: { left: lefts[i] + "px" } } : {});
   const total = widths.reduce((a, b) => a + b, 0);
 
-  const head = h("tr", {}, cols.map((c, i) => {
-    const sa = stickyAttrs(i);
-    return h("th", { class: sa.class || "", style: sa.style }, c.icon && app.values.pictogrammes === "oui" ? h("span", { class: "ico" }, c.icon) : null, headerTitle(app, c));
-  }));
+  // en-têtes : titre (avec pictogramme si activé), pictogramme seul, ou titre incliné à 60° comme dans un carnet papier
+  const cap = compact ? 120 : 150;
+  let rotH = 0;
+  const heads = cols.map((c, i) => {
+    const sa = stickyAttrs(i), cls = sa.class ? sa.class.split(" ") : [], full = headerTitle(app, c);
+    if (rotated(app, c)) {
+      const [text, len] = rotatedText(c.title, widths[i], cap);
+      rotH = Math.max(rotH, Math.ceil(len * Math.sin(ANGLE * Math.PI / 180) + 12 * Math.cos(ANGLE * Math.PI / 180) + 16));
+      return h("th", { class: [...cls, "rot"].join(" "), style: sa.style, title: full, "aria-label": full }, h("div", { class: "rt" }, h("span", {}, text)));
+    }
+    if (iconic(app, c)) return h("th", { class: [...cls, "iconly"].join(" "), style: sa.style, title: full, "aria-label": full }, h("span", { class: "ico" }, c.icon));
+    const icon = c.icon && app.values.pictogrammes === "oui" && app.values.titresColonnes === "texte";
+    return h("th", { class: cls.join(" "), style: sa.style, "data-bottom": app.values.titresColonnes === "inclines" ? "1" : null }, icon ? h("span", { class: "ico" }, c.icon) : null, full);
+  });
+  const head = h("tr", {}, heads);
   const rows = students.map((s) => h("tr", {}, cols.map((c, i) => {
     const td = cellFor(app, cls, s, c, dups, scale);
     const sa = stickyAttrs(i);
@@ -249,7 +284,7 @@ export function renderTable(app, cls) {
   const labelIdx = Math.max(0, cols.findIndex((c) => c.key === "nom"));
   foot.children[labelIdx].textContent = compact ? "Moy. classe" : "Moyenne de la classe";
 
-  const table = h("table", { class: "grid", style: { width: total + "px" } },
+  const table = h("table", { class: "grid", style: { width: total + "px", ...(rotH ? { "--rot-h": rotH + "px" } : {}) } },
     h("colgroup", {}, widths.map((w) => h("col", { style: { width: w + "px" } }))),
     h("thead", {}, head), h("tbody", {}, rows), h("tfoot", {}, foot));
   const wrap = h("div", { class: "tablewrap" }, table);

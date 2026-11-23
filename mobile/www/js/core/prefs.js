@@ -11,6 +11,8 @@ export const SCHEMA = [
     options: [["clair", "Clair"], ["sombre", "Sombre"], ["auto", "Automatique (suit la tablette)"]] },
   { key: "pictogrammes", group: "Affichage", label: "Pictogrammes dans les titres", type: "choice", default: "oui",
     options: [["oui", "Oui"], ["non", "Non"]] },
+  { key: "titresColonnes", group: "Affichage", label: "Titres des colonnes du tableau", type: "choice", default: "texte",
+    options: [["texte", "Titres (avec pictogrammes si activés)"], ["icones", "Pictogrammes seuls"], ["inclines", "Titres inclinés à 60° (carnet papier)"]] },
   { key: "planAffichage", group: "Affichage", label: "Noms dans le plan de classe", type: "choice", default: "prenom_nom",
     options: [["prenom_nom", "Prénom Nom"], ["prenom", "Prénom"], ["nom", "Nom"], ["prenom_i", "Prénom + initiale du nom"], ["initiales", "Initiales"]] },
   { key: "affichage", group: "Affichage", label: "Densité du tableau", type: "choice", default: "compact",

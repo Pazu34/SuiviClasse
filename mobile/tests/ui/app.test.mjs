@@ -469,3 +469,32 @@ test("tableau : nom et prénom restent affichés quand on défile vers la droite
   noErrors(page);
   await page.context().close();
 });
+
+test("titres de colonnes : pictogrammes seuls ou titres inclinés à 60°", async () => {
+  const page = await env.page();
+  await createVault(page);
+  const heads = () => page.locator("table.grid thead th");
+  assert.equal(await page.locator("table.grid thead th.rot, table.grid thead th.iconly").count(), 0);
+  // pictogrammes seuls : les colonnes qui en ont un perdent leur titre (visible au survol / lu par les lecteurs d'écran)
+  await page.evaluate(() => app.setPrefs({ titresColonnes: "icones" }));
+  await page.evaluate(() => app.requestRender());
+  const iconly = page.locator("table.grid thead th.iconly");
+  assert.ok((await iconly.count()) >= 3, "colonnes en pictogramme seul");
+  assert.match(await iconly.first().getAttribute("title"), /\(T1\)/);
+  assert.equal((await iconly.first().textContent()).trim().length <= 3, true);
+  await shot(page, "titres-icones");
+  // titres inclinés
+  await page.evaluate(() => app.setPrefs({ titresColonnes: "inclines" }));
+  await page.evaluate(() => app.requestRender());
+  const rot = page.locator("table.grid thead th.rot");
+  assert.ok((await rot.count()) >= 5, "colonnes à titre incliné");
+  assert.equal(await page.locator("table.grid thead th.rot", { hasText: "Nom" }).count(), 0, "le nom reste horizontal");
+  const tr = await rot.first().locator("span").evaluate((el) => getComputedStyle(el).transform);
+  assert.match(tr, /matrix\(0\.5/);  // rotation de −60° : cos = 0,5
+  const box = await rot.first().boundingBox();
+  assert.ok(box.height > 60 && box.height <= 160, "hauteur d'en-tête adaptée : " + box.height);
+  await shot(page, "titres-inclines");
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth) <= 0, true);
+  noErrors(page);
+  await page.context().close();
+});

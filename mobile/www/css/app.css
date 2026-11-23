@@ -86,6 +86,14 @@ table.grid tbody tr:nth-child(even) td { background: var(--zebra); }
 table.grid thead th { position: sticky; top: 0; z-index: 3; background: var(--surface2); height: auto; min-height: 44px; padding: 6px 4px; font-size: .78em; font-weight: 700;
   text-transform: uppercase; letter-spacing: .02em; text-align: center; color: var(--muted); border-bottom: 1px solid var(--border); }
 table.grid thead th .ico { display: block; font-size: 1.5em; line-height: 1.1; text-transform: none; }
+/* titres inclinés à 60° (carnet papier) : le texte part du bas de la colonne, un trait incliné sépare les colonnes */
+table.grid thead th.rot { height: var(--rot-h); padding: 0; vertical-align: bottom; }
+table.grid thead th.rot .rt { position: relative; height: var(--rot-h); }
+table.grid thead th.rot .rt span { position: absolute; left: 20px; bottom: 5px; transform-origin: 0 100%; transform: rotate(-60deg); white-space: nowrap; }
+table.grid thead th.rot::before { content: ""; position: absolute; left: 0; bottom: 0; width: 1px; height: calc(var(--rot-h) / .866); background: var(--border);
+  transform-origin: 0 100%; transform: rotate(30deg); }
+table.grid thead th[data-bottom] { vertical-align: bottom; }
+table.grid thead th.iconly .ico { font-size: 1.7em; }
 table.grid td.stick, table.grid th.stick { position: sticky; z-index: 2; }
 table.grid thead th.stick { z-index: 4; }
 table.grid td.stick.last, table.grid th.stick.last { border-right: 2px solid var(--border); }

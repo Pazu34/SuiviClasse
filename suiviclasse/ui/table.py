@@ -1,5 +1,6 @@
 """Tableau d'une classe : colonnes configurables, en-têtes fixes, colonnes redimensionnables,
 textes qui passent à la ligne, valeurs modifiables en cliquant dessus."""
+import math
 import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import messagebox, ttk
@@ -134,6 +135,49 @@ def parse_grade(text, maxi=20):
     return v
 
 
+ANGLE = 60  # inclinaison des titres (carnet papier)
+HORIZONTAL_HEADS = ("num", "nom", "prenom", "infos", "comment", "fiche")  # titres qui restent à l'horizontale en mode incliné
+
+
+class Tooltip:
+    """Bulle d'aide affichée après un court délai (titre complet d'une colonne dont on ne voit que le pictogramme)."""
+
+    def __init__(self, widget, text):
+        self.widget, self.text, self.tip, self.job = widget, text, None, None
+        widget.bind("<Enter>", self._schedule, add="+")
+        for ev in ("<Leave>", "<ButtonPress>", "<Destroy>"):
+            widget.bind(ev, self._hide, add="+")
+
+    def _schedule(self, e=None):
+        self._hide()
+        self.job = self.widget.after(450, self._show)
+
+    def _show(self):
+        self.job = None
+        try:
+            x, y = self.widget.winfo_rootx() + 10, self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+            self.tip = tk.Toplevel(self.widget)
+            self.tip.wm_overrideredirect(True)
+            self.tip.wm_geometry(f"+{x}+{y}")
+            tk.Label(self.tip, text=self.text, bg=P["surface"], fg=P["text"], relief="solid", borderwidth=1, padx=6, pady=2).pack()
+        except tk.TclError:
+            self.tip = None
+
+    def _hide(self, e=None):
+        try:
+            if self.job:
+                self.widget.after_cancel(self.job)
+        except tk.TclError:
+            pass
+        self.job = None
+        if self.tip is not None:
+            try:
+                self.tip.destroy()
+            except tk.TclError:
+                pass
+            self.tip = None
+
+
 # colonnes qui peuvent rester figées : le début du tableau jusqu'à la colonne choisie dans les préférences
 FREEZE = {"nom": ("numero", "nom"), "prenom": ("numero", "nom", "prenom"), "infos": ("numero", "nom", "prenom", "infos")}
 
@@ -149,6 +193,7 @@ class ClassTable(ttk.Frame):
         self.per = app.per
         self.scale = columns.scale(app.state["settings"])
         self.cols = build_columns(app)
+        self.titres = app.values["titresColonnes"]  # « texte », « icones » ou « inclines »
         self._init_fonts()
         self.defaults = [self.default_width(c) for c in self.cols]
         saved = app.prefs.widths(self.mode)  # largeurs réglées à la souris, par clé de colonne
@@ -227,11 +272,40 @@ class ClassTable(ttk.Frame):
             width = WIDTHS[{"num": "numero"}.get(col.kind, col.kind)][i]
         if col.kind == "xlist":  # assez large pour le plus long choix, flèche du menu comprise
             width = max(width, max((self.measure.measure(c) for c in col.cfg.get("choix", [])), default=0) + 44)
+        if self.rotated(col) or self.iconic(col):  # le titre n'impose plus sa largeur
+            return width
         title = col.title + (f" ({self.per['prefix']}{self.app.t})" if col.per_period else "")
         whole = self.head_font.measure(title.upper()) + 16
         longest = max((self.head_font.measure(w) for w in title.upper().split()), default=0) + 16
         # titre court : tenir sur une ligne ; titre long : au moins son plus long mot (le reste passe à la ligne)
         return max(width, whole if whole <= 130 else min(longest, 220))
+
+    def rotated(self, col):
+        """Titre incliné ? (mode « inclinés » : toutes les colonnes de données ; nom, prénom, infos… restent à l'horizontale)"""
+        return self.titres == "inclines" and col.kind not in HORIZONTAL_HEADS and bool(col.title)
+
+    def iconic(self, col):
+        """Pictogramme seul ? (les colonnes qui n'ont pas de pictogramme gardent leur titre)"""
+        return self.titres == "icones" and bool(col.icon)
+
+    def rotated_text(self, col, width):
+        """Titre incliné, raccourci (…) pour tenir dans la colonne et sous la hauteur maximale ; (texte, longueur en pixels)."""
+        text = col.title.upper()
+        room = 2 * max(10, width - 26)                       # place horizontale : texte à 60°, départ décalé du trait de séparation
+        room = min(room, (self.head_cap() - 16) / math.sin(math.radians(ANGLE)))
+        if self.head_font.measure(text) > room:
+            while text and self.head_font.measure(text + "…") > room:
+                text = text[:-1]
+            text = text.rstrip() + "…"
+        return text, self.head_font.measure(text)
+
+    def head_cap(self):
+        return 120 if self.mode == "compact" else 150
+
+    def _draw_rotated(self, cv, text, h):
+        cv.delete("all")
+        cv.create_line(0, h, h / math.tan(math.radians(ANGLE)), 0, fill=P["border"])  # trait de séparation incliné
+        cv.create_text(20, h - 5, text=text, angle=ANGLE, anchor="sw", font=self.head_font, fill=P["muted"])
 
     def grade_button_widths(self, col):
         """Largeur de chaque bouton d'une colonne à niveaux (un par niveau si les noms sont courts, sinon un seul « Noter ▾ »)."""
@@ -340,23 +414,41 @@ class ClassTable(ttk.Frame):
         heads = []
         head_font = self.head_font
         icons = self.app.values["pictogrammes"] == "oui"
+        rot = []
+        rot_need = 0
         for i, col in enumerate(self.cols):
             title = col.title + (f" ({pre}{t})" if col.per_period else "")
             c = self.cell(self.hparent(i), 0, i, P["surface2"])
             text = title.upper()
-            fits = head_font.measure(text) <= self.widths[i] - 12
-            if icons and col.icon:  # le pictogramme est placé au-dessus du titre
-                tk.Label(c, text=col.icon, bg=P["surface2"], fg=P["text"], font=self.icon_font).pack(side="top", pady=(3, 0))
-            lab = tk.Label(c, text=text, bg=P["surface2"], fg=P["muted"], font=head_font, justify="center", anchor="center",
-                           wraplength=0 if fits else max(10, self.widths[i] - 10))  # titre centré, à la ligne s'il est trop long
-            lab.pack(fill="both", expand=True, padx=2)
+            if self.rotated(col):  # titre incliné : dessiné sur un canvas, le trait de séparation incliné fait partie du dessin
+                rtext, length = self.rotated_text(col, self.widths[i])
+                rot_need = max(rot_need, length * math.sin(math.radians(ANGLE)) + 12 * math.cos(math.radians(ANGLE)) + 16)
+                cv = tk.Canvas(c, highlightthickness=0, bg=P["surface2"])
+                cv.place(x=0, y=0, relwidth=1.0, relheight=1.0)
+                rot.append((cv, rtext))
+                Tooltip(cv, title)
+            elif self.iconic(col):  # pictogramme seul ; le titre complet s'affiche au survol
+                lab = tk.Label(c, text=col.icon, bg=P["surface2"], fg=P["text"], font=self.icon_font)
+                lab.pack(fill="both", expand=True)
+                Tooltip(lab, title)
+                Tooltip(c, title)
+            else:
+                fits = head_font.measure(text) <= self.widths[i] - 12
+                if icons and col.icon and self.titres == "texte":  # le pictogramme est placé au-dessus du titre
+                    tk.Label(c, text=col.icon, bg=P["surface2"], fg=P["text"], font=self.icon_font).pack(side="top", pady=(3, 0))
+                lab = tk.Label(c, text=text, bg=P["surface2"], fg=P["muted"], font=head_font, justify="center",
+                               anchor="s" if self.titres == "inclines" else "center",
+                               wraplength=0 if fits else max(10, self.widths[i] - 10))  # titre centré, à la ligne s'il est trop long
+                lab.pack(fill="both", expand=True, padx=2, pady=(0, 4) if self.titres == "inclines" else 0)
             if col.kind != "fiche":
                 self._add_handle(c, i)
             heads.append(c)
-        # hauteur de l'en-tête : celle du titre le plus haut (pictogramme + titre sur plusieurs lignes)
-        self.head_h = max(self.row_h, max(sum(w.winfo_reqheight() for w in c.winfo_children() if isinstance(w, tk.Label)) for c in heads) + 8)
+        # hauteur de l'en-tête : celle du titre le plus haut (pictogramme + titre sur plusieurs lignes, ou titres inclinés)
+        self.head_h = max(self.row_h, int(rot_need), max(sum(w.winfo_reqheight() for w in c.winfo_children() if isinstance(w, tk.Label)) for c in heads) + 8)
         for c in heads:
             c.configure(height=self.head_h)
+        for cv, rtext in rot:
+            self._draw_rotated(cv, rtext, self.head_h)
         self.hdr.configure(height=self.head_h, scrollregion=(0, 0, self.total_w - self.fix_w, self.head_h))
         self.hdrL.configure(height=self.head_h, width=max(1, self.fix_w), scrollregion=(0, 0, self.fix_w, self.head_h))
         q = exchange.norm(self.app.search.get())

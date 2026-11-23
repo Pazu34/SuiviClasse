@@ -50,6 +50,14 @@ class ColonnesFigeesTest(unittest.TestCase):
         self.assertEqual(sanitize({"colonneFigee": "partout"})["colonneFigee"], "prenom")
 
 
+class TitresColonnesTest(unittest.TestCase):
+    def test_choix_de_presentation_des_titres(self):
+        self.assertEqual(defaults()["titresColonnes"], "texte")
+        for k in ("texte", "icones", "inclines"):
+            self.assertEqual(sanitize({"titresColonnes": k})["titresColonnes"], k)
+        self.assertEqual(sanitize({"titresColonnes": "vertical"})["titresColonnes"], "texte")
+
+
 class ColonnesTest(unittest.TestCase):
     def test_largeurs_de_colonnes_par_cle(self):
         d = Path(tempfile.mkdtemp())

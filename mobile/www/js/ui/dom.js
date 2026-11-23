@@ -7,7 +7,7 @@ export function h(tag, attrs, ...children) {
     if (k.startsWith("aria-") && typeof v === "boolean") { el.setAttribute(k, String(v)); continue; }  // aria-pressed="true" / "false"
     if (v === null || v === undefined || v === false) continue;
     if (k === "class") el.className = v;
-    else if (k === "style" && typeof v === "object") Object.assign(el.style, v);
+    else if (k === "style" && typeof v === "object") { for (const [n, x] of Object.entries(v)) { if (n.startsWith("--")) el.style.setProperty(n, x); else el.style[n] = x; } }  // « --nom » : propriété CSS personnalisée
     else if (k === "dataset") Object.assign(el.dataset, v);
     else if (k.startsWith("on") && typeof v === "function") el.addEventListener(k.slice(2), v);
     else if (k in el && k !== "list" && k !== "type" && typeof v !== "object") { try { el[k] = v; } catch (e) { el.setAttribute(k, v); } }

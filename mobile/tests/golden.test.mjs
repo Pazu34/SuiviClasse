@@ -19,7 +19,8 @@ test("préférences : validation identique", () => {
   const cases = [{}, null, "x", { oubliOrange: "5", oubliRouge: "2" }, { travailOrange: 99, travailRouge: 1 }, { seancePlusVert: "2,5", backupMinutes: "abc" },
     { autoLockMinutes: -5, appreciationMax: 99999 }, { periodes: "semestres", theme: "sombre", affichage: "normal", planAffichage: "initiales" },
     { periodes: "inconnu", theme: 3 }, { backupKeepRecent: 2.5, backupKeepDays: 3.5 }, { oubliRouge: "", seanceMoinsRouge: " 1,5 " },
-    { colonneFigee: "infos" }, { colonneFigee: "aucune" }, { colonneFigee: "nom" }, { colonneFigee: "partout" }];
+    { colonneFigee: "infos" }, { colonneFigee: "aucune" }, { colonneFigee: "nom" }, { colonneFigee: "partout" },
+    { titresColonnes: "icones" }, { titresColonnes: "inclines" }, { titresColonnes: "vertical" }];
   const out = py(`
 import json, sys
 from suiviclasse import prefs

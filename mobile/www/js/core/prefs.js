@@ -15,6 +15,8 @@ export const SCHEMA = [
     options: [["prenom_nom", "Prénom Nom"], ["prenom", "Prénom"], ["nom", "Nom"], ["prenom_i", "Prénom + initiale du nom"], ["initiales", "Initiales"]] },
   { key: "affichage", group: "Affichage", label: "Densité du tableau", type: "choice", default: "compact",
     options: [["compact", "Resserré"], ["normal", "Confortable"]] },
+  { key: "colonneFigee", group: "Affichage", label: "Colonnes figées dans le tableau", type: "choice", default: "prenom",
+    options: [["aucune", "Aucune"], ["nom", "Jusqu'au nom"], ["prenom", "Jusqu'au prénom (n°, nom, prénom)"], ["infos", "Jusqu'aux infos (PAI…)"]] },
   { key: "oubliOrange", group: "Alertes — oublis de matériel", label: "Orange à partir de", type: "int", min: 1, max: 99, default: 2, unit: "par période" },
   { key: "oubliRouge", group: "Alertes — oublis de matériel", label: "Rouge à partir de", type: "int", min: 1, max: 99, default: 3, unit: "par période" },
   { key: "travailOrange", group: "Alertes — travail non fait", label: "Orange à partir de", type: "int", min: 1, max: 99, default: 2, unit: "par période" },

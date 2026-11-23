@@ -131,7 +131,7 @@ Basés sur la documentation PRONOTE 2026 de l'éditeur (fiches « Exporter au fo
 
 ## Préférences
 
-Bouton **Préférences** (ou `Ctrl+,`) : thème (**clair**, **sombre** ou automatique selon Windows), densité du tableau (**resserré** par défaut, pour un portable ; **normal** pour un grand écran), seuils d'alerte orange/rouge, archives automatiques, longueur des appréciations, verrouillage automatique. Les réglages sont enregistrés dans `preferences.json` (lisible, non chiffré) dans le dossier de données.
+Bouton **Préférences** (ou `Ctrl+,`) : thème (**clair**, **sombre** ou automatique selon Windows), densité du tableau (**resserré** par défaut, pour un portable ; **normal** pour un grand écran), **colonnes figées** (n°, nom et prénom restent affichés à gauche quand on fait défiler le tableau vers la droite ; au choix : aucune, jusqu'au nom, jusqu'au prénom — par défaut —, ou jusqu'aux infos ; ignoré si ces colonnes prennent plus de la moitié de la largeur), seuils d'alerte orange/rouge, archives automatiques, longueur des appréciations, verrouillage automatique. Les réglages sont enregistrés dans `preferences.json` (lisible, non chiffré) dans le dossier de données.
 
 Pour ajouter un réglage : ajouter une entrée au tableau `SCHEMA` de `suiviclasse/prefs.py` (clé, libellé, bornes, valeur par défaut) ; il apparaît dans la fenêtre et est validé automatiquement. Il reste à l'utiliser via `app.values["<clé>"]`.
 

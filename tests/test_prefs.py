@@ -42,6 +42,14 @@ class ChoixTest(unittest.TestCase):
         self.assertEqual(sanitize({"affichage": "n'importe quoi"})["affichage"], "compact")
 
 
+class ColonnesFigeesTest(unittest.TestCase):
+    def test_choix_des_colonnes_figees(self):
+        self.assertEqual(defaults()["colonneFigee"], "prenom")
+        for k in ("aucune", "nom", "prenom", "infos"):
+            self.assertEqual(sanitize({"colonneFigee": k})["colonneFigee"], k)
+        self.assertEqual(sanitize({"colonneFigee": "partout"})["colonneFigee"], "prenom")
+
+
 class ColonnesTest(unittest.TestCase):
     def test_largeurs_de_colonnes_par_cle(self):
         d = Path(tempfile.mkdtemp())

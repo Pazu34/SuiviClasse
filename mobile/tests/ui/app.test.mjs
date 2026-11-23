@@ -441,3 +441,31 @@ test("portrait : la mise en page suit la rotation, sans défilement horizontal d
   noErrors(page);
   await page.context().close();
 });
+
+test("tableau : nom et prénom restent affichés quand on défile vers la droite (réglable)", async () => {
+  const page = await env.page({ viewport: { width: 900, height: 700 } });
+  await createVault(page);
+  const x = (sel) => page.locator(sel).first().evaluate((el) => Math.round(el.getBoundingClientRect().x));
+  const scroll = (left) => page.locator(".tablewrap").evaluate((el, l) => { el.scrollLeft = l; return el.scrollLeft; }, left);
+  const nom0 = await x("td.nom"), prenom0 = await x("td.name:not(.nom)");
+  assert.ok((await scroll(400)) > 0, "le tableau défile horizontalement");
+  assert.equal(await x("td.nom"), nom0);
+  assert.equal(await x("td.name:not(.nom)"), prenom0);
+  // une colonne qui n'est pas figée (T1) suit le défilement
+  const note = await page.locator("table.grid tbody tr").first().locator("td").nth(4).evaluate((el) => Math.round(el.getBoundingClientRect().x));
+  assert.ok(note < 400, "les autres colonnes défilent");
+  // préférence « Aucune » : plus rien n'est figé
+  await page.evaluate(() => app.setPrefs({ colonneFigee: "aucune" }));
+  await page.evaluate(() => app.requestRender());
+  await scroll(0); await scroll(400);
+  assert.ok((await x("td.nom")) < nom0, "avec « Aucune », le nom défile aussi");
+  // choix proposé dans les préférences
+  await page.click('[aria-label="Menu"]');
+  await page.click(".menu >> text=Préférences…");
+  await page.locator(".settingrow", { hasText: "Colonnes figées dans le tableau" }).locator("select").waitFor();
+  assert.equal(await page.locator(".settingrow", { hasText: "Colonnes figées dans le tableau" }).locator("select").inputValue(), "aucune");
+  await shot(page, "colonnes-figees");
+  await page.keyboard.press("Escape");
+  noErrors(page);
+  await page.context().close();
+});

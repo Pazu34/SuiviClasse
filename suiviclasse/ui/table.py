@@ -134,6 +134,10 @@ def parse_grade(text, maxi=20):
     return v
 
 
+# colonnes qui peuvent rester figées : le début du tableau jusqu'à la colonne choisie dans les préférences
+FREEZE = {"nom": ("numero", "nom"), "prenom": ("numero", "nom", "prenom"), "infos": ("numero", "nom", "prenom", "infos")}
+
+
 class ClassTable(ttk.Frame):
     def __init__(self, parent, app, cls):
         super().__init__(parent)
@@ -154,24 +158,36 @@ class ClassTable(ttk.Frame):
         self.head_h = self.row_h
         self._drag = None
         self.guide = tk.Frame(self, width=2, bg=P["accent"])  # repère affiché pendant le redimensionnement d'une colonne
+        # Deux zones côte à côte : les colonnes figées (à gauche, ne défilent pas horizontalement) et les autres (à droite).
+        # Le défilement vertical est commun ; seules les colonnes de droite défilent vers la gauche ou la droite.
+        self.nfix, self.fix_w = 0, 0
+        self.hdrL = tk.Canvas(self, height=self.row_h, width=1, highlightthickness=0, bg=P["surface2"])
+        self.bodyL = tk.Canvas(self, width=1, highlightthickness=0, bg=P["surface"])
+        self.sep = tk.Frame(self, width=2, bg=P["border"])  # trait entre les colonnes figées et les autres
         self.hdr = tk.Canvas(self, height=self.row_h, highlightthickness=0, bg=P["surface2"])
         self.body = tk.Canvas(self, highlightthickness=0, bg=P["surface"])
-        self.vsb = ttk.Scrollbar(self, orient="vertical", command=self.body.yview)
+        self.vsb = ttk.Scrollbar(self, orient="vertical", command=self._yview)
         self.hsb = ttk.Scrollbar(self, orient="horizontal", command=self._xview)
-        self.body.configure(yscrollcommand=self.vsb.set, xscrollcommand=self._xset)
-        self.hdr.grid(row=0, column=0, sticky="ew")
-        self.body.grid(row=1, column=0, sticky="nsew")
-        self.vsb.grid(row=1, column=1, sticky="ns")
-        self.hsb.grid(row=2, column=0, sticky="ew")
+        self.body.configure(yscrollcommand=self._yset, xscrollcommand=self._xset)
+        self.hdr.grid(row=0, column=2, sticky="ew")
+        self.body.grid(row=1, column=2, sticky="nsew")
+        self.vsb.grid(row=1, column=3, sticky="ns")
+        self.hsb.grid(row=2, column=2, sticky="ew")
         self.rowconfigure(1, weight=1)
-        self.columnconfigure(0, weight=1)
+        self.columnconfigure(2, weight=1)
+        self.hfL = tk.Frame(self.hdrL, bg=P["surface2"])
+        self.bfL = tk.Frame(self.bodyL, bg=P["surface"])
         self.hf = tk.Frame(self.hdr, bg=P["surface2"])
         self.bf = tk.Frame(self.body, bg=P["surface"])
-        self.hdr.create_window(0, 0, window=self.hf, anchor="nw")
-        self.body.create_window(0, 0, window=self.bf, anchor="nw")
-        self.bf.bind("<Configure>", lambda e: self.body.configure(scrollregion=(0, 0, self.total_w, self.bf.winfo_reqheight())))
-        self.body.bind("<Enter>", lambda e: self._bind_wheel(True))
-        self.body.bind("<Leave>", lambda e: self._bind_wheel(False))
+        for canvas, frame in ((self.hdrL, self.hfL), (self.bodyL, self.bfL), (self.hdr, self.hf), (self.body, self.bf)):
+            canvas.create_window(0, 0, window=frame, anchor="nw")
+        self.bf.bind("<Configure>", lambda e: self._set_regions())
+        self.bfL.bind("<Configure>", lambda e: self._set_regions())
+        for canvas in (self.body, self.bodyL):
+            canvas.bind("<Enter>", lambda e: self._bind_wheel(True))
+            canvas.bind("<Leave>", lambda e: self._bind_wheel(False))
+        self._resize_job = None
+        self.bind("<Configure>", self._on_resize)
         self.build()
 
     def _init_fonts(self):
@@ -245,6 +261,53 @@ class ClassTable(ttk.Frame):
         self.hsb.set(lo, hi)
         self.hdr.xview_moveto(lo)
 
+    def _yview(self, *args):
+        self.body.yview(*args)
+        self.bodyL.yview(*args)
+
+    def _yset(self, lo, hi):
+        self.vsb.set(lo, hi)
+        self.bodyL.yview_moveto(lo)
+
+    def _set_regions(self):
+        h = self.bf.winfo_reqheight()
+        self.body.configure(scrollregion=(0, 0, self.total_w - self.fix_w, h))
+        self.bodyL.configure(scrollregion=(0, 0, self.fix_w, self.bfL.winfo_reqheight()), width=max(1, self.fix_w))
+
+    # ---------- colonnes figées ----------
+    def frozen_count(self):
+        """Nombre de colonnes figées à gauche : celles du début du tableau jusqu'à la colonne choisie dans les préférences.
+        Aucune si elles occuperaient plus de la moitié de la largeur disponible (il ne resterait plus de place pour défiler)."""
+        allowed = FREEZE.get(self.app.values["colonneFigee"], ())
+        n = 0
+        for c in self.cols:
+            if c.key not in allowed:
+                break
+            n += 1
+        avail = self.winfo_width()
+        if avail <= 1:
+            avail = self.winfo_toplevel().winfo_width()
+        if n >= len(self.cols) or (avail > 1 and sum(self.widths[:n]) > avail * 0.5):
+            return 0
+        return n
+
+    def _on_resize(self, e):
+        if e.widget is self:
+            if self._resize_job:
+                self.after_cancel(self._resize_job)
+            self._resize_job = self.after(250, self._resized)
+
+    def _resized(self):
+        self._resize_job = None
+        if self.winfo_exists() and self.frozen_count() != self.nfix:
+            self.build()
+
+    def hparent(self, i):
+        return self.hfL if i < self.nfix else self.hf
+
+    def bparent(self, i):
+        return self.bfL if i < self.nfix else self.bf
+
     def _bind_wheel(self, on):
         root = self.winfo_toplevel()
         for ev in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
@@ -260,17 +323,26 @@ class ClassTable(ttk.Frame):
     # ---------- construction ----------
     def build(self):
         y = self.body.yview()[0]
-        for w in self.hf.winfo_children() + self.bf.winfo_children():
+        for w in self.hf.winfo_children() + self.bf.winfo_children() + self.hfL.winfo_children() + self.bfL.winfo_children():
             w.destroy()
         self.rows = []
         t, pre = self.app.t, self.per["prefix"]
         self.total_w = sum(self.widths)
+        self.nfix = self.frozen_count()
+        self.fix_w = sum(self.widths[:self.nfix])
+        if self.nfix:
+            self.hdrL.grid(row=0, column=0, sticky="nsew")
+            self.bodyL.grid(row=1, column=0, sticky="nsew")
+            self.sep.grid(row=0, column=1, rowspan=2, sticky="ns")
+        else:
+            for w in (self.hdrL, self.bodyL, self.sep):
+                w.grid_remove()
         heads = []
         head_font = self.head_font
         icons = self.app.values["pictogrammes"] == "oui"
         for i, col in enumerate(self.cols):
             title = col.title + (f" ({pre}{t})" if col.per_period else "")
-            c = self.cell(self.hf, 0, i, P["surface2"])
+            c = self.cell(self.hparent(i), 0, i, P["surface2"])
             text = title.upper()
             fits = head_font.measure(text) <= self.widths[i] - 12
             if icons and col.icon:  # le pictogramme est placé au-dessus du titre
@@ -285,7 +357,8 @@ class ClassTable(ttk.Frame):
         self.head_h = max(self.row_h, max(sum(w.winfo_reqheight() for w in c.winfo_children() if isinstance(w, tk.Label)) for c in heads) + 8)
         for c in heads:
             c.configure(height=self.head_h)
-        self.hdr.configure(height=self.head_h, scrollregion=(0, 0, self.total_w, self.head_h))
+        self.hdr.configure(height=self.head_h, scrollregion=(0, 0, self.total_w - self.fix_w, self.head_h))
+        self.hdrL.configure(height=self.head_h, width=max(1, self.fix_w), scrollregion=(0, 0, self.fix_w, self.head_h))
         q = exchange.norm(self.app.search.get())
         r = 0
         for s in self.cls["eleves"]:
@@ -297,7 +370,7 @@ class ClassTable(ttk.Frame):
             msg = "Aucun élève ne correspond à la recherche." if self.cls["eleves"] else "Aucun élève. Utilisez « Importer / ajouter des élèves… »."
             tk.Label(self.bf, text=msg, bg=P["surface"], fg=P["muted"], pady=30).grid(row=0, column=0, columnspan=len(self.cols), sticky="w", padx=20)
             r = 1
-        self.footer = [self.cell(self.bf, r, i, P["surface2"]) for i in range(len(self.cols))]
+        self.footer = [self.cell(self.bparent(i), r, i, P["surface2"]) for i in range(len(self.cols))]
         tk.Label(self.footer[self.index["nom"]], text="Moy. classe" if self.mode == "compact" else "Moyenne de la classe",
                  bg=P["surface2"], fg=P["text"], font=self.bold).pack(side="left", padx=4)
         self.footer_labels = {}
@@ -333,7 +406,11 @@ class ClassTable(ttk.Frame):
         if not d:
             return
         d["w"] = max(COLUMN_MIN, d["w0"] + e.x_root - d["x0"])
-        x = sum(self.widths[:d["i"]]) + d["w"] - self.hdr.canvasx(0) + self.hdr.winfo_x()
+        i = d["i"]
+        if i < self.nfix:
+            x = sum(self.widths[:i]) + d["w"] + self.hdrL.winfo_x()
+        else:
+            x = sum(self.widths[self.nfix:i]) + d["w"] - self.hdr.canvasx(0) + self.hdr.winfo_x()
         self.guide.place(x=x, y=0, relheight=1.0)
         self.guide.lift()
 
@@ -400,7 +477,7 @@ class Row:
         self.paint_number(model.duplicate_numbers(table.cls))
 
     def _cell(self, r, i):
-        c = self.table.cell(self.table.bf, r, i, self.bg)
+        c = self.table.cell(self.table.bparent(i), r, i, self.bg)
         self.cells.append(c)
         return c
 

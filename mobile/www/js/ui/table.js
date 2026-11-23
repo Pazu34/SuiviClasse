@@ -15,7 +15,8 @@ function measure(text, bold = false) {
   return Math.ceil(ctx.measureText(text).width);
 }
 
-const STICKY = ["numero", "nom", "prenom"];
+/** Colonnes qui peuvent rester figées à gauche (début du tableau, jusqu'à la colonne choisie dans les préférences). */
+const FREEZE = { aucune: [], nom: ["numero", "nom"], prenom: ["numero", "nom", "prenom"], infos: ["numero", "nom", "prenom", "infos"] };
 
 function sizes(compact) { return compact ? { btn: 34, gap: 3 } : { btn: 40, gap: 3 }; }
 
@@ -221,7 +222,10 @@ export function renderTable(app, cls) {
   const widths = cols.map((c) => colWidth(c, compact));
   const lefts = [];
   let acc = 0, nSticky = 0;
-  for (let i = 0; i < cols.length && STICKY.includes(cols[i].key); i++) { lefts.push(acc); acc += widths[i]; nSticky++; }
+  const allowed = FREEZE[app.values.colonneFigee] || [];
+  for (let i = 0; i < cols.length && allowed.includes(cols[i].key); i++) { lefts.push(acc); acc += widths[i]; nSticky++; }
+  // trop de colonnes figées pour la largeur de l'écran (plus de la moitié) : elles défileraient avec les autres plutôt que de tout cacher
+  if (nSticky >= cols.length || acc > window.innerWidth * 0.5) { nSticky = 0; lefts.length = 0; }
   const stickyAttrs = (i) => (i < nSticky ? { class: "stick" + (i === nSticky - 1 ? " last" : ""), style: { left: lefts[i] + "px" } } : {});
   const total = widths.reduce((a, b) => a + b, 0);
 

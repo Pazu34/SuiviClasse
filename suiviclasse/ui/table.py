@@ -136,7 +136,6 @@ def parse_grade(text, maxi=20):
 
 
 ANGLE = 60  # inclinaison des titres (carnet papier)
-HORIZONTAL_HEADS = ("num", "nom", "prenom", "infos", "comment", "fiche")  # titres qui restent à l'horizontale en mode incliné
 
 
 class Tooltip:
@@ -285,8 +284,8 @@ class ClassTable(ttk.Frame):
         return max(width, whole if whole <= 130 else min(longest, 220))
 
     def rotated(self, col):
-        """Titre incliné ? (mode « inclinés » : toutes les colonnes de données ; nom, prénom, infos… restent à l'horizontale)"""
-        return self.titres == "inclines" and col.kind not in HORIZONTAL_HEADS and bool(col.title)
+        """Titre incliné ? (mode « inclinés » : toutes les colonnes qui ont un titre, donc pas « fiche »)"""
+        return self.titres == "inclines" and bool(col.title)
 
     def iconic(self, col):
         """Pictogramme seul ? (les colonnes qui n'ont pas de pictogramme gardent leur titre)"""
@@ -305,11 +304,11 @@ class ClassTable(ttk.Frame):
         return text, self.head_font.measure(text)
 
     def head_cap(self):
-        return 140 if self.mode == "compact" else 170
+        return 150 if self.mode == "compact" else 180
 
     def _slanted_head(self, pre, t):
         """En-tête « carnet papier » : un seul dessin par zone (colonnes figées / défilantes). Chaque titre de données est incliné à 60°,
-        centré entre deux traits inclinés ; nom, prénom, infos et commentaire restent à l'horizontale, alignés en bas."""
+        centré entre deux traits inclinés."""
         sin, cos, tan = (f(math.radians(ANGLE)) for f in (math.sin, math.cos, math.tan))
         lh = self.head_font.metrics("linespace")
         items, need, longest = [], self.row_h, 0
@@ -406,6 +405,19 @@ class ClassTable(ttk.Frame):
     def _xset(self, lo, hi):
         self.hsb.set(lo, hi)
         self.hdr.xview_moveto(lo)
+
+    def reveal(self, w):
+        """Fait défiler le tableau verticalement pour que la case `w` soit entièrement visible."""
+        self.update_idletasks()
+        top = self.body.winfo_rooty()
+        bottom = top + self.body.winfo_height()
+        y0 = w.winfo_rooty()
+        y1 = y0 + w.winfo_height()
+        total, first = max(1, self.bf.winfo_reqheight()), self.body.yview()[0]
+        if y1 > bottom:
+            self._yview("moveto", first + (y1 - bottom + 4) / total)
+        elif y0 < top:
+            self._yview("moveto", max(0.0, first - (top - y0 + 4) / total))
 
     def _yview(self, *args):
         self.body.yview(*args)
@@ -629,6 +641,7 @@ class Row:
         self.cells, self.height = [], table.row_h
         self.note_vars, self.xvars, self.seance, self.counters, self.checks, self.grades = {}, {}, [], {}, {}, {}
         self.texts = []  # zones de texte à hauteur variable : (colonne, widget)
+        self.fields = {}  # champs de saisie par clé de colonne (notes, commentaires…) : Entrée passe au champ du dessous
         self.comm = self.num = self.name = self.prenom = self.infos = None  # restent None si la colonne est masquée
         for i, col in enumerate(table.cols):
             parent = self._cell(r, i)
@@ -674,18 +687,36 @@ class Row:
         self.infos.pack(fill="x", expand=True, padx=3, pady=3)
         self._editable(self.infos, self.edit_infos)
 
-    def _entry(self, parent, var, commit):
+    def _entry(self, parent, var, commit, key):
         e = ttk.Entry(parent, textvariable=var, justify="center", font=self.font, style="Cell.TEntry")
         e.pack(fill="x", expand=True, padx=2, pady=2)
         e.bind("<FocusOut>", lambda ev: commit())
-        e.bind("<Return>", lambda ev: commit())
+        e.bind("<Return>", lambda ev: self.enter(key, commit))
+        self.fields[key] = e
         return e
+
+    def enter(self, key, commit):
+        """Entrée : valide la saisie puis passe à la même colonne de la ligne affichée en dessous (le tableau défile au besoin)."""
+        if commit() is False:  # saisie refusée (message affiché) : on reste sur place
+            return "break"
+        rows = self.table.rows
+        i = rows.index(self)
+        nxt = rows[i + 1].fields.get(key) if i + 1 < len(rows) else None
+        if nxt is not None:
+            self.table.reveal(nxt)
+            nxt.focus_set()
+            if isinstance(nxt, tk.Text):
+                nxt.mark_set("insert", "end-1c")
+            else:
+                nxt.select_range(0, "end")
+                nxt.icursor("end")
+        return "break"
 
     def _build_note(self, col, parent, i):
         k = col.key[4:]
         v = self.s["notes"][k]
         var = tk.StringVar(value="" if v is None else exchange.fmt_num(v))
-        self._entry(parent, var, lambda k=k: self.commit_note(k))
+        self._entry(parent, var, lambda k=k: self.commit_note(k), col.key)
         self.note_vars[k] = var
 
     def _button(self, parent, text, command, side):
@@ -739,7 +770,7 @@ class Row:
     def _build_xnote(self, col, parent, i):
         v = model.extra_value(self.s, col.cfg, self.app.t)
         var = tk.StringVar(value="" if v is None else exchange.fmt_num(v))
-        self._entry(parent, var, lambda col=col: self.commit_xnote(col))
+        self._entry(parent, var, lambda col=col: self.commit_xnote(col), col.key)
         self.xvars[col.key] = var
 
     def _text_box(self, col, parent, text, commit):
@@ -749,7 +780,8 @@ class Row:
         box.insert("1.0", text)
         box.bind("<KeyRelease>", lambda e: (self.color_text(col, box), self.fit()))
         box.bind("<FocusOut>", lambda e: commit())
-        box.bind("<Return>", lambda e: (commit(), "break")[1])  # une saisie tient sur un paragraphe
+        box.bind("<Return>", lambda e: self.enter(col.key, commit))  # une saisie tient sur un paragraphe : Entrée valide et descend
+        self.fields[col.key] = box
         box.bind("<Tab>", lambda e: (e.widget.tk_focusNext().focus_set(), "break")[1])
         self.texts.append((col, box))
         return box
@@ -1019,7 +1051,7 @@ class Row:
         except ValueError:
             messagebox.showwarning("Note invalide", f"Entrez un nombre entre 0 et {exchange.fmt_num(sc)}.", parent=self.app.root)
             var.set("" if old is None else exchange.fmt_num(old))
-            return
+            return False
         if value != old:
             self.s["notes"][k] = value
             self.app.commit()
@@ -1035,7 +1067,7 @@ class Row:
         except ValueError:
             messagebox.showwarning("Note invalide", f"Entrez un nombre entre 0 et {exchange.fmt_num(maxi)}.", parent=self.app.root)
             var.set("" if old is None else exchange.fmt_num(old))
-            return
+            return False
         if value != old:
             model.set_extra(self.s, col.key, self.app.t, value)
             self.app.commit()

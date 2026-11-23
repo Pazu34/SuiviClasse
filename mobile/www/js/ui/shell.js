@@ -2,7 +2,7 @@
 import { overlayCount, confirmDialog, h, menu, promptDialog, toast, modal } from "./dom.js";
 import { LABELS, current, getMode, nextMode, setMode } from "../orientation.js";
 import { renderSeance } from "./seance.js";
-import { renderTable } from "./table.js";
+import { applyPendingFocus, renderTable } from "./table.js";
 
 const lazy = {
   prefs: () => import("./prefs_ui.js"), importer: () => import("./import_ui.js"), exporter: () => import("./export_ui.js"),
@@ -93,6 +93,7 @@ export class Shell {
     this.content.replaceChildren(info, body);
     const wrap = this.content.querySelector(".tablewrap, .canvaswrap, .seancewrap");
     if (scroll && wrap) { wrap.scrollLeft = scroll[0]; wrap.scrollTop = scroll[1]; }
+    applyPendingFocus(app, this.content);  // saisie validée par Entrée : le curseur passe à la case du dessous
   }
 
   /** Petit bouton en haut à gauche : Automatique → Paysage → Portrait. Le dessin montre l'orientation actuelle ; « A » = automatique. */

@@ -16,8 +16,7 @@ function measure(text, bold = false) {
 }
 
 const ANGLE = 60;
-const HORIZONTAL_HEADS = ["num", "nom", "prenom", "infos", "comment", "fiche"];  // titres qui restent à l'horizontale en mode incliné
-const rotated = (app, c) => app.values.titresColonnes === "inclines" && !HORIZONTAL_HEADS.includes(c.kind) && !!c.title;
+const rotated = (app, c) => app.values.titresColonnes === "inclines" && !!c.title;  // toutes les colonnes qui ont un titre (pas « fiche »)
 const iconic = (app, c) => app.values.titresColonnes === "icones" && !!c.icon;
 
 /** Largeur d'un titre d'en-tête (majuscules, gras, 0,78 em, espacement 0,02 em : voir le CSS). */
@@ -43,6 +42,46 @@ function rotatedText(title, cap, t) {
     text = text.trimEnd() + "…";
   }
   return [text, measureHead(text)];
+}
+
+// ---------------------------------------------------------------- saisie au clavier : Entrée valide et passe à la ligne du dessous
+/** Case située sous `td` (même colonne, ligne suivante affichée) : {row, col} (rangs dans le corps du tableau). */
+function below(td) {
+  const tr = td.closest("tr"), rows = [...tr.parentElement.children];
+  return { row: rows.indexOf(tr) + 1, col: [...tr.children].indexOf(td) };
+}
+
+/** Met le curseur dans la case visée (ou ouvre sa fenêtre de saisie pour un commentaire). Appelée aussi après la reconstruction du
+ *  tableau que provoque toute modification : la cible se retrouve par son rang. */
+export function applyPendingFocus(app, root) {
+  const f = app.pendingFocus;
+  if (!f) return;
+  if (Date.now() > f.until) { app.pendingFocus = null; return; }
+  const tr = root.querySelectorAll("table.grid tbody tr")[f.row], td = tr && tr.children[f.col];
+  if (!td) { app.pendingFocus = null; return; }
+  app.pendingFocus = null;
+  if (f.open) { td.click(); return; }
+  const el = td.querySelector("input, select, textarea");
+  if (el) { el.focus(); if (el.select) el.select(); if (el.scrollIntoView) el.scrollIntoView({ block: "nearest", inline: "nearest" }); }
+}
+
+/** Saisie validée par Entrée dans `td` : `commit()` enregistre (retourne "invalid", true si modifié, false sinon), puis on passe en dessous. */
+function enterAdvance(app, td, commit) {
+  app.pendingFocus = { ...below(td), until: Date.now() + 800 };
+  const r = commit();
+  if (r === "invalid") app.pendingFocus = null;
+  else if (!r) applyPendingFocus(app, td.closest("table").parentElement);  // rien n'a changé : pas de reconstruction, on passe tout de suite
+}
+
+/** Commentaire / texte : fenêtre de saisie ; Entrée valide puis ouvre la fenêtre de l'élève suivant. */
+async function editText(app, td, { title, value, counter = null, save }) {
+  let viaEnter = false;
+  const nv = await promptDialog({ title, multiline: true, value, counter, enterSubmits: () => { viaEnter = true; } });
+  if (nv === null) return;
+  const text = nv.split(/\s+/).filter(Boolean).join(" ");
+  if (viaEnter) app.pendingFocus = { ...below(td), open: true, until: Date.now() + 800 };
+  if (text !== value) save(text);
+  else if (viaEnter) applyPendingFocus(app, td.closest("table") ? td.closest("table").parentElement : document);
 }
 
 /** Colonnes qui peuvent rester figées à gauche (début du tableau, jusqu'à la colonne choisie dans les préférences). */
@@ -166,15 +205,19 @@ function cellFor(app, cls, s, col, dups, scale) {
     }
     case "note": {
       const k = col.key.slice(4);
-      const input = h("input", { class: "cell", type: "text", inputMode: "decimal", enterKeyHint: "done", value: s.notes[k] === null || s.notes[k] === undefined ? "" : fmtNum(s.notes[k]) });
+      const input = h("input", { class: "cell", type: "text", inputMode: "decimal", enterKeyHint: "next", value: s.notes[k] === null || s.notes[k] === undefined ? "" : fmtNum(s.notes[k]) });
+      const td = h("td", {}, input);
       input.addEventListener("focus", () => setTimeout(() => input.select(), 0));
-      input.addEventListener("keydown", (e) => { if (e.key === "Enter") input.blur(); });
-      input.addEventListener("change", () => {
+      const commit = () => {
         let value;
-        try { value = parseGrade(input.value, scale); } catch (e) { toast(`Entrez un nombre entre 0 et ${fmtNum(scale)}.`, "bad"); input.value = s.notes[k] === null ? "" : fmtNum(s.notes[k]); return; }
-        if (value !== s.notes[k]) { s.notes[k] = value; app.commit(); } else input.value = value === null ? "" : fmtNum(value);
-      });
-      return h("td", {}, input);
+        try { value = parseGrade(input.value, scale); } catch (e) { toast(`Entrez un nombre entre 0 et ${fmtNum(scale)}.`, "bad"); input.value = s.notes[k] === null ? "" : fmtNum(s.notes[k]); return "invalid"; }
+        if (value !== s.notes[k]) { s.notes[k] = value; app.commit(); return true; }
+        input.value = value === null ? "" : fmtNum(value);
+        return false;
+      };
+      input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); enterAdvance(app, td, commit); } });  // valide et passe à l'élève suivant
+      input.addEventListener("change", commit);
+      return td;
     }
     case "seance": case "counter": {
       const [value, level] = counterState(app, col, s, t);
@@ -194,22 +237,25 @@ function cellFor(app, cls, s, col, dups, scale) {
     }
     case "xnote": {
       const maxi = col.cfg.echelle || 10, v = M.extraValue(s, col.cfg, sk);
-      const input = h("input", { class: "cell", type: "text", inputMode: "decimal", value: v === null ? "" : fmtNum(v) });
+      const input = h("input", { class: "cell", type: "text", inputMode: "decimal", enterKeyHint: "next", value: v === null ? "" : fmtNum(v) });
+      const td = h("td", {}, input);
+      let cur = v;
       input.addEventListener("focus", () => setTimeout(() => input.select(), 0));
-      input.addEventListener("keydown", (e) => { if (e.key === "Enter") input.blur(); });
-      input.addEventListener("change", () => {
+      const commit = () => {
         let value;
-        try { value = parseGrade(input.value, maxi); } catch (e) { toast(`Entrez un nombre entre 0 et ${fmtNum(maxi)}.`, "bad"); input.value = v === null ? "" : fmtNum(v); return; }
-        if (value !== v) { M.setExtra(s, col.key, sk, value); app.commit(); }
-      });
-      return h("td", {}, input);
+        try { value = parseGrade(input.value, maxi); } catch (e) { toast(`Entrez un nombre entre 0 et ${fmtNum(maxi)}.`, "bad"); input.value = cur === null ? "" : fmtNum(cur); return "invalid"; }
+        if (value !== cur) { cur = value; M.setExtra(s, col.key, sk, value); app.commit(); return true; }
+        return false;
+      };
+      input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); enterAdvance(app, td, commit); } });
+      input.addEventListener("change", commit);
+      return td;
     }
     case "xtext": {
       const v = M.extraValue(s, col.cfg, sk) || "";
-      return h("td", { class: "comm", onclick: async () => {
-        const nv = await promptDialog({ title: `${col.title} — ${s.prenom} ${s.nom}`.trim(), multiline: true, value: v });
-        if (nv !== null) { const text = nv.split(/\s+/).filter(Boolean).join(" "); if (text !== v) { M.setExtra(s, col.key, sk, text); app.commit(); } }
-      } }, h("div", { class: "txt" }, v));
+      const td = h("td", { class: "comm" }, h("div", { class: "txt" }, v));
+      td.onclick = () => editText(app, td, { title: `${col.title} — ${s.prenom} ${s.nom}`.trim(), value: v, save: (text) => { M.setExtra(s, col.key, sk, text); app.commit(); } });
+      return td;
     }
     case "xlist": {
       const v = M.extraValue(s, col.cfg, sk);
@@ -224,10 +270,9 @@ function cellFor(app, cls, s, col, dups, scale) {
     }
     case "comment": {
       const text = s.comms[sk] || "", max = app.values.appreciationMax;
-      return h("td", { class: "comm" + (Array.from(text).length > max ? " over" : ""), onclick: async () => {
-        const nv = await promptDialog({ title: `Commentaire de bulletin ${app.per.prefix}${t} — ${s.prenom} ${s.nom}`.trim(), multiline: true, value: text, counter: max });
-        if (nv !== null) { const v = nv.split(/\s+/).filter(Boolean).join(" "); if (v !== text) { s.comms[sk] = v; app.commit(); } }
-      } }, h("div", { class: "txt" }, text));
+      const td = h("td", { class: "comm" + (Array.from(text).length > max ? " over" : "") }, h("div", { class: "txt" }, text));
+      td.onclick = () => editText(app, td, { title: `Commentaire de bulletin ${app.per.prefix}${t} — ${s.prenom} ${s.nom}`.trim(), value: text, counter: max, save: (v) => { s.comms[sk] = v; app.commit(); } });
+      return td;
     }
     case "fiche": return h("td", { style: { textAlign: "center" } }, h("button", { class: "cbtn", type: "button", "aria-label": "Ouvrir la fiche", onclick: () => openStudentSheet(app, cls, s) }, col.cfg.emoji || "📝"));
     default: return h("td");
@@ -260,7 +305,7 @@ export function renderTable(app, cls) {
   const total = widths.reduce((a, b) => a + b, 0);
 
   // en-têtes : titre (avec pictogramme si activé), pictogramme seul, ou titre incliné à 60° comme dans un carnet papier
-  const cap = compact ? 140 : 170, fontPx = parseFloat(getComputedStyle(document.body).fontSize) * 0.78;
+  const cap = compact ? 150 : 180, fontPx = parseFloat(getComputedStyle(document.body).fontSize) * 0.78;
   let rotH = 0;
   const heads = cols.map((c, i) => {
     const sa = stickyAttrs(i), cls = sa.class ? sa.class.split(" ") : [], full = headerTitle(app, c);

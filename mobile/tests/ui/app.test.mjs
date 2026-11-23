@@ -488,7 +488,8 @@ test("titres de colonnes : pictogrammes seuls ou titres inclinés à 60°", asyn
   await page.evaluate(() => app.requestRender());
   const rot = page.locator("table.grid thead th.rot");
   assert.ok((await rot.count()) >= 5, "colonnes à titre incliné");
-  assert.equal(await page.locator("table.grid thead th.rot", { hasText: "Nom" }).count(), 0, "le nom reste horizontal");
+  assert.equal(await page.locator("table.grid thead th.rot span", { hasText: /^NOM$/ }).count(), 1, "le nom est incliné aussi");
+  assert.equal(await page.locator("table.grid thead th:not(.rot)").count(), 1, "toutes les colonnes titrées sont inclinées (seule « fiche », sans titre, reste)");
   const tr = await rot.first().locator("span").evaluate((el) => getComputedStyle(el).transform);
   // centré : la ligne médiane du titre passe par le milieu de la colonne (au bas de l'en-tête, à quelques pixels près)
   const mid = await rot.nth(2).evaluate((th) => { const c = th.getBoundingClientRect(), s = th.querySelector("span").getBoundingClientRect(); return [c.left + c.width / 2, s.left + s.width / 2, c.width]; });
@@ -498,6 +499,41 @@ test("titres de colonnes : pictogrammes seuls ou titres inclinés à 60°", asyn
   assert.ok(box.height > 60 && box.height <= 160, "hauteur d'en-tête adaptée : " + box.height);
   await shot(page, "titres-inclines");
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth) <= 0, true);
+  noErrors(page);
+  await page.context().close();
+});
+
+test("saisie : Entrée valide la note ou le commentaire et passe à la ligne du dessous", async () => {
+  const page = await env.page();
+  await createVault(page);
+  const noteInput = (nom) => row(page, nom).locator("td").nth(4).locator("input");  // colonne T1
+  const active = () => page.evaluate(() => { const td = document.activeElement.closest("tr"); return td ? td.querySelector("td.nom").textContent : null; });
+  await noteInput("ANDRÉ").click();
+  await noteInput("ANDRÉ").fill("15,5");
+  await page.keyboard.press("Enter");
+  assert.equal(await page.evaluate(() => app.state.classes[0].eleves.find((s) => s.nom === "ANDRÉ").notes["1"]), 15.5);
+  assert.equal(await active(), "BERNARD", "le curseur passe à l'élève suivant");
+  await page.keyboard.type("8");
+  await page.keyboard.press("Enter");
+  assert.equal(await page.evaluate(() => app.state.classes[0].eleves.find((s) => s.nom === "BERNARD").notes["1"]), 8);
+  assert.equal(await active(), "CHARPENTIER");
+  // valeur inchangée : on passe tout de même à la ligne suivante
+  await page.keyboard.press("Enter");
+  assert.equal(await active(), "DUBOIS");
+  // note invalide : message, et on reste sur place
+  await page.keyboard.type("45");
+  await page.keyboard.press("Enter");
+  assert.equal(await active(), "DUBOIS");
+  assert.equal(await page.locator(".toast.bad").count() > 0, true);
+  // commentaire : Entrée valide puis ouvre la fenêtre de l'élève suivant
+  await row(page, "ANDRÉ").locator("td.comm").click();
+  await page.waitForSelector(".dialog textarea");
+  await page.fill(".dialog textarea", "Très bon trimestre");
+  await page.keyboard.press("Enter");
+  await page.waitForSelector('.dialog:has-text("BERNARD")');
+  assert.equal(await page.evaluate(() => app.state.classes[0].eleves.find((s) => s.nom === "ANDRÉ").comms["1"]), "Très bon trimestre");
+  assert.match(await page.locator(".dialog textarea").inputValue(), /Participe volontiers/);
+  await page.keyboard.press("Escape");
   noErrors(page);
   await page.context().close();
 });

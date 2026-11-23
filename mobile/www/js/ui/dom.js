@@ -113,7 +113,7 @@ export function alertDialog(message, title = "") {
 }
 
 /** Saisie d'un texte (ou d'un nombre) dans une fenêtre ; retourne la valeur validée ou null si annulé. */
-export function promptDialog({ title, label = "", value = "", multiline = false, numeric = false, hint = "", okLabel = "OK", validate = null, maxLength = null, counter = null }) {
+export function promptDialog({ title, label = "", value = "", multiline = false, numeric = false, hint = "", okLabel = "OK", validate = null, maxLength = null, counter = null, enterSubmits = null }) {
   return new Promise((resolve) => {
     let answered = false;
     const done = (v) => { if (!answered) { answered = true; resolve(v); } };
@@ -132,6 +132,8 @@ export function promptDialog({ title, label = "", value = "", multiline = false,
           if (problem) { err.textContent = problem; return false; }
           done(v);
         } }] });
+    // enterSubmits (fonction) : Entrée valide aussi un texte sur plusieurs lignes (Maj+Entrée = retour à la ligne) et prévient l'appelant
+    if (multiline && enterSubmits) input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enterSubmits(); ctl.el.querySelector("footer .btn.primary").click(); } });
     if (!multiline) input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); ctl.el.querySelector("footer .btn.primary").click(); } });
     setTimeout(() => { input.focus(); input.select && input.select(); }, 80);
   });

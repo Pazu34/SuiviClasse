@@ -128,3 +128,30 @@ class SemestresTest(unittest.TestCase):
         c = cls("6A", s)
         text, _ = X.build_export(c, ["nom", "note", "comm"], 2, True, ";", 0, lambda e, t: (0, 0, 0, 0), "S", "semestre")
         self.assertEqual(text.split("\r\n")[0], "Nom;Note du semestre S2;Appréciation du semestre S2")
+
+
+class NotesParticulieresTest(unittest.TestCase):
+    """Abs, N.Not et Disp (touches A, N et D comme dans PRONOTE) : enregistrées sous la forme « a », « n », « d »."""
+
+    def test_codes_reconnus(self):
+        for text, code in (("a", "a"), ("A", "a"), ("Abs", "a"), ("absent", "a"), ("n", "n"), ("N.Not", "n"), ("non noté", "n"), ("NN", "n"),
+                           ("d", "d"), ("Disp", "d"), ("Dispensé", "d"), (" disp. ", "d")):
+            self.assertEqual(X.note_code(text), code, text)
+        for text in ("", "14", "x", "z", "i", "abs*"):
+            self.assertIsNone(X.note_code(text), text)
+
+    def test_texte_affiche(self):
+        self.assertEqual([X.note_text(v) for v in (None, "a", "n", "d", 14.5, 12)], ["", "Abs", "N.Not", "Disp", "14,5", "12"])
+
+    def test_chiffres_seulement_dans_les_moyennes(self):
+        self.assertEqual([X.is_number(v) for v in (12, 0.0, "a", None, True)], [True, True, False, False, False])
+
+    def test_changement_de_bareme_ignore_les_codes(self):
+        data = {"classes": [{"eleves": [{"notes": {"1": 10.0, "2": "a", "3": None}, "extra": {"c": {"1": "d", "2": 8.0}}}]}]}
+        from suiviclasse import model
+        self.assertEqual(model.rescale_notes(data, 20, 10), 1)
+        self.assertEqual(data["classes"][0]["eleves"][0]["notes"], {"1": 5.0, "2": "a", "3": None})
+        self.assertEqual(model.rescale_extra(data, "c", 20, 10), 1)
+        self.assertEqual(data["classes"][0]["eleves"][0]["extra"]["c"], {"1": "d", "2": 4.0})
+        self.assertEqual(model.coerce_extra("d", "note"), "d")
+        self.assertEqual(model.coerce_extra("12,5", "note"), 12.5)

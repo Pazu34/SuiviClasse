@@ -1,5 +1,6 @@
 // Fiche d'un élève : feuille latérale (identité, infos, notes et commentaires de chaque période, autres colonnes, journal daté).
 import * as C from "../core/columns.js";
+import { noteText } from "../core/exchange.js";
 import * as M from "../core/model.js";
 import { fmtNum } from "../core/util.js";
 import { directLevels, parseGrade } from "./columns_build.js";
@@ -55,7 +56,7 @@ export function openStudentSheet(app, cls, s) {
 
   // ----- périodes : note + commentaire
   const periodBlocks = per.keys.map((k) => {
-    const note = h("input", { type: "text", inputMode: "decimal", value: s.notes[k] === null ? "" : fmtNum(s.notes[k]), "aria-label": `Note ${per.prefix}${k}` });
+    const note = h("input", { type: "text", inputMode: "decimal", value: noteText(s.notes[k]), "aria-label": `Note ${per.prefix}${k}` });
     const stats = h("div", { class: "stats" });
     const counter = h("div", { class: "hint", style: { textAlign: "right" } });
     const comm = h("textarea", { rows: 3, value: s.comms[k] });
@@ -64,9 +65,9 @@ export function openStudentSheet(app, cls, s) {
     comm.addEventListener("change", () => { if (comm.value !== s.comms[k]) { s.comms[k] = comm.value; commit(); } });
     note.addEventListener("change", () => {
       let v;
-      try { v = parseGrade(note.value, scale); } catch (e) { toast(`Entrez un nombre entre 0 et ${fmtNum(scale)}.`, "bad"); note.value = s.notes[k] === null ? "" : fmtNum(s.notes[k]); return; }
+      try { v = parseGrade(note.value, scale); } catch (e) { toast(`Entrez un nombre entre 0 et ${fmtNum(scale)}, ou a (absent), n (non noté), d (dispensé).`, "bad"); note.value = noteText(s.notes[k]); return; }
       if (v !== s.notes[k]) { s.notes[k] = v; commit(); }
-      note.value = v === null ? "" : fmtNum(v);
+      note.value = noteText(v);
     });
     const refresh = () => { stats.textContent = statsText(app, s, Number(k)); };
     refresh();
@@ -89,11 +90,11 @@ export function openStudentSheet(app, cls, s) {
       input.value = v || "";
       input.addEventListener("change", () => { const nv = input.value || null; if (nv !== v) { M.setExtra(s, c.id, t, nv); commit(); } });
     } else {
-      input = h("input", { type: "text", value: v === null ? "" : c.type === "note" ? fmtNum(v) : v, inputMode: c.type === "note" ? "decimal" : "text" });
+      input = h("input", { type: "text", value: v === null ? "" : c.type === "note" ? noteText(v) : v, inputMode: c.type === "note" ? "decimal" : "text" });
       input.addEventListener("change", () => {
         let nv;
         if (c.type === "note") {
-          try { nv = parseGrade(input.value, c.echelle); } catch (e) { toast(`Entrez un nombre entre 0 et ${fmtNum(c.echelle)}.`, "bad"); input.value = v === null ? "" : fmtNum(v); return; }
+          try { nv = parseGrade(input.value, c.echelle); } catch (e) { toast(`Entrez un nombre entre 0 et ${fmtNum(c.echelle)}, ou a (absent), n (non noté), d (dispensé).`, "bad"); input.value = noteText(v); return; }
         } else nv = collapse(input.value);
         M.setExtra(s, c.id, t, nv); commit();
       });

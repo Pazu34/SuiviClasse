@@ -2,6 +2,7 @@
 import * as C from "../core/columns.js";
 import * as M from "../core/model.js";
 import { initialText } from "../core/plan.js";
+import { noteCode } from "../core/exchange.js";
 import { fmtNum } from "../core/util.js";
 
 export const COUNTER_KINDS = ["seance", "counter"];
@@ -89,10 +90,13 @@ export function chipTexts(app, cols, s, t) {
   });
 }
 
-/** '' -> null ; '14,5' -> 14.5 ; texte invalide ou hors de 0..maxi -> lève une erreur. */
+/** '' -> null ; '14,5' -> 14.5 ; 'a' / 'n' / 'd' (Abs, N.Not, Disp, comme dans PRONOTE) -> 'a' / 'n' / 'd' ;
+ *  texte invalide ou hors de 0..maxi -> lève une erreur. */
 export function parseGrade(text, maxi = 20) {
   text = String(text).trim();
   if (!text) return null;
+  const code = noteCode(text);
+  if (code) return code;
   const v = Number(text.replace(",", "."));
   if (!Number.isFinite(v) || v < 0 || v > maxi) throw new Error("hors limites");
   return v;

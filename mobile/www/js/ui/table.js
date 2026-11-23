@@ -1,6 +1,7 @@
 // Tableau d'une classe, adapté au tactile : colonnes d'identité figées à gauche, défilement dans les deux sens, boutons de 38 px,
 // saisie directe des notes, fenêtres de saisie pour les textes longs. Mêmes colonnes et mêmes calculs que sur le PC.
 import * as C from "../core/columns.js";
+import { isNumber, noteText } from "../core/exchange.js";
 import * as M from "../core/model.js";
 import { fmtNum, norm } from "../core/util.js";
 import { COUNTER_KINDS, buildColumns, counterState, directLevels, gradeMeanOf, gradeState, parseGrade } from "./columns_build.js";
@@ -205,14 +206,14 @@ function cellFor(app, cls, s, col, dups, scale) {
     }
     case "note": {
       const k = col.key.slice(4);
-      const input = h("input", { class: "cell", type: "text", inputMode: "decimal", enterKeyHint: "next", value: s.notes[k] === null || s.notes[k] === undefined ? "" : fmtNum(s.notes[k]) });
+      const input = h("input", { class: "cell", type: "text", inputMode: "decimal", enterKeyHint: "next", value: noteText(s.notes[k]) });
       const td = h("td", {}, input);
       input.addEventListener("focus", () => setTimeout(() => input.select(), 0));
       const commit = () => {
         let value;
-        try { value = parseGrade(input.value, scale); } catch (e) { toast(`Entrez un nombre entre 0 et ${fmtNum(scale)}.`, "bad"); input.value = s.notes[k] === null ? "" : fmtNum(s.notes[k]); return "invalid"; }
+        try { value = parseGrade(input.value, scale); } catch (e) { toast(`Entrez un nombre entre 0 et ${fmtNum(scale)}, ou a (absent), n (non noté), d (dispensé).`, "bad"); input.value = noteText(s.notes[k]); return "invalid"; }
         if (value !== s.notes[k]) { s.notes[k] = value; app.commit(); return true; }
-        input.value = value === null ? "" : fmtNum(value);
+        input.value = noteText(value);
         return false;
       };
       input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); enterAdvance(app, td, commit); } });  // valide et passe à l'élève suivant
@@ -237,14 +238,15 @@ function cellFor(app, cls, s, col, dups, scale) {
     }
     case "xnote": {
       const maxi = col.cfg.echelle || 10, v = M.extraValue(s, col.cfg, sk);
-      const input = h("input", { class: "cell", type: "text", inputMode: "decimal", enterKeyHint: "next", value: v === null ? "" : fmtNum(v) });
+      const input = h("input", { class: "cell", type: "text", inputMode: "decimal", enterKeyHint: "next", value: noteText(v) });
       const td = h("td", {}, input);
       let cur = v;
       input.addEventListener("focus", () => setTimeout(() => input.select(), 0));
       const commit = () => {
         let value;
-        try { value = parseGrade(input.value, maxi); } catch (e) { toast(`Entrez un nombre entre 0 et ${fmtNum(maxi)}.`, "bad"); input.value = cur === null ? "" : fmtNum(cur); return "invalid"; }
+        try { value = parseGrade(input.value, maxi); } catch (e) { toast(`Entrez un nombre entre 0 et ${fmtNum(maxi)}, ou a (absent), n (non noté), d (dispensé).`, "bad"); input.value = noteText(cur); return "invalid"; }
         if (value !== cur) { cur = value; M.setExtra(s, col.key, sk, value); app.commit(); return true; }
+        input.value = noteText(value);
         return false;
       };
       input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); enterAdvance(app, td, commit); } });
@@ -282,8 +284,8 @@ function cellFor(app, cls, s, col, dups, scale) {
 function footerValue(app, cls, col) {
   const t = String(app.t);
   const vals = col.kind === "note"
-    ? cls.eleves.map((s) => s.notes[col.key.slice(4)]).filter((v) => v !== null && v !== undefined)
-    : cls.eleves.map((s) => M.extraValue(s, col.cfg, t)).filter((v) => v !== null && v !== undefined);
+    ? cls.eleves.map((s) => s.notes[col.key.slice(4)]).filter(isNumber)   // Abs, Disp et N.Not ne comptent pas dans la moyenne
+    : cls.eleves.map((s) => M.extraValue(s, col.cfg, t)).filter(isNumber);
   return vals.length ? fmtNum(vals.reduce((a, b) => a + b, 0) / vals.length) : "";
 }
 

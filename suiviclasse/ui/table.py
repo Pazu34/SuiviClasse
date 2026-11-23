@@ -125,10 +125,14 @@ def direct_levels(levels):
 
 
 def parse_grade(text, maxi=20):
-    """'' -> None ; '14,5' -> 14.5 ; texte invalide ou hors de 0..maxi -> ValueError."""
+    """'' -> None ; '14,5' -> 14.5 ; 'a' / 'n' / 'd' (Abs, N.Not, Disp, comme dans PRONOTE) -> 'a' / 'n' / 'd' ;
+    texte invalide ou hors de 0..maxi -> ValueError."""
     text = text.strip()
     if not text:
         return None
+    code = exchange.note_code(text)
+    if code:
+        return code
     v = float(text.replace(",", "."))
     if not 0 <= v <= maxi:
         raise ValueError
@@ -619,9 +623,9 @@ class ClassTable(ttk.Frame):
             if lab is None:
                 continue
             if col.kind == "note":
-                vals = [s["notes"][col.key[4:]] for s in self.cls["eleves"] if s["notes"][col.key[4:]] is not None]
-            else:
-                vals = [v for v in (model.extra_value(s, col.cfg, t) for s in self.cls["eleves"]) if v is not None]
+                vals = [s["notes"][col.key[4:]] for s in self.cls["eleves"] if exchange.is_number(s["notes"][col.key[4:]])]
+            else:  # Abs, Disp et N.Not ne comptent pas dans la moyenne
+                vals = [v for v in (model.extra_value(s, col.cfg, t) for s in self.cls["eleves"]) if exchange.is_number(v)]
             lab.configure(text=exchange.fmt_num(sum(vals) / len(vals)) if vals else "")
 
     def refresh_student(self, student):
@@ -715,7 +719,7 @@ class Row:
     def _build_note(self, col, parent, i):
         k = col.key[4:]
         v = self.s["notes"][k]
-        var = tk.StringVar(value="" if v is None else exchange.fmt_num(v))
+        var = tk.StringVar(value=exchange.note_text(v))
         self._entry(parent, var, lambda k=k: self.commit_note(k), col.key)
         self.note_vars[k] = var
 
@@ -769,7 +773,7 @@ class Row:
 
     def _build_xnote(self, col, parent, i):
         v = model.extra_value(self.s, col.cfg, self.app.t)
-        var = tk.StringVar(value="" if v is None else exchange.fmt_num(v))
+        var = tk.StringVar(value=exchange.note_text(v))
         self._entry(parent, var, lambda col=col: self.commit_xnote(col), col.key)
         self.xvars[col.key] = var
 
@@ -1049,15 +1053,16 @@ class Row:
         try:
             value = parse_grade(var.get(), sc)
         except ValueError:
-            messagebox.showwarning("Note invalide", f"Entrez un nombre entre 0 et {exchange.fmt_num(sc)}.", parent=self.app.root)
-            var.set("" if old is None else exchange.fmt_num(old))
+            messagebox.showwarning("Note invalide", f"Entrez un nombre entre 0 et {exchange.fmt_num(sc)}, ou a (absent), n (non noté), d (dispensé).",
+                                   parent=self.app.root)
+            var.set(exchange.note_text(old))
             return False
         if value != old:
             self.s["notes"][k] = value
             self.app.commit()
             self.table.refresh_footer()
             self._refresh_window()
-        var.set("" if value is None else exchange.fmt_num(value))
+        var.set(exchange.note_text(value))
 
     def commit_xnote(self, col):
         var, old = self.xvars[col.key], model.extra_value(self.s, col.cfg, self.app.t)
@@ -1065,14 +1070,15 @@ class Row:
         try:
             value = parse_grade(var.get(), maxi)
         except ValueError:
-            messagebox.showwarning("Note invalide", f"Entrez un nombre entre 0 et {exchange.fmt_num(maxi)}.", parent=self.app.root)
-            var.set("" if old is None else exchange.fmt_num(old))
+            messagebox.showwarning("Note invalide", f"Entrez un nombre entre 0 et {exchange.fmt_num(maxi)}, ou a (absent), n (non noté), d (dispensé).",
+                                   parent=self.app.root)
+            var.set(exchange.note_text(old))
             return False
         if value != old:
             model.set_extra(self.s, col.key, self.app.t, value)
             self.app.commit()
             self.table.refresh_footer()
-        var.set("" if value is None else exchange.fmt_num(value))
+        var.set(exchange.note_text(value))
 
     def commit_comment(self):
         text, t = " ".join(self.comm.get("1.0", "end-1c").split()), str(self.app.t)

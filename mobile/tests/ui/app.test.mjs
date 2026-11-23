@@ -537,3 +537,34 @@ test("saisie : Entrée valide la note ou le commentaire et passe à la ligne du 
   noErrors(page);
   await page.context().close();
 });
+
+test("notes particulières : a, n, d = Abs, N.Not, Disp, sans effet sur les moyennes", async () => {
+  const page = await env.page();
+  await createVault(page);
+  const noteInput = (nom) => row(page, nom).locator("td").nth(4).locator("input");  // colonne T1
+  const stored = (nom) => page.evaluate((n) => app.state.classes[0].eleves.find((s) => s.nom === n).notes["1"], nom);
+  const foot = () => page.locator("table.grid tfoot td").nth(4).textContent();
+  const before = (await foot()).trim();
+  assert.equal(before, "13,71");
+  // « a » -> Abs ; la moyenne de la classe ne compte plus que les autres notes (14,5 + 11 + 9,5 + 17 + 12 + 13 = 77 / 6)
+  await noteInput("LAMBERT").click(); await noteInput("LAMBERT").fill("a"); await page.keyboard.press("Enter");
+  assert.equal(await stored("LAMBERT"), "a");
+  assert.equal(await noteInput("LAMBERT").inputValue(), "Abs");
+  assert.equal((await foot()).trim(), "12,83");
+  // « d » et « n » (majuscules et mots complets acceptés)
+  await noteInput("DUBOIS").fill("D"); await page.keyboard.press("Enter");
+  await noteInput("GARCIA").fill("non noté"); await page.keyboard.press("Enter");
+  assert.deepEqual([await stored("DUBOIS"), await stored("GARCIA")], ["d", "n"]);
+  assert.deepEqual([await noteInput("DUBOIS").inputValue(), await noteInput("GARCIA").inputValue()], ["Disp", "N.Not"]);
+  assert.equal((await foot()).trim(), "11,75");  // (14,5 + 11 + 9,5 + 12) / 4
+  // retour à un nombre, puis effacement
+  await noteInput("LAMBERT").fill("16"); await page.keyboard.press("Enter");
+  assert.equal(await stored("LAMBERT"), 16);
+  await noteInput("LAMBERT").fill(""); await page.keyboard.press("Enter");
+  assert.equal(await stored("LAMBERT"), null);
+  // une valeur quelconque reste refusée
+  await noteInput("HENRY").fill("zz"); await page.keyboard.press("Enter");
+  assert.equal(await page.locator(".toast.bad").count() > 0, true);
+  noErrors(page);
+  await page.context().close();
+});

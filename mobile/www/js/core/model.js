@@ -181,7 +181,7 @@ export function setExtra(student, colId, t, value) {
 export function rescaleNotes(data, old, neu) {
   let n = 0;
   for (const cls of data.classes) for (const s of cls.eleves) for (const [k, v] of Object.entries(s.notes)) {
-    if (v !== null && v !== undefined) { s.notes[k] = round2(v * neu / old); n++; }
+    if (typeof v === "number") { s.notes[k] = round2(v * neu / old); n++; }  // Abs, Disp et N.Not n'ont pas de valeur à convertir
   }
   return n;
 }
@@ -203,6 +203,7 @@ export function coerceExtra(value, typ) {
   if (typ === "note") {
     if (typeof value === "boolean") return null;
     if (typeof value === "number") return value;
+    if (typeof value === "string" && ["a", "n", "d"].includes(value.trim().toLowerCase())) return value.trim().toLowerCase();  // Abs, N.Not, Disp
     const f = Number(String(value).trim().replace(",", "."));
     return String(value).trim() !== "" && Number.isFinite(f) ? f : null;
   }

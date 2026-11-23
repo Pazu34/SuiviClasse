@@ -114,10 +114,35 @@ def split_full_name(s):
     return " ".join(w[:i]), " ".join(w[i:])
 
 
+# Notes particulières (comme dans PRONOTE : A = Absent « Abs », D = Dispensé « Disp », N = Non noté « N.Not ») : enregistrées sous la forme
+# « a », « d » ou « n » à la place d'un nombre ; elles ne comptent dans aucune moyenne.
+NOTE_CODES = {"a": "Abs", "n": "N.Not", "d": "Disp"}
+_CODE_OF = {"a": "a", "abs": "a", "absent": "a", "absente": "a",
+            "n": "n", "nnot": "n", "nn": "n", "nonnote": "n", "nonnotee": "n",
+            "d": "d", "disp": "d", "dispense": "d", "dispensee": "d"}
+
+
+def note_code(text):
+    """'a' / 'Abs' / 'absent', 'n' / 'N.Not' / 'non noté', 'd' / 'Disp' / 'dispensé' (casse, accents, points ignorés) -> 'a', 'n' ou 'd' ; sinon None."""
+    return _CODE_OF.get(re.sub(r"[\s.\-_]", "", norm(str(text))))
+
+
+def is_number(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def note_text(v):
+    """Texte affiché d'une note : '' si absente, « Abs » / « N.Not » / « Disp » pour une note particulière, sinon le nombre."""
+    if v is None:
+        return ""
+    return NOTE_CODES.get(v, "") if isinstance(v, str) else fmt_num(v)
+
+
 def parse_note(raw):
     """Note d'un tableur PRONOTE : virgule décimale, « /20 » toléré, annotations PRONOTE
     (A, D, N, I, R, Abs, Disp, N.Not, Inap, N.Rdu = non comptées ; Z, W, Abs*, N.Rdu* = comptées 0).
-    Retourne (valeur, genre) avec genre dans empty / note / zero / annotation / invalid."""
+    Retourne (valeur, genre) avec genre dans empty / note / zero / annotation / invalid. Une annotation ne modifie jamais une note existante
+    à l'import (la saisie de « a », « n » et « d » se fait dans le tableau)."""
     s = str(raw if raw is not None else "").strip()
     if s == "":
         return None, "empty"
@@ -242,7 +267,7 @@ def build_export(cls, fields, t, header, delim, max_len, stats, prefix="T", word
         note = s["notes"][str(t)]
         comm = s["comms"][str(t)]
         v = {"numero": s.get("numero") or "", "nom": s["nom"], "prenom": s["prenom"], "classe": cls["nom"], "infos": s["infos"],
-             "note": "" if note is None else fmt_num(note), "comm": comm,
+             "note": note_text(note), "comm": comm,
              "seancePlus": fmt_num(plus), "seanceMoins": fmt_num(moins), "travail": travail, "oubli": oubli}
         for key, fn in getters.items():
             v[key] = fn(s, int(t))

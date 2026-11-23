@@ -15,7 +15,7 @@ function extraExports(app) {
   for (const c of C.customs(settings).filter((x) => x.visible && x.type !== "niveaux")) {
     let fn;
     if (c.type === "compteur") fn = (s, t) => X.fmtNum(M.total(s, c.id, t));
-    else if (c.type === "note") fn = (s, t) => { const v = M.extraValue(s, c, t); return v === null ? "" : X.fmtNum(v); };
+    else if (c.type === "note") fn = (s, t) => X.noteText(M.extraValue(s, c, t));
     else if (c.type === "coche") fn = (s, t) => (M.extraValue(s, c, t) ? "oui" : "");
     else fn = (s, t) => M.extraValue(s, c, t) || "";
     out.push([c.id, c.titre, fn]);

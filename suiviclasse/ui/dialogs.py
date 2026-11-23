@@ -199,13 +199,13 @@ class StudentWindow(Dialog):
         s, t = self.s, self.app.t
         for k in self.per["keys"]:
             v = s["notes"][k]
-            self.notes[k].set("" if v is None else exchange.fmt_num(v))
+            self.notes[k].set(exchange.note_text(v))
             self.stats[k].configure(text=self.stats_text(int(k)))
             self.update_counter(k)
         for c in self.extra_cols:
             value = model.extra_value(s, c, t)
             var = self.extra_vars[c["id"]]
-            var.set(bool(value) if c["type"] == "coche" else "" if value is None else exchange.fmt_num(value) if c["type"] == "note" else value)
+            var.set(bool(value) if c["type"] == "coche" else "" if value is None else exchange.note_text(value) if c["type"] == "note" else value)
         self.journal.delete(*self.journal.get_children())
         levels_of = {g["event"]: g["niveaux"] for g in columns.grade_columns(self.app.state["settings"], visible_only=False)}
         for e in reversed(s["events"]):
@@ -260,7 +260,8 @@ class StudentWindow(Dialog):
             try:
                 value = parse_grade(var.get(), c["echelle"])
             except ValueError:
-                messagebox.showwarning("Note invalide", f"Entrez un nombre entre 0 et {exchange.fmt_num(c['echelle'])}.", parent=self)
+                messagebox.showwarning("Note invalide", f"Entrez un nombre entre 0 et {exchange.fmt_num(c['echelle'])}, ou a (absent), n (non noté), d (dispensé).",
+                                       parent=self)
                 self.refresh()
                 return
         else:
@@ -303,14 +304,14 @@ class StudentWindow(Dialog):
         try:
             value = parse_grade(self.notes[k].get(), sc)
         except ValueError:
-            messagebox.showwarning("Note invalide", f"Entrez un nombre entre 0 et {exchange.fmt_num(sc)}.", parent=self)
+            messagebox.showwarning("Note invalide", f"Entrez un nombre entre 0 et {exchange.fmt_num(sc)}, ou a (absent), n (non noté), d (dispensé).", parent=self)
             self.refresh()
             return
         if value != self.s["notes"][k]:
             self.s["notes"][k] = value
             self.changed()
             self.app.rebuild_view()
-        self.notes[k].set("" if value is None else exchange.fmt_num(value))
+        self.notes[k].set(exchange.note_text(value))
 
     def commit_comment(self, k):
         text = self.comms[k].get("1.0", "end-1c")
@@ -559,7 +560,7 @@ class ExportDialog(Dialog):
             if c["type"] == "compteur":
                 fn = lambda s, t, c=c: exchange.fmt_num(model.total(s, c["id"], t))
             elif c["type"] == "note":
-                fn = lambda s, t, c=c: "" if model.extra_value(s, c, t) is None else exchange.fmt_num(model.extra_value(s, c, t))
+                fn = lambda s, t, c=c: exchange.note_text(model.extra_value(s, c, t))
             elif c["type"] == "coche":
                 fn = lambda s, t, c=c: "oui" if model.extra_value(s, c, t) else ""
             else:  # texte et menu déroulant

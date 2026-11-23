@@ -249,3 +249,30 @@ print(json.dumps(res))`, cls);
   }
   same(X.buildExport(cls, ["nom"], 1, true, "\t", 0, M.stats), out[n]);
 });
+
+// ---------------------------------------------------------------- notes particulières : Abs, N.Not, Disp (touches A, N, D comme dans PRONOTE)
+test("notes particulières : reconnaissance, texte affiché et barème identiques au Python", () => {
+  const inputs = ["a", "A", "Abs", "absent", "n", "N.Not", "non noté", "NN", "d", "Disp", "Dispensé", " disp. ", "", "14", "x", "z", "i", "abs*"];
+  const out = py(`
+import json, sys
+from suiviclasse import exchange as X
+print(json.dumps([X.note_code(t) for t in json.load(sys.stdin)]))`, inputs);
+  inputs.forEach((t, i) => assert.equal(X.noteCode(t), out[i], JSON.stringify(t)));
+  const values = [null, "a", "n", "d", 14.5, 12];
+  const texts = py(`
+import json, sys
+from suiviclasse import exchange as X
+print(json.dumps([X.note_text(v) for v in json.load(sys.stdin)]))`, values);
+  values.forEach((v, i) => assert.equal(X.noteText(v), texts[i], JSON.stringify(v)));
+  const data = { classes: [{ eleves: [{ notes: { 1: 10, 2: "a", 3: null }, extra: { c: { 1: "d", 2: 8 } } }] }] };
+  const jsData = JSON.parse(JSON.stringify(data)), pyData = py(`
+import json, sys
+from suiviclasse import model
+data = json.load(sys.stdin)
+model.rescale_notes(data, 20, 10); model.rescale_extra(data, "c", 20, 10)
+print(json.dumps(data))`, data);
+  M.rescaleNotes(jsData, 20, 10); M.rescaleExtra(jsData, "c", 20, 10);
+  same(jsData, pyData);
+  assert.equal(M.coerceExtra("d", "note"), "d");
+  assert.equal(M.coerceExtra("12,5", "note"), 12.5);
+});

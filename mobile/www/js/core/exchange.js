@@ -70,6 +70,25 @@ export function splitFullName(s) {
   return [w.slice(0, i).join(" "), w.slice(i).join(" ")];
 }
 
+// Notes particulières (comme dans PRONOTE : A = Absent « Abs », D = Dispensé « Disp », N = Non noté « N.Not ») : enregistrées sous la forme
+// « a », « d » ou « n » à la place d'un nombre ; elles ne comptent dans aucune moyenne.
+export const NOTE_CODES = { a: "Abs", n: "N.Not", d: "Disp" };
+const CODE_OF = { a: "a", abs: "a", absent: "a", absente: "a", n: "n", nnot: "n", nn: "n", nonnote: "n", nonnotee: "n", d: "d", disp: "d", dispense: "d", dispensee: "d" };
+
+/** 'a' / 'Abs' / 'absent', 'n' / 'N.Not' / 'non noté', 'd' / 'Disp' / 'dispensé' (casse, accents, points ignorés) -> 'a', 'n' ou 'd' ; sinon null. */
+export function noteCode(text) {
+  const k = norm(String(text)).replace(/[\s.\-_]/g, "");
+  return Object.prototype.hasOwnProperty.call(CODE_OF, k) ? CODE_OF[k] : null;
+}
+
+export const isNumber = (v) => typeof v === "number" && Number.isFinite(v);
+
+/** Texte affiché d'une note : '' si absente, « Abs » / « N.Not » / « Disp » pour une note particulière, sinon le nombre. */
+export function noteText(v) {
+  if (v === null || v === undefined) return "";
+  return typeof v === "string" ? (NOTE_CODES[v] || "") : fmtNum(v);
+}
+
 /** Note d'un tableur PRONOTE : virgule décimale, « /20 » toléré, annotations PRONOTE. Retourne [valeur, genre]. */
 export function parseNote(raw) {
   const s = String(raw === null || raw === undefined ? "" : raw).trim();
@@ -152,7 +171,7 @@ export function buildExport(cls, fields, t, header, delim, maxLen, stats, prefix
   for (const s of cls.eleves) {
     const [plus, moins, travail, oubli] = stats(s, Number(t));
     const note = s.notes[String(t)], comm = s.comms[String(t)];
-    const v = { numero: s.numero || "", nom: s.nom, prenom: s.prenom, classe: cls.nom, infos: s.infos, note: note === null || note === undefined ? "" : fmtNum(note),
+    const v = { numero: s.numero || "", nom: s.nom, prenom: s.prenom, classe: cls.nom, infos: s.infos, note: noteText(note),
       comm, seancePlus: fmtNum(plus), seanceMoins: fmtNum(moins), travail, oubli };
     for (const [k, fn] of Object.entries(getters)) v[k] = fn(s, Number(t));
     if (maxLen && fields.includes("comm") && Array.from(comm).length > maxLen) tooLong.push(`${s.nom} ${s.prenom} (${Array.from(comm).length})`);

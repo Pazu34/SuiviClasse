@@ -14,7 +14,7 @@ ou semestres 1 et 2 (préférence « Découpage de l'année » ; la 3e période 
 import secrets
 from datetime import datetime, timezone
 
-from .exchange import fmt_num, norm
+from .exchange import fmt_num, is_number, norm, note_code
 
 def periods(mode):
     """Découpage de l'année choisi dans les préférences : trimestres (T1 à T3) ou semestres (S1 et S2)."""
@@ -215,7 +215,7 @@ def rescale_notes(data, old, new):
     for cls in data["classes"]:
         for s in cls["eleves"]:
             for k, v in s["notes"].items():
-                if v is not None:
+                if is_number(v):  # Abs, Disp et N.Not n'ont pas de valeur à convertir
                     s["notes"][k] = round(v * new / old, 2)
                     n += 1
     return n
@@ -246,6 +246,8 @@ def coerce_extra(value, typ):
             return None
         if isinstance(value, (int, float)):
             return value
+        if isinstance(value, str) and value.strip().lower() in ("a", "n", "d"):  # Abs, N.Not, Disp
+            return value.strip().lower()
         try:
             return float(str(value).strip().replace(",", "."))
         except ValueError:

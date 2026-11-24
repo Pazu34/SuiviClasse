@@ -1,5 +1,6 @@
 """Fenêtre principale : connexion, barre du haut, enregistrement automatique, archives, verrouillage."""
 import copy
+import json
 import os
 import subprocess
 import sys
@@ -434,11 +435,29 @@ class App:
         return btn
 
     def _snap(self):
-        """Copie des données (sans l'état de l'affichage : classe et trimestre choisis)."""
-        return copy.deepcopy({k: v for k, v in self.state.items() if k != "ui"})
+        """Instantané compact des données (sans l'état de l'affichage : classe et trimestre choisis) : un texte JSON par élément (chaque classe,
+        les salles, les réglages…). Beaucoup plus rapide qu'une copie profonde, et les éléments inchangés réutilisent le texte de l'instantané
+        précédent : l'historique ne garde en mémoire que ce qui change d'une modification à l'autre."""
+        dump = lambda v: json.dumps(v, ensure_ascii=False, separators=(",", ":"))
+        parts = tuple((k, dump(v)) for k, v in self.state.items() if k not in ("ui", "classes"))
+        classes = tuple(dump(c) for c in self.state.get("classes", []))
+        last = self._last
+        if last is not None:
+            parts = tuple(o if o == p else p for p, o in zip(parts, last[0])) + parts[len(last[0]):]
+            classes = tuple(o if o == c else c for c, o in zip(classes, last[1])) + classes[len(last[1]):]
+        return parts, classes
+
+    @staticmethod
+    def _restore(snap):
+        """Données reconstituées à partir d'un instantané."""
+        parts, classes = snap
+        data = {k: json.loads(s) for k, s in parts}
+        data["classes"] = [json.loads(s) for s in classes]
+        return data
 
     def reset_history(self):
-        self.undo, self.redo, self._last = [], [], self._snap() if self.state else None
+        self.undo, self.redo, self._last = [], [], None
+        self._last = self._snap() if self.state else None
         self.update_history_buttons()
 
     def _push_history(self):
@@ -480,8 +499,8 @@ class App:
         target.append(self._snap())
         snap = source.pop()
         y = self.table.body.yview()[0] if self.table else 0  # défilement du tableau, retrouvé après la restauration
-        self.state.update(copy.deepcopy(snap))
-        self._last = copy.deepcopy(snap)
+        self.state.update(self._restore(snap))
+        self._last = snap
         if self.current_class is None:
             self.state["ui"]["classe"] = self.state["classes"][0]["id"] if self.state["classes"] else None
         self.close_student_window()

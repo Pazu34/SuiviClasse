@@ -73,13 +73,25 @@ def build_columns(app):
     return [col for key in columns.order(settings, [c["id"] for c in customs]) for col in defs.get(key, [])]
 
 
-def wrapped_lines(text, font, width):
-    """Nombre de lignes qu'occupe `text` dans `width` pixels (retour à la ligne entre les mots, comme Tk)."""
-    space, total = font.measure(" "), 0
+def wrapped_lines(text, font, width, cache=None):
+    """Nombre de lignes qu'occupe `text` dans `width` pixels (retour à la ligne entre les mots, comme Tk).
+    `cache` (dictionnaire facultatif) mémorise la largeur des mots déjà mesurés : chaque mesure est un appel à Tk, et les mêmes mots reviennent sans cesse."""
+    if cache is None:
+        cache = {}
+
+    def measure(word):
+        w = cache.get(word)
+        if w is None:
+            w = cache[word] = font.measure(word)
+        return w
+
+    if "\n" not in text and measure(text) <= width:  # le cas le plus courant : tout tient sur une ligne
+        return 1
+    space, total = measure(" "), 0
     for paragraph in text.split("\n"):
         lines, used = 1, 0
         for word in paragraph.split(" "):
-            w = font.measure(word)
+            w = measure(word)
             if used == 0:
                 used = w
             elif used + space + w <= width:
@@ -201,6 +213,7 @@ class ClassTable(ttk.Frame):
         self.titres = app.values["titresColonnes"]  # « texte », « icones » ou « inclines »
         self.icon_only = set(columns.icon_only_keys(app.state["settings"]))  # colonnes dont le titre est remplacé par leur pictogramme
         self._init_fonts()
+        self.word_widths = {}  # largeur des mots déjà mesurés (police du tableau)
         self.defaults = [self.default_width(c) for c in self.cols]
         saved = app.prefs.widths(self.mode)  # largeurs réglées à la souris, par clé de colonne
         self.widths = [saved.get(c.key, d) for c, d in zip(self.cols, self.defaults)]
@@ -981,6 +994,8 @@ class Row:
     def _paint_mots(self):
         for w in self.mots.winfo_children():
             w.destroy()
+        if not appreciation.keywords(self.s, self.app.t):
+            return
         by_id = {m["id"]: m for m in appreciation.bank(self.app.state["settings"])["mots"]}
         tone = {"+": "ok", "-": "warn", "=": "surface2"}
         for k, n in appreciation.keywords(self.s, self.app.t):
@@ -1027,13 +1042,26 @@ class Row:
         box = tk.Text(parent, font=self.font, wrap="word", height=1, padx=3, pady=2)
         box.pack(fill="both", expand=True, padx=2, pady=2)
         box.insert("1.0", text)
-        box.bind("<KeyRelease>", lambda e: (self.color_text(col, box), self.fit()))
+        box.bind("<KeyRelease>", lambda e: self._text_changed(col, box))
         box.bind("<FocusOut>", lambda e: commit())
         box.bind("<Return>", lambda e: self.enter(col.key, commit))  # une saisie tient sur un paragraphe : Entrée valide et descend
         self.fields[col.key] = box
         box.bind("<Tab>", lambda e: (e.widget.tk_focusNext().focus_set(), "break")[1])
         self.texts.append((col, box))
         return box
+
+    def _text_changed(self, col, box):
+        """Texte tapé ou collé : il s'affiche tout de suite ; la couleur et la hauteur de la ligne sont recalculées juste après, une seule fois
+        même pour une rafale de frappes (la mise en page du tableau est la partie coûteuse)."""
+        if getattr(box, "_fit_job", None):
+            box.after_cancel(box._fit_job)
+
+        def later():
+            box._fit_job = None
+            if box.winfo_exists():
+                self.color_text(col, box)
+                self.fit()
+        box._fit_job = box.after(40, later)
 
     def _build_comment(self, col, parent, i):
         self.comm = self._text_box(col, parent, self.s["comms"][str(self.app.t)], self.commit_comment)
@@ -1092,7 +1120,7 @@ class Row:
                 need = max(need, widget.winfo_reqheight() + 6)
         for col, box in self.texts:
             width = tb.widths[tb.index[col.key]]
-            need = max(need, wrapped_lines(box.get("1.0", "end-1c"), tb.measure, max(10, width - 18)) * tb.linespace + 12)
+            need = max(need, wrapped_lines(box.get("1.0", "end-1c"), tb.measure, max(10, width - 18), tb.word_widths) * tb.linespace + 12)
         if need != self.height:
             self.height = need
             for c in self.cells:

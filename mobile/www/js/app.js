@@ -152,17 +152,37 @@ export class App {
     return this.saving;
   }
 
+  /** Instantané compact des données (sans l'état de l'affichage) : un texte JSON par élément (chaque classe, les salles, les réglages…).
+   *  Bien plus léger qu'une copie profonde ; les éléments inchangés réutilisent le texte de l'instantané précédent (l'historique ne garde que
+   *  ce qui change d'une modification à l'autre). */
   _snap() {
-    const { ui, ...rest } = this.state;
-    return clone(rest);
+    const last = this._last;
+    const parts = Object.entries(this.state).filter(([k]) => k !== "ui" && k !== "classes").map(([k, v], i) => {
+      const s = JSON.stringify(v), old = last && last.parts[i];
+      return old && old[0] === k && old[1] === s ? old : [k, s];
+    });
+    const classes = (this.state.classes || []).map((c, i) => { const s = JSON.stringify(c); return last && last.classes[i] === s ? last.classes[i] : s; });
+    return { parts, classes };
   }
 
-  resetHistory() { this.undo = []; this.redo = []; this._last = this.state ? this._snap() : null; }
+  static _same(a, b) {
+    return a.parts.length === b.parts.length && a.classes.length === b.classes.length
+      && a.parts.every((p, i) => p[0] === b.parts[i][0] && p[1] === b.parts[i][1]) && a.classes.every((c, i) => c === b.classes[i]);
+  }
+
+  /** Données reconstituées à partir d'un instantané. */
+  static _restore(snap) {
+    const data = Object.fromEntries(snap.parts.map(([k, s]) => [k, JSON.parse(s)]));
+    data.classes = snap.classes.map((s) => JSON.parse(s));
+    return data;
+  }
+
+  resetHistory() { this.undo = []; this.redo = []; this._last = null; this._last = this.state ? this._snap() : null; }
 
   _pushHistory() {
     if (this._last === null || !this.state) return;
     const snap = this._snap();
-    if (JSON.stringify(snap) !== JSON.stringify(this._last)) {
+    if (!App._same(snap, this._last)) {
       this.undo.push(this._last);
       if (this.undo.length > UNDO_MAX) this.undo.splice(0, this.undo.length - UNDO_MAX);
       this.redo.length = 0;
@@ -179,8 +199,8 @@ export class App {
     if (!source.length) return false;
     target.push(this._snap());
     const snap = source.pop();
-    Object.assign(this.state, clone(snap));  // « ui » (classe, période affichées) n'est pas dans l'historique
-    this._last = clone(snap);
+    Object.assign(this.state, App._restore(snap));  // « ui » (classe, période affichées) n'est pas dans l'historique
+    this._last = snap;
     if (!this.currentClass) this.state.ui.classe = this.state.classes.length ? this.state.classes[0].id : null;
     this.dirty = true;
     this.flush();

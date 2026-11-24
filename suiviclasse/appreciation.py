@@ -20,9 +20,18 @@ BAND_TITLES = ["Moins de 8", "De 8 à 10", "De 10 à 12", "De 12 à 14", "De 14 
 EVOLUTION_DELTA = 1.5  # écart (sur 20) à partir duquel on parle de progrès ou de baisse
 KEYWORD_PREFIX = "mot:"
 TONES = ("+", "-", "=")  # mot-clé positif, négatif ou neutre (couleur de la pastille)
+# Conditions qui font apparaître un mot-clé tout seul (d'après les compteurs et les notes de l'élève, avec les seuils des préférences)
+AUTO_CHOICES = [
+    ("oubli_orange", "Oublis de matériel : seuil orange atteint"), ("oubli_rouge", "Oublis de matériel : seuil rouge atteint"),
+    ("travail_orange", "Travail non fait : seuil orange atteint"), ("travail_rouge", "Travail non fait : seuil rouge atteint"),
+    ("seance_plus", "Séance + : seuil vert atteint (implication)"), ("seance_moins", "Séance − : seuil rouge atteint"),
+    ("qualSeance_bon", "Travail en séance : bon niveau"), ("qualSeance_faible", "Travail en séance : niveau faible"),
+    ("qualMaison_bon", "Travail à la maison : bon niveau"), ("qualMaison_faible", "Travail à la maison : niveau faible"),
+]
+AUTO_IDS = [k for k, _ in AUTO_CHOICES]
 
 _KEYWORDS = [
-    ("materiel", "Matériel", "🎒", "-", [
+    ("materiel", "Matériel", "🎒", "-", "oubli_orange", [
         "{prénom} oublie trop souvent son matériel, ce qui gêne le travail en classe.",
         "Le matériel n'est pas toujours apporté : {il} doit être plus {rigoureux|rigoureuse}.",
         "Les oublis de matériel sont trop fréquents."]),
@@ -34,7 +43,7 @@ _KEYWORDS = [
         "Des efforts sont à souligner.",
         "{prénom} fournit des efforts appréciables, qu'il faut poursuivre.",
         "Les efforts sont réels mais doivent s'inscrire dans la durée."]),
-    ("participation", "Participation", "🙋", "+", [
+    ("participation", "Participation", "🙋", "+", "seance_plus", [
         "{Il} participe volontiers et de façon pertinente.",
         "Bonne participation orale.",
         "{prénom} s'implique activement dans le cours."]),
@@ -46,7 +55,7 @@ _KEYWORDS = [
         "Les retards sont trop fréquents.",
         "{Il} doit faire preuve de plus de ponctualité.",
         "Des retards répétés pénalisent {prénom}."]),
-    ("serieux", "Sérieux", "📚", "+", [
+    ("serieux", "Sérieux", "📚", "+", "qualMaison_bon", [
         "{Il} est {sérieux|sérieuse} et {investi|investie}.",
         "Élève {sérieux|sérieuse} et {appliqué|appliquée}.",
         "Le sérieux de {prénom} est apprécié."]),
@@ -54,15 +63,15 @@ _KEYWORDS = [
         "Des progrès encourageants sont à noter.",
         "{prénom} progresse nettement, c'est à souligner.",
         "Les progrès sont réels : il faut continuer."]),
-    ("difficultes", "Difficultés", "🧩", "-", [
+    ("difficultes", "Difficultés", "🧩", "-", "qualSeance_faible", [
         "{prénom} rencontre des difficultés : il faut revoir régulièrement les leçons.",
         "Des lacunes persistent ; un travail de révision est nécessaire.",
         "{Il} ne doit pas hésiter à poser des questions."]),
-    ("travail", "Travail à la maison", "🏠", "-", [
+    ("travail", "Travail à la maison", "🏠", "-", "travail_orange", [
         "Le travail à la maison n'est pas fait régulièrement.",
         "Les leçons sont insuffisamment apprises.",
         "{prénom} doit s'investir davantage dans le travail personnel."]),
-    ("attention", "Attention", "🎯", "-", [
+    ("attention", "Attention", "🎯", "-", "seance_moins", [
         "{Il} manque d'attention en classe.",
         "L'attention de {prénom} est irrégulière.",
         "{Il} doit rester {concentré|concentrée} tout au long de l'heure."]),
@@ -106,13 +115,35 @@ _CONCLUSIONS = [
 ]
 
 
+# Aide à la saisie : mots et expressions proposés pendant la frappe, abréviations remplacées automatiquement.
+_VOCAB = ("très bien|assez bien|bon travail|très bon travail|travail sérieux|travail régulier|travail insuffisant|travail soigné|résultats satisfaisants|"
+          "résultats insuffisants|résultats fragiles|résultats en progrès|résultats en baisse|ensemble satisfaisant|ensemble fragile|"
+          "bonne participation|participation orale|participation active|bavardages|bavardeur|bavardeuse|efforts|progrès|progresse|progression|"
+          "difficultés|lacunes|fragilités|régularité|rigueur|rigoureux|rigoureuse|investissement|investi|investie|implication|impliqué|impliquée|"
+          "sérieux|sérieuse|appliqué|appliquée|attentif|attentive|attention|concentration|concentré|concentrée|motivé|motivée|motivation|"
+          "comportement|comportement exemplaire|attitude|attitude positive|ponctualité|retards|absences|matériel|oublis de matériel|"
+          "leçons|apprendre ses leçons|travail personnel|travail à la maison|révisions|réviser|persévérer|persévérance|ténacité|autonomie|"
+          "autonome|curieux|curieuse|curiosité|dynamique|volontaire|discret|discrète|passif|passive|dispersé|dispersée|fatigué|fatiguée|"
+          "encouragements|félicitations|bravo|à poursuivre|à encourager|à surveiller|peut mieux faire|doit se ressaisir|doit progresser|"
+          "doit s'investir|un sursaut est nécessaire|continuer ainsi|poursuivre les efforts|trimestre|semestre|élève|classe|cours").split("|")
+_ABBR = [("tb", "très bien"), ("ab", "assez bien"), ("bt", "bon travail"), ("tbt", "très bon travail"), ("rs", "résultats satisfaisants"),
+         ("ri", "résultats insuffisants"), ("rf", "résultats fragiles"), ("pn", "{prénom}"), ("ens", "ensemble"), ("pb", "problème"),
+         ("pte", "participation"), ("cpt", "comportement"), ("eff", "efforts"), ("prog", "progrès"), ("fel", "félicitations"),
+         ("enc", "encouragements"), ("att", "attention"), ("conc", "concentration"), ("trv", "travail"), ("tjrs", "toujours"),
+         ("bcp", "beaucoup"), ("qd", "quand"), ("pdt", "pendant"), ("tjs", "toujours"), ("mat", "matériel")]
+MAX_ABBR_LEN, MAX_ABBR_TEXT, MAX_VOCAB_LEN = 12, 120, 60
+MIN_PREFIX = 2  # nombre minimal de lettres tapées avant de proposer un mot
+
+
 def default_bank():
     """Banque de phrases par défaut (copie neuve à chaque appel)."""
     return {
-        "mots": [{"id": i, "titre": t, "emoji": e, "ton": ton, "phrases": list(p)} for i, t, e, ton, p in _KEYWORDS],
+        "mots": [{"id": k[0], "titre": k[1], "emoji": k[2], "ton": k[3], "auto": k[4] if len(k) == 6 else "", "phrases": list(k[-1])} for k in _KEYWORDS],
         "resultats": [{"id": f"r{n}", "titre": BAND_TITLES[n], "min": BAND_MINS[n], "phrases": list(_RESULTS[n])} for n in range(6)],
         "evolution": [{"id": i, "titre": t, "phrases": list(p)} for i, t, p in _EVOLUTION],
         "conclusions": [{"id": f"c{n}", "titre": BAND_TITLES[n], "min": BAND_MINS[n], "phrases": list(_CONCLUSIONS[n])} for n in range(6)],
+        "vocabulaire": list(_VOCAB),
+        "abreviations": [{"abr": a, "texte": t} for a, t in _ABBR],
     }
 
 
@@ -145,13 +176,32 @@ def sanitize_bank(raw):
             continue
         seen.add(ident)
         ton = m.get("ton") if m.get("ton") in TONES else "="
-        mots.append({"id": ident, "titre": titre, "emoji": _text(m.get("emoji"))[:8], "ton": ton, "phrases": _phrases(m.get("phrases"))})
+        auto = m.get("auto") if m.get("auto") in AUTO_IDS else ""
+        mots.append({"id": ident, "titre": titre, "emoji": _text(m.get("emoji"))[:8], "ton": ton, "auto": auto, "phrases": _phrases(m.get("phrases"))})
     out["mots"] = mots
     for key in ("resultats", "conclusions"):  # tranches de note : titres et seuils sont fixes, seules les phrases se modifient
         given = {x.get("id"): x for x in raw.get(key, []) if isinstance(x, dict)} if isinstance(raw.get(key), list) else {}
         out[key] = [{**b, "phrases": _phrases(given[b["id"]].get("phrases")) if b["id"] in given else b["phrases"]} for b in base[key]]
     given = {x.get("id"): x for x in raw.get("evolution", []) if isinstance(x, dict)} if isinstance(raw.get("evolution"), list) else {}
     out["evolution"] = [{**b, "phrases": _phrases(given[b["id"]].get("phrases")) if b["id"] in given else b["phrases"]} for b in base["evolution"]]
+    # aide à la saisie : mots proposés (sans doublon, casse et accents ignorés) et abréviations (clé en lettres et chiffres, unique)
+    vocab, seen_v = [], set()
+    for w in raw["vocabulaire"] if isinstance(raw.get("vocabulaire"), list) else base["vocabulaire"]:
+        w = " ".join(_text(w).split())[:MAX_VOCAB_LEN]
+        if w and norm(w) not in seen_v:
+            seen_v.add(norm(w))
+            vocab.append(w)
+    out["vocabulaire"] = vocab
+    abbr, seen_a = [], set()
+    for a in raw["abreviations"] if isinstance(raw.get("abreviations"), list) else base["abreviations"]:
+        if not isinstance(a, dict):
+            continue
+        key = re.sub(r"[\W_]+", "", _text(a.get("abr")).lower())[:MAX_ABBR_LEN]
+        texte = " ".join(_text(a.get("texte")).split())[:MAX_ABBR_TEXT]
+        if key and texte and key not in seen_a:
+            seen_a.add(key)
+            abbr.append({"abr": key, "texte": texte})
+    out["abreviations"] = abbr
     return out
 
 
@@ -194,6 +244,61 @@ def render(template, prenom="", genre="", period_word="trimestre"):
         return m.group(0)
 
     return re.sub(r"\{([^{}]*)\}", sub, template)
+
+
+# ---------------------------------------------------------------- aide à la saisie
+def completion_pool(bank_):
+    """Mots et expressions proposés pendant la frappe : le vocabulaire, puis les titres des mots-clés (sans doublon)."""
+    out, seen = [], set()
+    for w in list(bank_.get("vocabulaire", [])) + [m["titre"].lower() for m in bank_.get("mots", [])]:
+        if norm(w) not in seen:
+            seen.add(norm(w))
+            out.append(w)
+    return out
+
+
+def complete(before, pool, limit=4):
+    """Compléments proposés pour la fin du texte tapé `before` : [(nombre de caractères tapés à remplacer, texte proposé)].
+    On compare les 1 à 3 derniers mots tapés au début de chaque entrée du vocabulaire (casse, accents et apostrophes ignorés) ;
+    les plus longs correspondances passent d'abord ; une majuscule initiale tapée est conservée. Au moins MIN_PREFIX lettres."""
+    runs = [(m.start(), m.end()) for m in re.finditer(r"[^\W_]+", before)]
+    if not runs or runs[-1][1] != len(before):
+        return []
+    out, seen = [], set()
+    for k in (3, 2, 1):
+        if len(runs) < k:
+            continue
+        chain = runs[-k:]
+        if any(before[chain[i][1]:chain[i + 1][0]] not in (" ", "'", "’", "-") for i in range(k - 1)):
+            continue
+        typed = before[chain[0][0]:]
+        nt = norm(typed)
+        if len(nt.replace(" ", "")) < MIN_PREFIX:
+            continue
+        for entry in pool:
+            ne = norm(entry)
+            if ne.startswith(nt) and ne != nt and entry not in seen:
+                seen.add(entry)
+                out.append((len(typed), entry[0].upper() + entry[1:] if typed[0].isupper() else entry))
+                if len(out) >= limit:
+                    return out
+    return out
+
+
+def expand_abbreviation(before, abbrevs, prenom="", genre="", period_word="trimestre"):
+    """Si le dernier mot tapé est une abréviation (casse ignorée) : (nombre de caractères à remplacer, texte de remplacement) ; sinon None.
+    Le remplacement peut contenir les accords de render() ; une majuscule initiale est conservée."""
+    m = re.search(r"[^\W_]+$", before)
+    if not m:
+        return None
+    word = m.group(0)
+    for a in abbrevs:
+        if a["abr"] == word.lower():
+            texte = render(a["texte"], prenom, genre, period_word)
+            if texte and word[0].isupper():
+                texte = texte[0].upper() + texte[1:]
+            return len(word), texte
+    return None
 
 
 # ---------------------------------------------------------------- genre
@@ -280,7 +385,42 @@ def evolution(student, t, scale=20):
     return ("hausse" if d >= EVOLUTION_DELTA else "baisse" if d <= -EVOLUTION_DELTA else "stable"), d
 
 
-def suggestions(settings, student, t, scale=20):
+def auto_hits(settings, values, student, t):
+    """Conditions automatiques (AUTO_IDS) remplies par l'élève pour la période t. `values` : préférences (seuils d'alerte)."""
+    from . import columns, model
+    hits = set()
+    n = model.total(student, "oubli", t)
+    if n >= values["oubliOrange"]:
+        hits.add("oubli_orange")
+    if n >= values["oubliRouge"]:
+        hits.add("oubli_rouge")
+    n = model.total(student, "travail", t)
+    if n >= values["travailOrange"]:
+        hits.add("travail_orange")
+    if n >= values["travailRouge"]:
+        hits.add("travail_rouge")
+    plus, moins = model.seance(student, t)
+    if plus > 0 and plus >= values["seancePlusVert"]:
+        hits.add("seance_plus")
+    if moins < 0 and moins <= -values["seanceMoinsRouge"]:
+        hits.add("seance_moins")
+    for g in columns.grade_columns(settings, visible_only=False):
+        if g["key"] in ("qualSeance", "qualMaison"):
+            lvl = model.grade_level(model.grade_final(student, g, t), len(g["niveaux"]))
+            if lvl == "ok":
+                hits.add(g["key"] + "_bon")
+            elif lvl in ("warn", "bad"):
+                hits.add(g["key"] + "_faible")
+    return hits
+
+
+def auto_keywords(settings, values, student, t):
+    """Identifiants des mots-clés dont la condition automatique est remplie (dans l'ordre de la banque)."""
+    hits = auto_hits(settings, values, student, t)
+    return [m["id"] for m in bank(settings)["mots"] if m["auto"] and m["auto"] in hits]
+
+
+def suggestions(settings, student, t, scale=20, values=None):
     """Rubriques de phrases types proposées pour l'élève et la période t : [{"kind", "id", "titre", "emoji", "ton", "count", "phrases"}].
     Dans l'ordre : résultats (selon la note), évolution, un groupe par mot-clé noté (le plus fréquent d'abord), conclusion (selon la note)."""
     b = bank(settings)
@@ -293,13 +433,63 @@ def suggestions(settings, student, t, scale=20):
         g = next(x for x in b["evolution"] if x["id"] == ev)
         out.append({"kind": "evolution", "id": g["id"], "titre": g["titre"], "phrases": g["phrases"], "count": 0})
     by_id = {m["id"]: m for m in b["mots"]}
-    for k, count in sorted(keywords(student, t), key=lambda kc: -kc[1]):  # tri stable : à égalité, l'ordre d'apparition
+    noted = keywords(student, t)
+    for k, count in sorted(noted, key=lambda kc: -kc[1]):  # tri stable : à égalité, l'ordre d'apparition
         m = by_id.get(k)
         if m:
-            out.append({"kind": "mot", "id": m["id"], "titre": m["titre"], "emoji": m["emoji"], "ton": m["ton"], "phrases": m["phrases"], "count": count})
+            out.append({"kind": "mot", "id": m["id"], "titre": m["titre"], "emoji": m["emoji"], "ton": m["ton"], "phrases": m["phrases"], "count": count, "auto": False})
+    if values is not None:  # mots-clés détectés automatiquement et pas encore notés à la main
+        known = {k for k, _ in noted}
+        for k in auto_keywords(settings, values, student, t):
+            if k not in known:
+                m = by_id[k]
+                out.append({"kind": "mot", "id": m["id"], "titre": m["titre"], "emoji": m["emoji"], "ton": m["ton"], "phrases": m["phrases"], "count": 0, "auto": True})
     if n is not None:
         out.append({"kind": "conclusion", **{k: b["conclusions"][n][k] for k in ("id", "titre", "phrases")}, "count": 0})
     return out
+
+
+# ---------------------------------------------------------------- relecture de la classe
+REPEAT_MIN_STUDENTS = 3  # une phrase utilisée dans au moins autant d'appréciations est signalée
+REPEAT_MIN_WORDS = 4
+
+
+def sentences(text):
+    """Phrases d'un texte (coupées après . ! ? …)."""
+    return [s.strip() for s in re.split(r"(?<=[.!?…])\s+", text) if s.strip()]
+
+
+def review(cls, t, max_len=255):
+    """Relecture des appréciations de la période t : une ligne par élève, dans l'ordre de la classe, avec les alertes :
+    vide, trop longue, phrases utilisées dans au moins 3 appréciations, prénoms d'autres élèves de la classe (oubli à corriger).
+    Retourne (lignes, résumé)."""
+    key = str(t)
+    texts = {s["id"]: " ".join(str(s["comms"].get(key, "")).split()) for s in cls["eleves"]}
+    count = {}
+    for text in texts.values():
+        for sent in {norm(x) for x in sentences(text) if len(x.split()) >= REPEAT_MIN_WORDS}:
+            count[sent] = count.get(sent, 0) + 1
+    rows = []
+    for s in cls["eleves"]:
+        text = texts[s["id"]]
+        repeated = []
+        for sent in sentences(text):
+            if len(sent.split()) >= REPEAT_MIN_WORDS and count.get(norm(sent), 0) >= REPEAT_MIN_STUDENTS and sent not in repeated:
+                repeated.append(sent)
+        mine = {w for w in re.split(r"[\s\-]+", s["prenom"]) if w}
+        words = set(re.findall(r"[^\W\d_]+", text))
+        others = []
+        for o in cls["eleves"]:
+            p = o["prenom"].strip()
+            if o is s or len(p) < 3 or p in mine or " " in p or "-" in p:  # prénoms composés ignorés
+                continue
+            if p in words and p not in others:
+                others.append(p)
+        rows.append({"id": s["id"], "nom": s["nom"], "prenom": s["prenom"], "note": s["notes"].get(key), "texte": text, "longueur": len(text),
+                     "vide": not text, "trop_long": len(text) > max_len, "repetees": repeated, "autres_prenoms": others})
+    summary = {"total": len(rows), "vides": sum(r["vide"] for r in rows), "trop_longs": sum(r["trop_long"] for r in rows),
+               "repetees": sum(bool(r["repetees"]) for r in rows), "prenoms": sum(bool(r["autres_prenoms"]) for r in rows)}
+    return rows, summary
 
 
 def clone_bank(settings):

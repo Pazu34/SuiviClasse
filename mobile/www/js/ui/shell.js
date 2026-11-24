@@ -132,6 +132,7 @@ export class Shell {
         if (await confirmDialog(`Supprimer la classe ${cls.nom} et ses ${cls.eleves.length} élèves ?\n\nUne archive des données actuelles est créée juste avant : vous pourrez la restaurer depuis « Archives » en cas d’erreur.`, { okLabel: "Supprimer", danger: true, title: "Supprimer la classe" })) await app.deleteClass(cls);
       } } : null,
       cls && cls.eleves.length ? { label: "Appréciations de bulletin…", icon: "✍", onClick: () => this.appreciations(cls) } : null,
+      cls && cls.eleves.length ? { label: "Relecture des appréciations…", icon: "👁", onClick: async () => (await lazy.apprec()).openReview(app, cls) } : null,
       cls ? { label: "Phrases types et mots-clés…", icon: "🏷", onClick: async () => (await lazy.apprec()).openBank(app) } : null,
       { label: "Ordre des classes…", icon: "↕", onClick: async () => (await lazy.classes()).openClassOrder(app) },
       { separator: true },

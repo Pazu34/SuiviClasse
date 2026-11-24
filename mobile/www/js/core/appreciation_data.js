@@ -6,6 +6,7 @@ export const DEFAULT_BANK = {
    "titre": "Matériel",
    "emoji": "🎒",
    "ton": "-",
+   "auto": "oubli_orange",
    "phrases": [
     "{prénom} oublie trop souvent son matériel, ce qui gêne le travail en classe.",
     "Le matériel n'est pas toujours apporté : {il} doit être plus {rigoureux|rigoureuse}.",
@@ -17,6 +18,7 @@ export const DEFAULT_BANK = {
    "titre": "Bavardages",
    "emoji": "💬",
    "ton": "-",
+   "auto": "",
    "phrases": [
     "Les bavardages perturbent le travail de {prénom} et celui de ses camarades.",
     "{Il} doit limiter ses bavardages pour rester {concentré|concentrée}.",
@@ -28,6 +30,7 @@ export const DEFAULT_BANK = {
    "titre": "Efforts",
    "emoji": "💪",
    "ton": "+",
+   "auto": "",
    "phrases": [
     "Des efforts sont à souligner.",
     "{prénom} fournit des efforts appréciables, qu'il faut poursuivre.",
@@ -39,6 +42,7 @@ export const DEFAULT_BANK = {
    "titre": "Participation",
    "emoji": "🙋",
    "ton": "+",
+   "auto": "seance_plus",
    "phrases": [
     "{Il} participe volontiers et de façon pertinente.",
     "Bonne participation orale.",
@@ -50,6 +54,7 @@ export const DEFAULT_BANK = {
    "titre": "Absences",
    "emoji": "📅",
    "ton": "-",
+   "auto": "",
    "phrases": [
     "Les absences nuisent à la continuité des apprentissages.",
     "{Il} doit rattraper les cours manqués pendant ses absences.",
@@ -61,6 +66,7 @@ export const DEFAULT_BANK = {
    "titre": "Retards",
    "emoji": "⏰",
    "ton": "-",
+   "auto": "",
    "phrases": [
     "Les retards sont trop fréquents.",
     "{Il} doit faire preuve de plus de ponctualité.",
@@ -72,6 +78,7 @@ export const DEFAULT_BANK = {
    "titre": "Sérieux",
    "emoji": "📚",
    "ton": "+",
+   "auto": "qualMaison_bon",
    "phrases": [
     "{Il} est {sérieux|sérieuse} et {investi|investie}.",
     "Élève {sérieux|sérieuse} et {appliqué|appliquée}.",
@@ -83,6 +90,7 @@ export const DEFAULT_BANK = {
    "titre": "Progrès",
    "emoji": "📈",
    "ton": "+",
+   "auto": "",
    "phrases": [
     "Des progrès encourageants sont à noter.",
     "{prénom} progresse nettement, c'est à souligner.",
@@ -94,6 +102,7 @@ export const DEFAULT_BANK = {
    "titre": "Difficultés",
    "emoji": "🧩",
    "ton": "-",
+   "auto": "qualSeance_faible",
    "phrases": [
     "{prénom} rencontre des difficultés : il faut revoir régulièrement les leçons.",
     "Des lacunes persistent ; un travail de révision est nécessaire.",
@@ -105,6 +114,7 @@ export const DEFAULT_BANK = {
    "titre": "Travail à la maison",
    "emoji": "🏠",
    "ton": "-",
+   "auto": "travail_orange",
    "phrases": [
     "Le travail à la maison n'est pas fait régulièrement.",
     "Les leçons sont insuffisamment apprises.",
@@ -116,6 +126,7 @@ export const DEFAULT_BANK = {
    "titre": "Attention",
    "emoji": "🎯",
    "ton": "-",
+   "auto": "seance_moins",
    "phrases": [
     "{Il} manque d'attention en classe.",
     "L'attention de {prénom} est irrégulière.",
@@ -127,6 +138,7 @@ export const DEFAULT_BANK = {
    "titre": "Soin",
    "emoji": "✏️",
    "ton": "+",
+   "auto": "",
    "phrases": [
     "Un travail soigné.",
     "Le soin apporté aux cahiers est apprécié.",
@@ -138,6 +150,7 @@ export const DEFAULT_BANK = {
    "titre": "Comportement",
    "emoji": "🤝",
    "ton": "+",
+   "auto": "",
    "phrases": [
     "Comportement agréable et respectueux.",
     "{prénom} a une attitude positive en classe.",
@@ -292,6 +305,212 @@ export const DEFAULT_BANK = {
     "Félicitations pour ce {période} remarquable.",
     "Continuer ainsi."
    ]
+  }
+ ],
+ "vocabulaire": [
+  "très bien",
+  "assez bien",
+  "bon travail",
+  "très bon travail",
+  "travail sérieux",
+  "travail régulier",
+  "travail insuffisant",
+  "travail soigné",
+  "résultats satisfaisants",
+  "résultats insuffisants",
+  "résultats fragiles",
+  "résultats en progrès",
+  "résultats en baisse",
+  "ensemble satisfaisant",
+  "ensemble fragile",
+  "bonne participation",
+  "participation orale",
+  "participation active",
+  "bavardages",
+  "bavardeur",
+  "bavardeuse",
+  "efforts",
+  "progrès",
+  "progresse",
+  "progression",
+  "difficultés",
+  "lacunes",
+  "fragilités",
+  "régularité",
+  "rigueur",
+  "rigoureux",
+  "rigoureuse",
+  "investissement",
+  "investi",
+  "investie",
+  "implication",
+  "impliqué",
+  "impliquée",
+  "sérieux",
+  "sérieuse",
+  "appliqué",
+  "appliquée",
+  "attentif",
+  "attentive",
+  "attention",
+  "concentration",
+  "concentré",
+  "concentrée",
+  "motivé",
+  "motivée",
+  "motivation",
+  "comportement",
+  "comportement exemplaire",
+  "attitude",
+  "attitude positive",
+  "ponctualité",
+  "retards",
+  "absences",
+  "matériel",
+  "oublis de matériel",
+  "leçons",
+  "apprendre ses leçons",
+  "travail personnel",
+  "travail à la maison",
+  "révisions",
+  "réviser",
+  "persévérer",
+  "persévérance",
+  "ténacité",
+  "autonomie",
+  "autonome",
+  "curieux",
+  "curieuse",
+  "curiosité",
+  "dynamique",
+  "volontaire",
+  "discret",
+  "discrète",
+  "passif",
+  "passive",
+  "dispersé",
+  "dispersée",
+  "fatigué",
+  "fatiguée",
+  "encouragements",
+  "félicitations",
+  "bravo",
+  "à poursuivre",
+  "à encourager",
+  "à surveiller",
+  "peut mieux faire",
+  "doit se ressaisir",
+  "doit progresser",
+  "doit s'investir",
+  "un sursaut est nécessaire",
+  "continuer ainsi",
+  "poursuivre les efforts",
+  "trimestre",
+  "semestre",
+  "élève",
+  "classe",
+  "cours"
+ ],
+ "abreviations": [
+  {
+   "abr": "tb",
+   "texte": "très bien"
+  },
+  {
+   "abr": "ab",
+   "texte": "assez bien"
+  },
+  {
+   "abr": "bt",
+   "texte": "bon travail"
+  },
+  {
+   "abr": "tbt",
+   "texte": "très bon travail"
+  },
+  {
+   "abr": "rs",
+   "texte": "résultats satisfaisants"
+  },
+  {
+   "abr": "ri",
+   "texte": "résultats insuffisants"
+  },
+  {
+   "abr": "rf",
+   "texte": "résultats fragiles"
+  },
+  {
+   "abr": "pn",
+   "texte": "{prénom}"
+  },
+  {
+   "abr": "ens",
+   "texte": "ensemble"
+  },
+  {
+   "abr": "pb",
+   "texte": "problème"
+  },
+  {
+   "abr": "pte",
+   "texte": "participation"
+  },
+  {
+   "abr": "cpt",
+   "texte": "comportement"
+  },
+  {
+   "abr": "eff",
+   "texte": "efforts"
+  },
+  {
+   "abr": "prog",
+   "texte": "progrès"
+  },
+  {
+   "abr": "fel",
+   "texte": "félicitations"
+  },
+  {
+   "abr": "enc",
+   "texte": "encouragements"
+  },
+  {
+   "abr": "att",
+   "texte": "attention"
+  },
+  {
+   "abr": "conc",
+   "texte": "concentration"
+  },
+  {
+   "abr": "trv",
+   "texte": "travail"
+  },
+  {
+   "abr": "tjrs",
+   "texte": "toujours"
+  },
+  {
+   "abr": "bcp",
+   "texte": "beaucoup"
+  },
+  {
+   "abr": "qd",
+   "texte": "quand"
+  },
+  {
+   "abr": "pdt",
+   "texte": "pendant"
+  },
+  {
+   "abr": "tjs",
+   "texte": "toujours"
+  },
+  {
+   "abr": "mat",
+   "texte": "matériel"
   }
  ]
 };

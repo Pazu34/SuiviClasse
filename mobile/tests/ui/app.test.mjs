@@ -600,7 +600,7 @@ test("assistant d'appréciation : mots-clés, phrases types, genre, rédaction �
   assert.equal(await page.locator(".appstu").count(), 8);
   assert.match(await page.locator(".appname").textContent(), /ANDRÉ Léa/);
   assert.match(await page.locator(".appfacts").textContent(), /T1 : 14,5/);
-  assert.equal(await page.locator(".kwchip").count(), 2);
+  assert.equal(await page.locator(".kwchip:not(.auto)").count(), 2);  // les pastilles « auto » sont à part
   const groups = await page.locator(".sgt").allTextContents();
   assert.match(groups[0], /Résultats — de 14 à 16/);
   assert.ok(groups.some((g) => /Bavardages/.test(g)) && groups.some((g) => /Efforts/.test(g)) && groups.some((g) => /Conclusion/.test(g)));
@@ -635,6 +635,125 @@ test("assistant d'appréciation : mots-clés, phrases types, genre, rédaction �
   await page.locator(".apprview .kwadd").click();
   assert.equal(await page.locator(".menu >> text=Oral").count(), 1);
   await page.keyboard.press("Escape");
+  noErrors(page);
+  await page.context().close();
+});
+
+test("assistant d'appréciation : prédiction de mots (Tab), abréviations, réglages et vocabulaire modifiable", async () => {
+  const page = await env.page();
+  await createVault(page);
+  await page.click("text=✍ Appréciations");
+  await page.waitForSelector(".apptext");
+  await page.locator(".apptext").fill("");
+  await page.locator(".apptext").click();
+  // abréviations : « tb » devient « très bien » dès l'espace ; « pn » devient le prénom de l'élève
+  await page.keyboard.type("pn est tb ");
+  assert.equal(await page.locator(".apptext").inputValue(), "Léa est très bien ");
+  await page.keyboard.type("Tb. ");
+  assert.equal(await page.locator(".apptext").inputValue(), "Léa est très bien Très bien. ");
+  // prédiction : les premières lettres proposent des mots ; Tab valide la première proposition
+  await page.keyboard.type("et bav");
+  assert.match(await page.locator(".sugchip.first").textContent(), /bavardages/);
+  await page.keyboard.press("Tab");
+  assert.equal(await page.locator(".apptext").inputValue(), "Léa est très bien Très bien. et bavardages ");
+  assert.equal(await page.locator(".sugchip").count(), 0);
+  // une proposition se choisit aussi en la touchant ; les accents sont ignorés, les expressions complétées
+  await page.keyboard.type("tres b");
+  assert.deepEqual((await page.locator(".sugchip").allTextContents()).slice(0, 2), ["⇥ très bien", "très bon travail"]);
+  await page.locator(".sugchip", { hasText: "très bon travail" }).click();
+  assert.match(await page.locator(".apptext").inputValue(), /et bavardages très bon travail $/);
+  // réglages : abréviations désactivées -> « tb » reste tel quel ; prédiction désactivée -> plus de proposition
+  const focusEnd = async () => { await page.locator(".apptext").focus(); await page.keyboard.press("Control+End"); };
+  await page.locator(".opt", { hasText: "Abréviations" }).locator("input").uncheck();
+  await focusEnd();
+  await page.keyboard.type("tb ");
+  assert.match(await page.locator(".apptext").inputValue(), /très bon travail tb $/);
+  await page.locator(".opt", { hasText: "Prédiction" }).locator("input").uncheck();
+  await focusEnd();
+  await page.keyboard.type("bav");
+  assert.equal(await page.locator(".sugchip").count(), 0);
+  const stored = JSON.parse(await page.evaluate(() => app.storage.get("preferences.json")));
+  assert.deepEqual([stored.appPredictif, stored.appAbreviations], ["non", "non"]);
+  await page.locator(".opt", { hasText: "Abréviations" }).locator("input").check();
+  await page.locator(".opt", { hasText: "Prédiction" }).locator("input").check();
+  // vocabulaire et abréviations modifiables dans l'éditeur
+  await page.click("text=Phrases types et mots-clés…");
+  await page.click('.bitem[data-rid="aide:vocabulaire"]');
+  const vocab = page.locator(".bankphrases");
+  await vocab.fill((await vocab.inputValue()) + "\nperspicace");
+  await page.click('.bitem[data-rid="aide:abreviations"]');
+  const abbr = page.locator(".bankphrases");
+  assert.match(await abbr.inputValue(), /^tb = très bien/m);
+  await abbr.fill((await abbr.inputValue()) + "\nzz = zèle {remarquable|remarquable}");
+  await page.locator(".dialog").last().locator("footer .btn.primary").click();
+  const bank = await page.evaluate(() => app.state.settings.appreciation);
+  assert.ok(bank.vocabulaire.includes("perspicace"));
+  assert.deepEqual(bank.abreviations.find((a) => a.abr === "zz"), { abr: "zz", texte: "zèle {remarquable|remarquable}" });
+  await page.locator(".apptext").fill("");
+  await page.locator(".apptext").click();
+  await page.keyboard.type("persp");
+  assert.match(await page.locator(".sugchip.first").textContent(), /perspicace/);
+  await page.keyboard.type("ic zz ");
+  assert.match(await page.locator(".apptext").inputValue(), /zèle remarquable $/);
+  noErrors(page);
+  await page.context().close();
+});
+
+test("mots-clés automatiques (d'après les compteurs) et relecture de la classe", async () => {
+  const page = await env.page();
+  await createVault(page);
+  const kws = (nom) => page.evaluate((n) => app.state.classes[0].eleves.find((s) => s.nom === n).events.filter((e) => e.type.startsWith("mot:")).map((e) => e.type), nom);
+  // 1. HENRY a 4 oublis de matériel (seuil orange : 2) : le mot-clé « Matériel » est proposé automatiquement
+  await page.click("text=✍ Appréciations");
+  await page.waitForSelector(".appstu");
+  await page.locator(".appstu", { hasText: "HENRY" }).click();
+  const auto = page.locator(".kwchip.auto");
+  assert.match(await auto.first().textContent(), /Matériel \(auto\)/);
+  assert.ok((await page.locator(".sgt", { hasText: "Matériel" }).textContent()).includes("détecté automatiquement"));
+  assert.deepEqual(await kws("HENRY"), []);
+  await auto.first().locator("button.kw").click();  // le toucher le note pour de bon
+  assert.deepEqual(await kws("HENRY"), ["mot:materiel"]);
+  assert.equal(await page.locator('.kwchip.auto[data-kw="materiel"]').count(), 0);
+  assert.equal(await page.locator('.kwchip[data-kw="materiel"]').count(), 1);
+  // la condition se règle dans l'éditeur : « seuil rouge » (3 oublis) ou aucune
+  await page.click("text=Phrases types et mots-clés…");
+  await page.locator('.bitem[data-rid="mots:materiel"]').click();
+  assert.equal(await page.locator('[aria-label="Détection automatique"]').inputValue(), "oubli_orange");
+  await page.locator('[aria-label="Détection automatique"]').selectOption("");
+  await page.locator(".dialog").last().locator("footer .btn.primary").click();
+  assert.equal(await page.evaluate(() => app.state.settings.appreciation.mots.find((m) => m.id === "materiel").auto), "");
+  await page.locator("footer .btn", { hasText: "Fermer" }).click();
+  // 2. relecture : quatre appréciations identiques, un texte trop long avec un prénom d'un autre élève
+  await page.evaluate(() => {
+    const e = app.state.classes[0].eleves, common = "Très bon travail ce trimestre, il faut continuer.";
+    for (const s of e.slice(0, 3)) s.comms["1"] = common;
+    e[3].comms["1"] = "Zoé aide Lucas. " + "x".repeat(260);
+    e[4].comms["1"] = ""; e[5].comms["1"] = "Bien.";
+    app.commit();
+  });
+  await page.click('[aria-label="Menu"]');
+  await page.click(".menu >> text=Relecture des appréciations…");
+  await page.waitForSelector(".revcard");
+  assert.equal(await page.locator(".revcard").count(), 8);
+  assert.match(await page.locator(".revsummary").textContent(), /8 élèves \(T1\) · \d+ à écrire · 1 trop longue · 3 avec une phrase répétée · 1 avec un prénom d'un autre élève/);
+  const emma = page.locator('.revcard:has(strong:text("DUBOIS Emma"))');
+  assert.match(await emma.textContent(), /Trop longue : 276 caractères pour 255 au plus/);
+  assert.match(await emma.textContent(), /Prénom d'un autre élève dans le texte : Zoé, Lucas/);
+  assert.match(await page.locator('.revcard:has(strong:text("ANDRÉ Léa"))').textContent(), /Phrase reprise dans plusieurs appréciations/);
+  assert.match(await page.locator('.revcard:has(strong:text("FONTAINE Jules"))').textContent(), /À écrire|Bien\./);
+  await page.locator(".revview input[type=checkbox]").check();
+  const shown = await page.locator(".revcard").count();
+  assert.ok(shown < 8 && shown >= 4, "filtre « à revoir » : " + shown);
+  assert.equal(await page.locator('.revcard:has(strong:text("GARCIA Inès"))').count(), 0, "une appréciation sans alerte disparaît");
+  // 3. Modifier ouvre l'assistant sur l'élève ; au retour la relecture est actualisée
+  await page.locator('.revcard:has(strong:text("FONTAINE Jules")) button', { hasText: "Modifier" }).click();
+  await page.waitForSelector(".appname");
+  assert.match(await page.locator(".appname").textContent(), /FONTAINE Jules/);
+  await page.locator(".apptext").fill("Jules a bien progressé ce trimestre grâce à ses efforts.");
+  await page.locator("footer .btn", { hasText: "Fermer" }).last().click();
+  assert.equal(await page.evaluate(() => app.state.classes[0].eleves.find((s) => s.nom === "FONTAINE").comms["1"]), "Jules a bien progressé ce trimestre grâce à ses efforts.");
+  await page.waitForFunction(() => document.querySelector(".revsummary") && document.querySelector(".revview"));
+  await shot(page, "relecture");
   noErrors(page);
   await page.context().close();
 });

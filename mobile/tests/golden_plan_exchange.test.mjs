@@ -352,3 +352,75 @@ print(json.dumps([[A.keywords(s, t), list(A.evolution(s, t, sc)), A.suggestions(
 
 function clone(x) { return JSON.parse(JSON.stringify(x)); }
 function DEFAULT_BANK_FOR_TEST() { return A.defaultBank(); }
+
+test("aide à la saisie : prédiction, abréviations et validation identiques au Python", () => {
+  const typed = ["bav", "tres b", "Il est très b", "Efforts. Pr", "dif", "", "b", "x", "bavardages ", "bavardages", "zzz", "très bien, ", "tr", "pr", "Le travail est tr", "l'a", "prise d", "TR", "très-b", "été", "œ"];
+  const bank = A.defaultBank();
+  bank.mots.push({ id: "oral", titre: "Prise de parole", emoji: "", ton: "=", phrases: [] });
+  const pool = A.completionPool(bank);
+  const comp = py(`
+import json, sys
+from suiviclasse import appreciation as A
+d = json.load(sys.stdin)
+pool = A.completion_pool(d["bank"])
+print(json.dumps({"pool": pool, "res": [[A.complete(t, pool, lim) for t in d["typed"]] for lim in (4, 1, 10)]}))`, { bank, typed });
+  same(pool, comp.pool, "pool");
+  [4, 1, 10].forEach((lim, n) => typed.forEach((t, i) => same(A.complete(t, pool, lim), comp.res[n][i], `complete ${JSON.stringify(t)} ${lim}`)));
+
+  const words = ["Il a eu un tb", "Tb", "pn", "etb", "tb ", "", "bonjour", "ii", "Ii", "II", "Éé", "ab"];
+  const abbrevs = [...bank.abreviations, { abr: "ii", texte: "{il} est {sérieux|sérieuse}" }, { abr: "éé", texte: "école" }];
+  const jobs = [];
+  for (const w of words) for (const [p, g] of [["Léa", "f"], ["Hugo", "m"], ["", ""]]) jobs.push([w, p, g]);
+  const exp = py(`
+import json, sys
+from suiviclasse import appreciation as A
+d = json.load(sys.stdin)
+print(json.dumps([A.expand_abbreviation(w, d["abbrevs"], p, g, "semestre") for w, p, g in d["jobs"]]))`, { abbrevs, jobs });
+  jobs.forEach(([w, p, g], i) => same(A.expandAbbreviation(w, abbrevs, p, g, "semestre"), exp[i], `abréviation ${JSON.stringify([w, p, g])}`));
+
+  const raws = [{ vocabulaire: ["  Très   bien ", "TRES BIEN", "", 5, "a".repeat(100)], abreviations: [{ abr: "T-B!", texte: " très  bien " }, { abr: "tb", texte: "doublon" }, { abr: "", texte: "x" }, { abr: "z", texte: "" }, "x"] },
+    { vocabulaire: [] }, { abreviations: "non" }, { vocabulaire: "non" }, {}];
+  const banks = py(`
+import json, sys
+from suiviclasse import appreciation as A
+print(json.dumps([A.sanitize_bank(r) for r in json.load(sys.stdin)]))`, raws);
+  raws.forEach((r, i) => same(A.sanitizeBank(r), banks[i], "aide " + i));
+});
+
+import * as PR from "../www/js/core/prefs.js";
+
+test("mots-clés automatiques et relecture de la classe identiques au Python", () => {
+  const mk = (events) => ({ nom: "X", prenom: "Léa", notes: { 1: 12, 2: null, 3: null }, comms: {}, extra: {}, events: events.map(([type, t, v], n) => ({ id: "e" + n, type, t, v, note: "", date: `2026-01-0${(n % 9) + 1}T10:00:00Z` })) });
+  const students = [
+    mk([]), mk([["oubli", 1, 1], ["oubli", 1, 1]]), mk([["oubli", 1, 1], ["oubli", 1, 1], ["oubli", 1, 1], ["travail", 1, 1], ["travail", 1, 1], ["travail", 1, 1]]),
+    mk([["seance", 1, 3], ["seance", 1, -2], ["qualMaison", 1, 5], ["qualMaison", 1, 5], ["qualSeance", 1, 1]]), mk([["seance", 1, 5], ["seance", 1, -3], ["qualSeance", 1, 5], ["qualMaison", 1, 2], ["oubli", 2, 3]]),
+    mk([["mot:materiel", 1, 1], ["oubli", 1, 1], ["oubli", 1, 1]]),
+  ];
+  const valuesList = [PR.defaults(), { ...PR.defaults(), oubliOrange: 5, oubliRouge: 6, seancePlusVert: 1, seanceMoinsRouge: 1 }];
+  const customs = [{}, { appreciation: { mots: [{ id: "a", titre: "A", auto: "oubli_rouge", phrases: ["p"] }, { id: "materiel", titre: "Matériel", auto: "qualMaison_faible" }, { id: "b", titre: "B", auto: "bidon" }] } }];
+  const jobs = [];
+  for (const s of students) for (const t of [1, 2]) for (const v of valuesList) for (const st of customs) jobs.push([s, t, v, st]);
+  const res = py(`
+import json, sys
+from suiviclasse import appreciation as A
+jobs = json.load(sys.stdin)
+print(json.dumps([[sorted(A.auto_hits(st, v, s, t)), A.auto_keywords(st, v, s, t), A.suggestions(st, s, t, 20, v)] for s, t, v, st in jobs]))`, jobs);
+  jobs.forEach(([s, t, v, st], i) => same([[...A.autoHits(st, v, s, t)].sort(), A.autoKeywords(st, v, s, t), A.suggestions(st, s, t, 20, v)], res[i], `auto ${i}`));
+
+  const common = "Très bon travail ce trimestre, il faut continuer.";
+  const cls = { eleves: ["Léa", "Hugo", "Zoé", "Noah", "Emma", "Jean-Paul", "Al", "Éloïse"].map((prenom, i) => ({ id: "s" + i, nom: "NOM", prenom, notes: { 1: i }, comms: {}, extra: {}, events: [] })) };
+  const e = cls.eleves;
+  for (const s of e.slice(0, 3)) s.comms["1"] = common;
+  e[3].comms["1"] = "Hugo aide Zoé, Al et Jean-Paul. " + "x".repeat(300);
+  e[4].comms["1"] = "Léa progresse.  Éloïse aussi.\nEmma est ici. Bien.";
+  e[5].comms["1"] = "  ";
+  e[6].comms["2"] = "autre période";
+  const cases = [[1, 255], [1, 50], [2, 255], [3, 0]];
+  const rv = py(`
+import json, sys
+from suiviclasse import appreciation as A
+d = json.load(sys.stdin)
+print(json.dumps([A.review(d["cls"], t, m) for t, m in d["cases"]]))`, { cls, cases });
+  cases.forEach(([t, m], i) => same(A.review(cls, t, m), rv[i], `relecture ${t}/${m}`));
+  same(A.sentences("Un. Deux ! Trois ? Fin…  Dernier"), ["Un.", "Deux !", "Trois ?", "Fin…", "Dernier"]);
+});

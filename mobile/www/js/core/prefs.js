@@ -28,6 +28,10 @@ export const SCHEMA = [
   { key: "backupMinutes", group: "Sauvegardes automatiques", label: "Créer une archive toutes les", type: "int", min: 0, max: 1440, default: 15, unit: "min (0 = désactivé)" },
   { key: "backupKeepRecent", group: "Sauvegardes automatiques", label: "Archives récentes conservées", type: "int", min: 1, max: 500, default: 20, unit: "archives" },
   { key: "backupKeepDays", group: "Sauvegardes automatiques", label: "Puis 1 archive par jour pendant", type: "int", min: 0, max: 3650, default: 30, unit: "jours" },
+  { key: "appPredictif", group: "Bulletins", label: "Appréciations : proposer des mots pendant la frappe (Tab pour valider)", type: "choice", default: "oui",
+    options: [["oui", "Oui"], ["non", "Non"]] },
+  { key: "appAbreviations", group: "Bulletins", label: "Appréciations : remplacer les abréviations (tb → très bien)", type: "choice", default: "oui",
+    options: [["oui", "Oui"], ["non", "Non"]] },
   { key: "appreciationMax", group: "Bulletins", label: "Appréciation : longueur max.", type: "int", min: 50, max: 5000, default: 255, unit: "caractères (PRONOTE : 255)" },
   { key: "autoLockMinutes", group: "Sécurité", label: "Verrouiller après", type: "int", min: 0, max: 240, default: 15, unit: "min d’inactivité (0 = jamais)" },
 ];

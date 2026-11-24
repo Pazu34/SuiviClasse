@@ -106,7 +106,7 @@ class BanqueTest(unittest.TestCase):
                         {"id": "monmot", "titre": "doublon"}],
                "resultats": [{"id": "r0", "phrases": ["Seule phrase"]}], "evolution": "n'importe quoi"}
         b = A.sanitize_bank(raw)
-        self.assertEqual(b["mots"], [{"id": "monmot", "titre": "Mon mot", "emoji": "", "ton": "=", "phrases": ["a b"]}])
+        self.assertEqual(b["mots"], [{"id": "monmot", "titre": "Mon mot", "emoji": "", "ton": "=", "auto": "", "phrases": ["a b"]}])
         self.assertEqual(b["resultats"][0]["phrases"], ["Seule phrase"])
         self.assertEqual(b["resultats"][1]["phrases"], A.default_bank()["resultats"][1]["phrases"])
         self.assertEqual(b["evolution"], A.default_bank()["evolution"])
@@ -126,3 +126,131 @@ class BanqueTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AideALaSaisieTest(unittest.TestCase):
+    def setUp(self):
+        self.bank = A.default_bank()
+        self.pool = A.completion_pool(self.bank)
+
+    def test_completion_du_dernier_mot(self):
+        self.assertEqual(A.complete("bav", self.pool)[0], (3, "bavardages"))
+        self.assertEqual(A.complete("tres b", self.pool)[0], (6, "très bien"))  # accents ignorés, deux mots
+        self.assertEqual(A.complete("Il est très b", self.pool)[0], (6, "très bien"))
+        self.assertEqual(A.complete("Efforts. Pr", self.pool)[0], (2, "Progrès"))  # majuscule conservée
+        self.assertEqual(A.complete("dif", self.pool), [(3, "difficultés")])
+
+    def test_rien_a_proposer(self):
+        for text in ("", "b", "x", "bavardages ", "bavardages", "zzz", "très bien, "):
+            self.assertEqual(A.complete(text, self.pool), [], repr(text))
+
+    def test_limite_et_ordre(self):
+        got = A.complete("tr", self.pool, limit=3)
+        self.assertEqual(len(got), 3)
+        self.assertEqual(got[0], (2, "très bien"))
+        self.assertEqual(len({e for _, e in A.complete("pr", self.pool, limit=10)}), len(A.complete("pr", self.pool, limit=10)))
+
+    def test_titres_des_mots_cles_dans_la_base(self):
+        self.bank["mots"].append({"id": "oral", "titre": "Prise de parole", "emoji": "", "ton": "=", "phrases": []})
+        self.assertIn("prise de parole", A.completion_pool(self.bank))
+        self.assertEqual(A.complete("prise d", A.completion_pool(self.bank))[0], (7, "prise de parole"))
+
+    def test_abreviations(self):
+        ab = self.bank["abreviations"]
+        self.assertEqual(A.expand_abbreviation("Il a eu un tb", ab), (2, "très bien"))
+        self.assertEqual(A.expand_abbreviation("Tb", ab), (2, "Très bien"))
+        self.assertEqual(A.expand_abbreviation("pn", ab, "Léa", "f"), (2, "Léa"))
+        for text in ("etb", "tb ", "", "bonjour"):
+            self.assertIsNone(A.expand_abbreviation(text, ab), repr(text))
+        accords = [{"abr": "ii", "texte": "{il} est {sérieux|sérieuse}"}]
+        self.assertEqual(A.expand_abbreviation("ii", accords, "Léa", "f"), (2, "elle est sérieuse"))
+        self.assertEqual(A.expand_abbreviation("Ii", accords, "Hugo", "m"), (2, "Il est sérieux"))
+
+    def test_validation_de_l_aide(self):
+        raw = {"vocabulaire": ["  Très   bien ", "TRES BIEN", "", 5, "a" * 100], "abreviations": [{"abr": "T-B!", "texte": " très  bien "}, {"abr": "tb", "texte": "doublon"},
+                                                                                              {"abr": "", "texte": "x"}, {"abr": "z", "texte": ""}, "x"]}
+        b = A.sanitize_bank(raw)
+        self.assertEqual(b["vocabulaire"], ["Très bien", "a" * 60])
+        self.assertEqual(b["abreviations"], [{"abr": "tb", "texte": "très bien"}])
+        self.assertEqual(A.sanitize_bank({})["vocabulaire"], A.default_bank()["vocabulaire"])
+        self.assertEqual(A.sanitize_bank({"vocabulaire": []})["vocabulaire"], [])  # une liste vide est un choix : aucune proposition
+
+
+class MotsClesAutomatiquesTest(unittest.TestCase):
+    def setUp(self):
+        from suiviclasse import prefs
+        self.values = prefs.defaults()
+
+    def test_seuils_des_preferences(self):
+        s = student()
+        self.assertEqual(A.auto_keywords({}, self.values, s, 1), [])
+        add_event(s, "oubli", 1, 1)
+        self.assertEqual(A.auto_keywords({}, self.values, s, 1), [])  # 1 oubli : sous le seuil orange (2)
+        add_event(s, "oubli", 1, 1)
+        self.assertEqual(A.auto_keywords({}, self.values, s, 1), ["materiel"])
+        self.assertEqual(A.auto_keywords({}, {**self.values, "oubliOrange": 5, "oubliRouge": 6}, s, 1), [])
+        self.assertEqual(A.auto_keywords({}, self.values, s, 2), [])  # autre période
+
+    def test_seance_et_niveaux(self):
+        s = student()
+        add_event(s, "seance", 1, 3)
+        add_event(s, "seance", 1, -2)
+        self.assertEqual(A.auto_keywords({}, self.values, s, 1), ["participation", "attention"])
+        for _ in range(2):
+            add_event(s, "qualMaison", 1, 5)  # A, A
+        add_event(s, "qualSeance", 1, 1)  # E
+        self.assertEqual(A.auto_keywords({}, self.values, s, 1), ["participation", "serieux", "difficultes", "attention"])
+
+    def test_suggestions_signalent_les_mots_cles_automatiques(self):
+        s = student(n1=12)
+        add_event(s, "oubli", 1, 1)
+        add_event(s, "oubli", 1, 1)
+        sans = [g["id"] for g in A.suggestions({}, s, 1)]
+        self.assertNotIn("materiel", sans)  # sans les préférences, pas de détection
+        avec = {g["id"]: g for g in A.suggestions({}, s, 1, 20, self.values) if g["kind"] == "mot"}
+        self.assertTrue(avec["materiel"]["auto"] and avec["materiel"]["count"] == 0)
+        A.add_keyword(s, "materiel", 1)  # noté à la main : plus « automatique »
+        avec = {g["id"]: g for g in A.suggestions({}, s, 1, 20, self.values) if g["kind"] == "mot"}
+        self.assertFalse(avec["materiel"]["auto"])
+        self.assertEqual(avec["materiel"]["count"], 1)
+
+    def test_condition_validee(self):
+        raw = {"mots": [{"id": "a", "titre": "A", "auto": "oubli_rouge"}, {"id": "b", "titre": "B", "auto": "n'importe quoi"}, {"id": "c", "titre": "C"}]}
+        self.assertEqual([m["auto"] for m in A.sanitize_bank(raw)["mots"]], ["oubli_rouge", "", ""])
+        self.assertEqual(len({m["auto"] for m in A.default_bank()["mots"] if m["auto"]}), 6)
+
+
+class RelectureTest(unittest.TestCase):
+    def classe(self):
+        from suiviclasse.model import new_class
+        c = new_class("6A")
+        for prenom in ("Léa", "Hugo", "Zoé", "Noah", "Emma", "Jean-Paul", "Al"):
+            c["eleves"].append(new_student("NOM", prenom))
+        return c
+
+    def test_alertes(self):
+        c = self.classe()
+        e = c["eleves"]
+        common = "Très bon travail ce trimestre, il faut continuer."
+        for s in e[:3]:
+            s["comms"]["1"] = common
+        e[3]["comms"]["1"] = "Hugo aide Zoé, Al et Jean-Paul. " + "x" * 300
+        rows, sm = A.review(c, 1, 255)
+        self.assertEqual(sm, {"total": 7, "vides": 3, "trop_longs": 1, "repetees": 3, "prenoms": 1})
+        self.assertEqual(rows[0]["repetees"], [common])
+        self.assertEqual(rows[3]["autres_prenoms"], ["Hugo", "Zoé"])  # « Al » (2 lettres) et les prénoms composés sont ignorés
+        self.assertTrue(rows[4]["vide"] and not rows[4]["trop_long"])
+        self.assertEqual((rows[3]["trop_long"], rows[3]["longueur"] > 255), (True, True))
+
+    def test_pas_de_fausse_alerte(self):
+        c = self.classe()
+        e = c["eleves"]
+        e[0]["comms"]["1"] = "Léa progresse. Léa est sérieuse."  # son propre prénom : normal
+        e[1]["comms"]["1"] = "hugo hugo"  # sans majuscule : ce n'est pas un prénom oublié
+        e[2]["comms"]["1"] = "Bien."  # phrase courte et unique
+        rows, sm = A.review(c, 1)
+        self.assertEqual((sm["repetees"], sm["prenoms"]), (0, 0))
+        self.assertEqual(A.review(c, 2)[1]["vides"], 7)  # autre période : rien d'écrit
+
+    def test_phrases(self):
+        self.assertEqual(A.sentences("Un. Deux ! Trois ? Fin…  Dernier"), ["Un.", "Deux !", "Trois ?", "Fin…", "Dernier"])

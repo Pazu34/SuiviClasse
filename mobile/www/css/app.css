@@ -330,3 +330,20 @@ td.xcheck.done { background: var(--ok) !important; }
   .appstu, .bitem { flex: none; white-space: nowrap; }
   .bsec { display: none; }
 }
+.sugstrip { display: flex; flex-wrap: wrap; gap: 6px; min-height: 40px; margin-top: 6px; align-items: center; }
+.sugchip { border: 1px solid var(--border); border-radius: 18px; background: var(--surface2); color: var(--text); min-height: 36px; padding: 0 14px; }
+.sugchip.first { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.check.small.opt { min-height: 32px; font-size: .9em; gap: 6px; }
+.check.small.opt input { width: 18px; height: 18px; }
+.approw { flex-wrap: wrap; }
+.kwchip.auto { border-style: dashed; border-color: var(--accent); }
+.kwchip.auto button { font-style: italic; color: var(--muted); }
+.revview { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.revtop { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); flex: none; }
+.revlist { flex: 1 1 auto; overflow: auto; padding: 8px 16px 16px; -webkit-overflow-scrolling: touch; }
+.revcard { border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; margin: 8px 0; background: var(--surface); }
+.revhead { display: flex; align-items: center; gap: 10px; }
+.revlen { font-size: .88em; color: var(--muted); } .revlen.over { color: var(--bad-text); font-weight: 700; }
+.revtext { margin: 6px 0 4px; line-height: 1.35; }
+.revalert { margin: 4px 0 0; padding: 4px 8px; border-radius: 6px; font-size: .92em; }
+.revalert.warn { background: var(--warn); } .revalert.bad { background: var(--bad); }

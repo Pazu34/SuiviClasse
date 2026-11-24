@@ -7,9 +7,11 @@ from tkinter import messagebox, ttk
 from .. import appreciation as A
 from .. import columns, exchange
 from .dialogs import Dialog, student_summary
+from .table import Tooltip
 from .theme import P
 
 TONE_BG = {"+": "ok", "-": "warn", "=": "surface2"}
+SEPARATORS = " .,;:!?)\n\r"  # frappes qui terminent un mot : déclenchent le remplacement d'une abréviation
 SYNTAX = ("Accords : {prénom}  {il} / {Il}  {e}  {masculin|féminin}  {période}.  Exemple : « {Il} est {sérieux|sérieuse} et {investi|investie}. »")
 
 
@@ -17,9 +19,9 @@ class KeywordBar(ttk.Frame):
     """Pastilles des mots-clés notés pour un élève pendant la période affichée : clic = une fois de plus, « − » = en retirer une,
     « + Mot-clé » = en ajouter un. Utilisée dans la fiche élève et dans l'assistant d'appréciation."""
 
-    def __init__(self, parent, app, student, on_change=None):
+    def __init__(self, parent, app, student, on_change=None, auto=False):
         super().__init__(parent)
-        self.app, self.s, self.on_change = app, student, on_change
+        self.app, self.s, self.on_change, self.auto = app, student, on_change, auto
         self.refresh()
 
     def set_student(self, student):
@@ -44,7 +46,20 @@ class KeywordBar(ttk.Frame):
             minus = tk.Label(chip, text="−", bg=P[TONE_BG[m["ton"]]], fg=P["muted"], padx=5, cursor="hand2")
             minus.pack(side="left")
             minus.bind("<Button-1>", lambda e, k=k: self.remove(k))
-        if not known:
+        if self.auto:  # mots-clés détectés d'après les compteurs et les notes : toucher = les noter pour de bon
+            noted = {k for k, _ in known}
+            for k in A.auto_keywords(self.app.state["settings"], self.app.values, self.s, t):
+                if k in noted:
+                    continue
+                m = by_id[k]
+                chip = tk.Frame(self, bg=P[TONE_BG[m["ton"]]], highlightthickness=1, highlightbackground=P["accent"])
+                chip.pack(side="left", padx=(0, 5), pady=2)
+                lab = tk.Label(chip, text=f"{m['emoji']} {m['titre']} (auto)".strip(), bg=P[TONE_BG[m["ton"]]], fg=P["muted"], padx=6, pady=2, cursor="hand2",
+                               font=("TkDefaultFont", 9, "italic"))
+                lab.pack(side="left")
+                lab.bind("<Button-1>", lambda e, k=k: self.add(k))
+                Tooltip(lab, "Détecté d'après les compteurs et les notes de l'élève. Cliquer pour le noter.")
+        if not known and not self.winfo_children():
             ttk.Label(self, text="Aucun mot-clé noté", style="Muted.TLabel").pack(side="left", padx=(0, 8))
         mb = ttk.Menubutton(self, text="＋ Mot-clé")
         menu = tk.Menu(mb, tearoff=0)
@@ -71,18 +86,20 @@ class KeywordBar(ttk.Frame):
 class AppreciationDialog(Dialog):
     """Une fenêtre pour rédiger les appréciations d'une classe, élève après élève."""
 
-    def __init__(self, app, cls, student=None):
+    def __init__(self, app, cls, student=None, on_close=None):
         super().__init__(app, f"Appréciations — {cls['nom']}", modal=False, size="1120x720")
-        self.cls, self.t = cls, app.t
+        self.cls, self.t, self.on_close = cls, app.t, on_close
         self.scale = columns.scale(app.state["settings"])
         self.word = app.per["word"]
         self.students = list(cls["eleves"])
         self.index = self.students.index(student) if student in self.students else 0
         self.used = set()
+        self.sugg = []
+        self.load_aids()
         self.minsize(900, 560)
         self.protocol("WM_DELETE_WINDOW", self.close)
         self.buttons(("Fermer", self.close, "right"), ("Enregistrer et suivant ▶", self.save_next, "right"), ("Enregistrer", self.save, "right"),
-                     ("Phrases types et mots-clés…", self.edit_bank, "left"))
+                     ("Phrases types et mots-clés…", self.edit_bank, "left"), ("Relecture de la classe…", self.open_review, "left"))
         self.bind("<Control-Return>", lambda e: self.save_next())
 
         top = ttk.Frame(self, padding=(10, 8, 10, 0))
@@ -124,7 +141,7 @@ class AppreciationDialog(Dialog):
         self.infos = ttk.Label(right, foreground=P["bad_text"], wraplength=720, justify="left")
         self.infos.pack(anchor="w")
         ttk.Label(right, text="Mots-clés notés pendant la période (cliquer = une fois de plus)", font=("TkDefaultFont", 9, "bold")).pack(anchor="w", pady=(8, 0))
-        self.kwbar = KeywordBar(right, app, self.students[self.index] if self.students else {"events": []}, on_change=self.refresh_suggestions)
+        self.kwbar = KeywordBar(right, app, self.students[self.index] if self.students else {"events": []}, on_change=self.refresh_suggestions, auto=True)
         self.kwbar.pack(fill="x")
         ttk.Label(right, text="Phrases proposées (cliquer pour ajouter à l'appréciation)", font=("TkDefaultFont", 9, "bold")).pack(anchor="w", pady=(8, 0))
         box = ttk.Frame(right)
@@ -147,9 +164,17 @@ class AppreciationDialog(Dialog):
         self.counter = ttk.Label(row, style="Muted.TLabel")
         self.counter.pack(side="right")
         ttk.Button(row, text="Effacer", command=self.clear).pack(side="right", padx=8)
+        self.var_pred = tk.BooleanVar(value=app.values["appPredictif"] == "oui")
+        self.var_abbr = tk.BooleanVar(value=app.values["appAbreviations"] == "oui")
+        ttk.Checkbutton(row, text="Abréviations (tb → très bien)", variable=self.var_abbr, command=lambda: self.toggle("appAbreviations", self.var_abbr)).pack(side="right", padx=4)
+        ttk.Checkbutton(row, text="Prédiction (Tab pour valider)", variable=self.var_pred, command=lambda: self.toggle("appPredictif", self.var_pred)).pack(side="right", padx=4)
         self.text = tk.Text(right, height=5, wrap="word", undo=True, font=("TkDefaultFont", 11), padx=6, pady=4)
         self.text.pack(fill="x")
-        self.text.bind("<KeyRelease>", lambda e: self.update_counter())
+        self.strip = ttk.Frame(right)
+        self.strip.pack(fill="x", pady=(3, 0))
+        self.text.bind("<KeyRelease>", self.on_key)
+        self.text.bind("<Tab>", self.on_tab)
+        self.text.bind("<ButtonRelease-1>", lambda e: self.update_strip())
         ttk.Label(right, text=SYNTAX, style="Muted.TLabel", wraplength=720).pack(anchor="w", pady=(4, 0))
         self.fill_tree()
         self.show(self.index)
@@ -207,6 +232,7 @@ class AppreciationDialog(Dialog):
         self.text.insert("1.0", s["comms"].get(str(t), ""))
         self.text.edit_reset()
         self.update_counter()
+        self.update_strip()
         self.refresh_suggestions()
 
     def set_genre(self):
@@ -229,7 +255,7 @@ class AppreciationDialog(Dialog):
             w.destroy()
         s = self.s
         genre = A.genre_of(s)
-        groups = A.suggestions(self.app.state["settings"], s, self.t, self.scale)
+        groups = A.suggestions(self.app.state["settings"], s, self.t, self.scale, self.app.values)
         if not groups:
             tk.Label(self.inner, bg=P["bg"], fg=P["muted"], justify="left", wraplength=620, padx=6, pady=10,
                      text="Aucune suggestion : l'élève n'a pas de note pour cette période et aucun mot-clé noté. Ajoutez des mots-clés ci-dessus.").pack(anchor="w")
@@ -238,7 +264,8 @@ class AppreciationDialog(Dialog):
         for g in groups:
             frame = tk.Frame(self.inner, bg=P["bg"])
             frame.pack(fill="x", pady=(6, 0))
-            title = names.get(g["kind"], f"{g.get('emoji', '')} {g['titre']}".strip() + (f"  ×{g['count']}" if g["count"] > 1 else ""))
+            title = names.get(g["kind"], f"{g.get('emoji', '')} {g['titre']}".strip() + (f"  ×{g['count']}" if g["count"] > 1 else "")
+                              + ("  (détecté automatiquement)" if g.get("auto") else ""))
             if g["kind"] in names:
                 title += f" — {g['titre'].lower()}"
             tk.Label(frame, text=title, bg=P["bg"], fg=P["muted"], font=("TkDefaultFont", 9, "bold")).pack(anchor="w")
@@ -281,6 +308,57 @@ class AppreciationDialog(Dialog):
         self.refresh_suggestions()
         self.update_counter()
 
+    # ---------- aide à la saisie : abréviations et prédiction de mots ----------
+    def load_aids(self):
+        b = A.bank(self.app.state["settings"])
+        self.abbrevs, self.pool = b["abreviations"], A.completion_pool(b)
+
+    def toggle(self, key, var):
+        self.app.prefs.set({key: "oui" if var.get() else "non"})
+        self.update_strip()
+
+    def on_key(self, e):
+        if e.char and e.char in SEPARATORS and self.app.values["appAbreviations"] == "oui":
+            before = self.text.get("1.0", "insert-1c")
+            r = A.expand_abbreviation(before, self.abbrevs, self.s["prenom"], A.genre_of(self.s), self.word)
+            if r:
+                n, texte = r
+                start = self.text.index(f"insert-1c-{n}c")
+                self.text.delete(start, self.text.index("insert-1c"))
+                self.text.insert(start, texte)
+        self.update_counter()
+        self.update_strip()
+
+    def update_strip(self):
+        for w in self.strip.winfo_children():
+            w.destroy()
+        self.sugg = []
+        if self.app.values["appPredictif"] != "oui":
+            return
+        self.sugg = A.complete(self.text.get("1.0", "insert"), self.pool, 4)
+        for i, (n, entry) in enumerate(self.sugg):
+            lab = tk.Label(self.strip, text=f"⇥ {entry}" if i == 0 else entry, padx=8, pady=2, cursor="hand2",
+                           bg=P["accent"] if i == 0 else P["surface2"], fg=P["accent_fg"] if i == 0 else P["text"])
+            lab.pack(side="left", padx=(0, 4))
+            lab.bind("<Button-1>", lambda e, i=i: self.accept(i))
+
+    def accept(self, i):
+        """Remplace le début de mot tapé par la proposition choisie (suivie d'une espace)."""
+        n, entry = self.sugg[i]
+        start = self.text.index(f"insert-{n}c")
+        self.text.delete(start, "insert")
+        self.text.insert(start, entry + " ")
+        self.text.focus_set()
+        self.update_counter()
+        self.update_strip()
+
+    def on_tab(self, e):
+        if self.sugg:
+            self.accept(0)
+        else:
+            self.text.tk_focusNext().focus_set()
+        return "break"
+
     def update_counter(self):
         n, mx = len(" ".join(self.text.get("1.0", "end-1c").split())), self.app.values["appreciationMax"]
         self.counter.configure(text=f"{n} / {mx} caractères", foreground=P["bad_text"] if n > mx else P["muted"])
@@ -304,11 +382,19 @@ class AppreciationDialog(Dialog):
     def close(self):
         self.save()
         self.destroy()
+        if self.on_close:
+            self.on_close()
+
+    def open_review(self):
+        self.save()
+        ReviewDialog(self.app, self.cls)
 
     def edit_bank(self):
         BankDialog(self.app, self, on_close=self.refresh_all)
 
     def refresh_all(self):
+        self.load_aids()
+        self.update_strip()
         self.kwbar.refresh()
         self.refresh_suggestions()
 
@@ -348,6 +434,9 @@ class BankDialog(Dialog):
         ttk.Label(self.head, text="Teinte").grid(row=0, column=4, sticky="w", padx=(10, 0))
         self.tone_box = ttk.Combobox(self.head, state="readonly", width=9, values=["positif", "négatif", "neutre"])
         self.tone_box.grid(row=0, column=5, padx=6, sticky="w")
+        ttk.Label(self.head, text="Détection automatique").grid(row=1, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        self.auto_box = ttk.Combobox(self.head, state="readonly", width=44, values=["(aucune)"] + [label for _, label in A.AUTO_CHOICES])
+        self.auto_box.grid(row=1, column=2, columnspan=4, sticky="w", padx=6, pady=(4, 0))
         self.subtitle = ttk.Label(right, style="Muted.TLabel", wraplength=560, justify="left")
         self.subtitle.pack(anchor="w", pady=(8, 2))
         ttk.Label(right, style="Muted.TLabel", wraplength=640, justify="left", text=(
@@ -368,11 +457,14 @@ class BankDialog(Dialog):
             for r in self.bank[key]:
                 label = f"{r.get('emoji', '')} {r['titre']}".strip()
                 self.tree.insert(key, "end", iid=f"{key}:{r['id']}", text=label)
+        self.tree.insert("", "end", iid="aide", text="Aide à la saisie", open=True)
+        self.tree.insert("aide", "end", iid="aide:vocabulaire", text="Mots proposés pendant la frappe")
+        self.tree.insert("aide", "end", iid="aide:abreviations", text="Abréviations")
         if select:
             self.tree.selection_set(select)
 
     def rubrique(self, iid):
-        if ":" not in iid:
+        if ":" not in iid or iid.startswith("aide:"):
             return None, None
         key, rid = iid.split(":", 1)
         return key, next((r for r in self.bank[key] if r["id"] == rid), None)
@@ -380,6 +472,17 @@ class BankDialog(Dialog):
     def store(self):
         """Reporte l'éditeur dans la rubrique en cours."""
         if not self.current:
+            return
+        if self.current == "aide:vocabulaire":
+            self.bank["vocabulaire"] = [" ".join(x.split()) for x in self.phrases.get("1.0", "end-1c").splitlines() if x.strip()]
+            return
+        if self.current == "aide:abreviations":
+            out = []
+            for line in self.phrases.get("1.0", "end-1c").splitlines():
+                abr, sep, texte = line.partition("=")
+                if sep and abr.strip() and texte.strip():
+                    out.append({"abr": abr.strip(), "texte": texte.strip()})
+            self.bank["abreviations"] = out
             return
         key, r = self.rubrique(self.current)
         if r is None:
@@ -389,6 +492,7 @@ class BankDialog(Dialog):
             r["titre"] = " ".join(self.title_var.get().split())[:40] or r["titre"]
             r["emoji"] = self.emoji_var.get().strip()[:8]
             r["ton"] = {"positif": "+", "négatif": "-", "neutre": "="}.get(self.tone_box.get(), "=")
+            r["auto"] = next((k for k, label in A.AUTO_CHOICES if label == self.auto_box.get()), "")
             self.tree.item(self.current, text=f"{r['emoji']} {r['titre']}".strip())
 
     def on_select(self, e):
@@ -397,11 +501,33 @@ class BankDialog(Dialog):
             return
         self.store()
         self.current = sel[0]
+        if sel[0].startswith("aide:"):
+            for w in (self.title_entry, self.emoji_entry):
+                w.configure(state="disabled")
+            self.tone_box.configure(state="disabled")
+            self.auto_box.configure(state="disabled")
+            self.auto_box.set("")
+            self.phrases.configure(state="normal")
+            self.phrases.delete("1.0", "end")
+            self.title_var.set("")
+            self.emoji_var.set("")
+            self.tone_box.set("")
+            if sel[0] == "aide:vocabulaire":
+                self.phrases.insert("1.0", "\n".join(self.bank["vocabulaire"]))
+                self.subtitle.configure(text="Mots et expressions proposés quand on tape leurs premières lettres dans l'appréciation (un par ligne). "
+                                             "Les titres des mots-clés sont proposés aussi. Tab valide la première proposition.")
+            else:
+                self.phrases.insert("1.0", "\n".join(f"{a['abr']} = {a['texte']}" for a in self.bank["abreviations"]))
+                self.subtitle.configure(text="Abréviations remplacées dès qu'on tape une espace ou une ponctuation, une par ligne, sous la forme « tb = très bien ». "
+                                             "Le texte peut contenir {prénom}, {il}, {sérieux|sérieuse}…")
+            return
         key, r = self.rubrique(sel[0])
         is_kw = key == "mots"
         for w in (self.title_entry, self.emoji_entry):
             w.configure(state="normal" if is_kw else "disabled")
         self.tone_box.configure(state="readonly" if is_kw else "disabled")
+        self.auto_box.configure(state="readonly" if is_kw else "disabled")
+        self.auto_box.set(next((label for k, label in A.AUTO_CHOICES if r and k == r.get("auto")), "(aucune)") if is_kw else "")
         self.phrases.configure(state="normal" if r else "disabled")
         self.phrases.delete("1.0", "end")
         if r is None:
@@ -427,7 +553,7 @@ class BankDialog(Dialog):
         if not titre:
             return
         rid = A.new_keyword_id(titre, self.bank)
-        self.bank["mots"].append({"id": rid, "titre": titre, "emoji": "", "ton": "=", "phrases": []})
+        self.bank["mots"].append({"id": rid, "titre": titre, "emoji": "", "ton": "=", "auto": "", "phrases": []})
         self.current = None
         self.fill(f"mots:{rid}")
 
@@ -455,3 +581,101 @@ class BankDialog(Dialog):
         self.destroy()
         if cb:
             cb()
+
+
+class ReviewDialog(Dialog):
+    """Relecture : toutes les appréciations de la classe sur une page, avec les alertes (vide, trop longue, phrase reprise dans plusieurs
+    appréciations, prénom d'un autre élève)."""
+
+    def __init__(self, app, cls):
+        super().__init__(app, f"Relecture des appréciations — {cls['nom']}", modal=False, size="1020x700")
+        self.cls, self.t = cls, app.t
+        self.only = tk.BooleanVar(value=False)
+        self.buttons(("Fermer", self.destroy, "right"), ("Actualiser", self.refresh, "left"))
+        top = ttk.Frame(self, padding=(10, 8))
+        top.pack(fill="x")
+        self.summary = ttk.Label(top, wraplength=700, justify="left")
+        self.summary.pack(side="left")
+        ttk.Checkbutton(top, text="Seulement les appréciations à revoir", variable=self.only, command=self.refresh).pack(side="right")
+        box = ttk.Frame(self)
+        box.pack(fill="both", expand=True, padx=10)
+        self.canvas = tk.Canvas(box, highlightthickness=0, bg=P["bg"])
+        vsb = ttk.Scrollbar(box, orient="vertical", command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=vsb.set)
+        self.canvas.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="left", fill="y")
+        self.inner = tk.Frame(self.canvas, bg=P["bg"])
+        self.win = self.canvas.create_window(0, 0, window=self.inner, anchor="nw")
+        self.inner.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
+        self.canvas.bind("<Configure>", self.on_canvas)
+        for w in (self.canvas, self.inner):
+            w.bind("<Enter>", lambda e: self._wheel(True))
+            w.bind("<Leave>", lambda e: self._wheel(False))
+        self.refresh()
+
+    def on_canvas(self, e):
+        self.canvas.itemconfigure(self.win, width=e.width)
+        for lab in getattr(self, "wrapped", []):
+            lab.configure(wraplength=max(240, e.width - 40))
+
+    def _wheel(self, on):
+        root = self.winfo_toplevel()
+        for ev in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            if on:
+                root.bind(ev, lambda e: self.canvas.yview_scroll(-1 if (e.num == 4 or e.delta > 0) else 1, "units"))
+            else:
+                root.unbind(ev)
+
+    def refresh(self):
+        mx = self.app.values["appreciationMax"]
+        rows, sm = A.review(self.cls, self.t, mx)
+        y = self.canvas.yview()[0]
+        for w in self.inner.winfo_children():
+            w.destroy()
+        self.wrapped = []
+        word = self.app.per["prefix"] + str(self.t)
+        bits = [f"{sm['total']} élèves ({word})"]
+        for n, one, many in ((sm["vides"], "à écrire", "à écrire"), (sm["trop_longs"], "trop longue", "trop longues"),
+                             (sm["repetees"], "avec une phrase répétée", "avec une phrase répétée"), (sm["prenoms"], "avec un prénom d'un autre élève", "avec un prénom d'un autre élève")):
+            if n:
+                bits.append(f"{n} {one if n == 1 else many}")
+        self.summary.configure(text=" · ".join(bits) if len(bits) > 1 else bits[0] + " · rien à signaler")
+        shown = 0
+        for r in rows:
+            alerts = []
+            if r["vide"]:
+                alerts.append(("À écrire.", "warn"))
+            if r["trop_long"]:
+                alerts.append((f"Trop longue : {r['longueur']} caractères pour {mx} au plus.", "bad"))
+            for sent in r["repetees"]:
+                alerts.append((f"Phrase reprise dans plusieurs appréciations : « {sent} »", "warn"))
+            if r["autres_prenoms"]:
+                alerts.append(("Prénom d'un autre élève dans le texte : " + ", ".join(r["autres_prenoms"]), "bad"))
+            if self.only.get() and not alerts:
+                continue
+            shown += 1
+            card = tk.Frame(self.inner, bg=P["surface"], highlightthickness=1, highlightbackground=P["border"])
+            card.pack(fill="x", pady=3, padx=1)
+            head = tk.Frame(card, bg=P["surface"])
+            head.pack(fill="x", padx=8, pady=(6, 0))
+            tk.Label(head, text=f"{r['nom']} {r['prenom']}", bg=P["surface"], fg=P["text"], font=("TkDefaultFont", 10, "bold")).pack(side="left")
+            note = exchange.note_text(r["note"])
+            tk.Label(head, text=f"  {note}" if note else "", bg=P["surface"], fg=P["muted"]).pack(side="left")
+            ttk.Button(head, text="Modifier…", command=lambda sid=r["id"]: self.edit(sid)).pack(side="right")
+            tk.Label(head, text=f"{r['longueur']} / {mx}", bg=P["surface"], fg=P["bad_text"] if r["trop_long"] else P["muted"]).pack(side="right", padx=8)
+            lab = tk.Label(card, text=r["texte"] or "(pas encore écrite)", bg=P["surface"], fg=P["text"] if r["texte"] else P["muted"], justify="left", anchor="w",
+                           wraplength=max(240, self.canvas.winfo_width() - 40), padx=8)
+            lab.pack(fill="x", pady=(2, 2))
+            self.wrapped.append(lab)
+            for text, level in alerts:
+                a = tk.Label(card, text="⚠ " + text, bg=P[level], fg=P["text"], justify="left", anchor="w", wraplength=max(240, self.canvas.winfo_width() - 60), padx=8, pady=1)
+                a.pack(fill="x", padx=8, pady=(0, 3))
+                self.wrapped.append(a)
+        if not shown:
+            tk.Label(self.inner, text="Rien à revoir." if rows else "Cette classe n'a pas d'élèves.", bg=P["bg"], fg=P["muted"], pady=20).pack()
+        self.update_idletasks()
+        self.canvas.yview_moveto(y)
+
+    def edit(self, sid):
+        s = next(x for x in self.cls["eleves"] if x["id"] == sid)
+        AppreciationDialog(self.app, self.cls, s, on_close=self.refresh)

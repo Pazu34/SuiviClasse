@@ -5,6 +5,7 @@ import { isNumber, noteText } from "../core/exchange.js";
 import * as M from "../core/model.js";
 import { fmtNum, norm } from "../core/util.js";
 import { COUNTER_KINDS, buildColumns, counterState, directLevels, gradeMeanOf, gradeState, parseGrade } from "./columns_build.js";
+import { keywordCell } from "./appreciation_ui.js";
 import { alertDialog, confirmDialog, h, menu, promptDialog, toast } from "./dom.js";
 import { openStudentSheet } from "./student.js";
 
@@ -113,6 +114,7 @@ function colWidth(col, compact) {
     case "xcheck": return 62;
     case "comment": return compact ? 250 : 310;
     case "fiche": return 62;
+    case "mots": return compact ? 170 : 210;
     case "seance": case "counter": {
       const { left, right } = counterButtons(col);
       return [...left, ...right].reduce((w, [, l]) => w + btnW(l), 0) + 52 + 10;
@@ -276,6 +278,7 @@ function cellFor(app, cls, s, col, dups, scale) {
       td.onclick = () => editText(app, td, { title: `Commentaire de bulletin ${app.per.prefix}${t} — ${s.prenom} ${s.nom}`.trim(), value: text, counter: max, save: (v) => { s.comms[sk] = v; app.commit(); } });
       return td;
     }
+    case "mots": return h("td", { class: "mots" }, keywordCell(app, s));
     case "fiche": return h("td", { style: { textAlign: "center" } }, h("button", { class: "cbtn", type: "button", "aria-label": "Ouvrir la fiche", onclick: () => openStudentSheet(app, cls, s) }, col.cfg.emoji || "📝"));
     default: return h("td");
   }

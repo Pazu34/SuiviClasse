@@ -38,6 +38,8 @@ export function buildColumns(app) {
   const customs = C.customs(settings);
   const kinds = { compteur: "counter", note: "xnote", texte: "xtext", liste: "xlist", coche: "xcheck", niveaux: "grade" };
   for (const c of customs.filter((x) => x.visible)) defs[c.id] = [new Col(c.id, kinds[c.type], c.titre, c.emoji, c, null, true)];
+  b = C.base(settings, "mots", compact);
+  if (b.visible) defs.mots = [new Col("mots", "mots", b.titre, b.emoji)];
   b = C.base(settings, "comm", compact);
   if (b.visible) defs.comm = [new Col("comm", "comment", b.titre, b.emoji)];
   b = C.base(settings, "fiche", compact);

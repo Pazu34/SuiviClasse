@@ -328,7 +328,7 @@ class ColumnsTab(ttk.Frame):
         head = ttk.Frame(self)
         head.pack(fill="x", pady=(12, 3))
         ttk.Label(head, text="Colonnes du tableau", style="Bold.TLabel").pack(side="left")
-        ttk.Checkbutton(head, text="Cacher les colonnes de base (n°, nom, prénom, infos, notes, commentaire, fiche)",
+        ttk.Checkbutton(head, text="Cacher les colonnes de base (n°, nom, prénom, infos, notes, mots-clés, commentaire, fiche)",
                         variable=self.hide_base, command=self.refresh).pack(side="right")
         mid = ttk.Frame(self)
         mid.pack(fill="both", expand=True)
@@ -373,7 +373,8 @@ class ColumnsTab(ttk.Frame):
             if key in columns.BASE:
                 c = self._base_cfg(key)
                 detail = {"notes": f"Une colonne par période ({per['prefix']}1 à {per['prefix']}{per['n']})", "nom": "Toujours affichée",
-                          "fiche": "Bouton en bout de ligne", "comm": "Appréciation de la période"}.get(key, "")
+                          "fiche": "Bouton en bout de ligne", "comm": "Appréciation de la période",
+                          "mots": "Mots-clés de la période (assistant d'appréciation)"}.get(key, "")
                 self.tree.insert("", "end", iid=key, values=("☑" if c["visible"] else "☐", c["emoji"], c["titre"] or "(sans titre)", "Colonne de base", detail))
             elif key in columns.BUILTINS:
                 c = self._builtin_cfg(key)

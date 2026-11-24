@@ -63,13 +63,14 @@ BASE = {
     "prenom": {"titre": "Prénom", "court": "Prénom", "emoji": ""},
     "infos": {"titre": "Infos (PAI…)", "court": "Infos", "emoji": ""},
     "notes": {"titre": "Notes", "court": "Notes", "emoji": ""},
+    "mots": {"titre": "Mots-clés", "court": "Mots-clés", "emoji": "🏷"},  # mots-clés notés pour l'appréciation de bulletin
     "comm": {"titre": "Commentaire bulletin", "court": "Commentaire bulletin", "emoji": ""},
     "fiche": {"titre": "", "court": "", "emoji": "📝"},  # pour « fiche », le pictogramme est celui du bouton de chaque ligne
 }
-BASE_ORDER = ["numero", "nom", "prenom", "infos", "notes", "comm", "fiche"]
+BASE_ORDER = ["numero", "nom", "prenom", "infos", "notes", "mots", "comm", "fiche"]
 # Ordre par défaut de toutes les colonnes ; les colonnes personnalisées s'insèrent avant « comm ».
 DEFAULT_ORDER = ["numero", "nom", "prenom", "infos", "notes", "qualSeance", "qualMaison", "seancePlus", "seanceMoins", "travail", "oubli",
-                 "comm", "fiche"]
+                 "mots", "comm", "fiche"]
 ALWAYS_VISIBLE = {"nom"}  # sans le nom, le tableau n'identifierait plus personne
 
 # Pictogrammes proposés (regroupés), l'utilisateur peut aussi en saisir un autre.

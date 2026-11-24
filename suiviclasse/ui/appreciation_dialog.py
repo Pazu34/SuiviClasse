@@ -78,6 +78,7 @@ class KeywordBar(ttk.Frame):
 
     def changed(self):
         self.app.commit()
+        self.app.refresh_student(self.s)  # la colonne « Mots-clés » du tableau suit
         self.refresh()
         if self.on_change:
             self.on_change()

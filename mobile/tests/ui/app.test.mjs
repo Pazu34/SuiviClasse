@@ -16,7 +16,7 @@ test("création du coffre : classe Test, colonnes et alertes comme sur le PC", a
   const page = await env.page();
   await createVault(page);
   const heads = await page.$$eval("table.grid thead th", (t) => t.map((x) => x.textContent.trim().replace(/\s+/g, " ")));
-  assert.deepEqual(heads, ["n°", "Nom", "Prénom", "Infos (PAI…)", "T1 /20", "T2 /20", "T3 /20", "📚Travail en séance (T1)", "🏠Travail à la maison (T1)", "🎒Oubli matériel (T1)", "Commentaire bulletin", ""]);
+  assert.deepEqual(heads, ["n°", "Nom", "Prénom", "Infos (PAI…)", "T1 /20", "T2 /20", "T3 /20", "📚Travail en séance (T1)", "🏠Travail à la maison (T1)", "🎒Oubli matériel (T1)", "🏷Mots-clés", "Commentaire bulletin", ""]);
   assert.equal(await page.locator("table.grid tbody tr").count(), 8);
   // Emma : A−, A ; Noah : non noté en séance
   assert.equal(await row(page, "DUBOIS").locator("td.ctr .total").nth(0).textContent(), "A−");
@@ -165,7 +165,9 @@ test("colonne à niveaux personnalisée : 3 niveaux nommés, règle « 2 derniè
   await dlg.locator("select").first().selectOption("niveaux");
   await dlg.locator("select").nth(1).selectOption("3");
   const names = dlg.locator('input[maxlength="20"]');
-  await names.nth(0).fill("Très bien"); await names.nth(1).fill("Bien"); await names.nth(2).fill("À revoir");
+  for (const [i, v] of ["Très bien", "Bien", "À revoir"].entries()) {  // la saisie est vérifiée : la machine de test peut être très chargée
+    for (let k = 0; k < 3; k++) { await names.nth(i).fill(v); if ((await names.nth(i).inputValue()) === v) break; }
+  }
   await dlg.locator("select").nth(2).selectOption("dernieres_periode");
   await dlg.locator('input[inputmode="numeric"]').last().fill("2");
   await dlg.locator("footer .btn.primary").click();
@@ -627,8 +629,9 @@ test("assistant d'appréciation : mots-clés, phrases types, genre, rédaction �
   await page.click("text=Ajouter un mot-clé");
   await page.fill('.dialog:has-text("Nouveau mot-clé") input[type=text]', "Oral");
   await page.locator('.dialog:has-text("Nouveau mot-clé") footer .btn.primary').click();
+  await page.waitForSelector('.dialog:has-text("Nouveau mot-clé")', { state: "detached" });
   await page.locator(".bankphrases").fill("{prénom} s'exprime avec aisance.\n{Il} gagne en {assurance|assurance}.");
-  await page.locator(".dialog").last().locator("footer .btn.primary").click();
+  await page.locator(".dialog:has(.bankview) footer .btn.primary").click();
   const bank = await page.evaluate(() => app.state.settings.appreciation.mots.find((m) => m.id === "oral"));
   assert.deepEqual(bank.phrases, ["{prénom} s'exprime avec aisance.", "{Il} gagne en {assurance|assurance}."]);
   // le nouveau mot-clé est proposé dans le menu « + Mot-clé »
@@ -685,7 +688,7 @@ test("assistant d'appréciation : prédiction de mots (Tab), abréviations, rég
   const abbr = page.locator(".bankphrases");
   assert.match(await abbr.inputValue(), /^tb = très bien/m);
   await abbr.fill((await abbr.inputValue()) + "\nzz = zèle {remarquable|remarquable}");
-  await page.locator(".dialog").last().locator("footer .btn.primary").click();
+  await page.locator(".dialog:has(.bankview) footer .btn.primary").click();
   const bank = await page.evaluate(() => app.state.settings.appreciation);
   assert.ok(bank.vocabulaire.includes("perspicace"));
   assert.deepEqual(bank.abreviations.find((a) => a.abr === "zz"), { abr: "zz", texte: "zèle {remarquable|remarquable}" });
@@ -720,7 +723,7 @@ test("mots-clés automatiques (d'après les compteurs) et relecture de la classe
   await page.locator('.bitem[data-rid="mots:materiel"]').click();
   assert.equal(await page.locator('[aria-label="Détection automatique"]').inputValue(), "oubli_orange");
   await page.locator('[aria-label="Détection automatique"]').selectOption("");
-  await page.locator(".dialog").last().locator("footer .btn.primary").click();
+  await page.locator(".dialog:has(.bankview) footer .btn.primary").click();
   assert.equal(await page.evaluate(() => app.state.settings.appreciation.mots.find((m) => m.id === "materiel").auto), "");
   await page.locator("footer .btn", { hasText: "Fermer" }).click();
   // 2. relecture : quatre appréciations identiques, un texte trop long avec un prénom d'un autre élève
@@ -754,6 +757,32 @@ test("mots-clés automatiques (d'après les compteurs) et relecture de la classe
   assert.equal(await page.evaluate(() => app.state.classes[0].eleves.find((s) => s.nom === "FONTAINE").comms["1"]), "Jules a bien progressé ce trimestre grâce à ses efforts.");
   await page.waitForFunction(() => document.querySelector(".revsummary") && document.querySelector(".revview"));
   await shot(page, "relecture");
+  noErrors(page);
+  await page.context().close();
+});
+
+test("colonne « Mots-clés » du tableau : pastilles, ajout et retrait, suit l'assistant", async () => {
+  const page = await env.page();
+  await createVault(page);
+  const kws = (nom) => page.evaluate((n) => app.state.classes[0].eleves.find((s) => s.nom === n).events.filter((e) => e.type.startsWith("mot:")).map((e) => e.type), nom);
+  assert.equal(await page.locator("table.grid thead th", { hasText: "Mots-clés" }).count(), 1);
+  const cell = (nom) => row(page, nom).locator("td.mots");
+  assert.equal(await cell("ANDRÉ").locator(".mchip:not(.add)").count(), 0);
+  await cell("ANDRÉ").locator(".mchip.add").click();
+  await page.locator(".menu >> text=Bavardages").click();
+  await cell("ANDRÉ").locator(".mchip.add").click();
+  await page.locator(".menu >> text=Efforts").click();
+  assert.deepEqual(await kws("ANDRÉ"), ["mot:bavardages", "mot:efforts"]);
+  assert.equal(await cell("ANDRÉ").locator(".mchip:not(.add)").count(), 2);
+  await cell("ANDRÉ").locator('.mchip[data-kw="bavardages"]').click();  // une fois de plus
+  assert.match(await cell("ANDRÉ").locator('.mchip[data-kw="bavardages"]').textContent(), /×2/);
+  await cell("ANDRÉ").locator(".mchip.add").click();
+  await page.locator(".menu >> text=Retirer une fois : Bavardages").click();
+  assert.deepEqual(await kws("ANDRÉ"), ["mot:bavardages", "mot:efforts"]);
+  assert.equal(await cell("BERNARD").locator(".mchip:not(.add)").count(), 0, "les autres élèves ne sont pas touchés");
+  // la colonne se masque dans les réglages des colonnes, comme les autres colonnes de base
+  await page.evaluate(() => { app.state.settings.base = { ...(app.state.settings.base || {}), mots: { visible: false } }; app.commit(); });
+  assert.equal(await page.locator("table.grid thead th", { hasText: "Mots-clés" }).count(), 0);
   noErrors(page);
   await page.context().close();
 });

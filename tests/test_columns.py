@@ -125,7 +125,7 @@ class ColonnesDeBaseTest(unittest.TestCase):
     def test_ordre_des_colonnes(self):
         self.assertEqual(C.order({}, []), C.DEFAULT_ORDER)
         self.assertEqual(C.order({}, ["c1", "c2"]), ["numero", "nom", "prenom", "infos", "notes", "qualSeance", "qualMaison", "seancePlus", "seanceMoins",
-                                                     "travail", "oubli", "c1", "c2", "comm", "fiche"])
+                                                     "travail", "oubli", "mots", "c1", "c2", "comm", "fiche"])
         # ordre choisi : on le respecte ; les colonnes manquantes reprennent leur place, les inconnues sont ignorées
         st = {"ordre": ["prenom", "nom", "inconnue", "c1", "travail", "prenom"]}
         got = C.order(st, ["c1", "c2"])

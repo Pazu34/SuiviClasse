@@ -39,11 +39,12 @@ export const BASE = {
   infos: { titre: "Infos (PAI…)", court: "Infos", emoji: "" },
   notes: { titre: "Notes", court: "Notes", emoji: "" },
   comm: { titre: "Commentaire bulletin", court: "Commentaire bulletin", emoji: "" },
+  mots: { titre: "Mots-clés", court: "Mots-clés", emoji: "🏷" },
   fiche: { titre: "", court: "", emoji: "📝" },
 };
-export const BASE_ORDER = ["numero", "nom", "prenom", "infos", "notes", "comm", "fiche"];
+export const BASE_ORDER = ["numero", "nom", "prenom", "infos", "notes", "mots", "comm", "fiche"];
 export const DEFAULT_ORDER = ["numero", "nom", "prenom", "infos", "notes", "qualSeance", "qualMaison", "seancePlus", "seanceMoins", "travail",
-  "oubli", "comm", "fiche"];
+  "oubli", "mots", "comm", "fiche"];
 export const ALWAYS_VISIBLE = new Set(["nom"]);
 
 const collapse = (s) => String(s).trim().split(/\s+/).filter(Boolean).join(" ");

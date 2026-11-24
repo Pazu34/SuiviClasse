@@ -347,3 +347,8 @@ td.xcheck.done { background: var(--ok) !important; }
 .revtext { margin: 6px 0 4px; line-height: 1.35; }
 .revalert { margin: 4px 0 0; padding: 4px 8px; border-radius: 6px; font-size: .92em; }
 .revalert.warn { background: var(--warn); } .revalert.bad { background: var(--bad); }
+td.mots { padding: 0 4px; }
+td.mots .mots { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; overflow: hidden; }
+.mchip { flex: none; border: 1px solid var(--border); border-radius: 14px; background: var(--surface2); color: var(--text); min-height: 30px; min-width: 32px; padding: 0 8px; }
+.mchip.pos { background: var(--ok); } .mchip.neg { background: var(--warn); }
+.mchip.add { margin-left: auto; color: var(--muted); }

@@ -147,7 +147,7 @@ class ColumnsTab {
       h("div", { class: "row wrap", style: { margin: "14px 0 6px" } }, h("strong", {}, "Colonnes du tableau"), h("div", { class: "grow" }),
         h("button", { class: "btn small", type: "button", onclick: () => this.add() }, "+ Ajouter une colonne…"),
         h("button", { class: "btn small", type: "button", onclick: () => this.presets() }, "Suggestions…")),
-      h("label", { class: "check" }, Object.assign(h("input", { type: "checkbox", checked: true }), {}), "Cacher les colonnes de base (n°, nom, prénom, infos, notes, commentaire, fiche)"),
+      h("label", { class: "check" }, Object.assign(h("input", { type: "checkbox", checked: true }), {}), "Cacher les colonnes de base (n°, nom, prénom, infos, notes, mots-clés, commentaire, fiche)"),
       this.list, this.err,
       h("p", { class: "hint" }, "Les flèches règlent l'ordre d'affichage de toutes les colonnes. Les colonnes ajoutées se placent avant le commentaire. Décochez « Cacher les colonnes de base » pour changer leur titre, leur pictogramme, leur place ou les masquer (le nom reste toujours affiché)."));
     this.el.querySelector('input[type="checkbox"]').addEventListener("change", (e) => { this.hideBase = e.target.checked; this.refresh(); });
@@ -165,7 +165,7 @@ class ColumnsTab {
     if (key in C.BASE) {
       const c = this.baseCfg(key);
       return { visible: c.visible, emoji: c.emoji, titre: c.titre || "(sans titre)", type: "Colonne de base",
-        detail: { notes: `Une colonne par période (${per.prefix}1 à ${per.prefix}${per.n})`, nom: "Toujours affichée", fiche: "Bouton en bout de ligne", comm: "Appréciation de la période" }[key] || "" };
+        detail: { notes: `Une colonne par période (${per.prefix}1 à ${per.prefix}${per.n})`, nom: "Toujours affichée", fiche: "Bouton en bout de ligne", comm: "Appréciation de la période", mots: "Mots-clés de la période (assistant d'appréciation)" }[key] || "" };
     }
     if (key in C.BUILTINS) {
       const c = this.builtinCfg(key), niv = C.GRADE_KEYS.includes(key);

@@ -45,6 +45,23 @@ export function keywordBar(app, s, onChange = null, { auto = false } = {}) {
   return root;
 }
 
+/** Cellule de la colonne « Mots-clés » du tableau : pastilles compactes (toucher = une fois de plus) et « ＋ » (ajouter, retirer une fois).
+ *  Le tableau se reconstruit après chaque modification (commit). */
+export function keywordCell(app, s) {
+  const t = app.t, b = A.bank(app.state.settings), byId = new Map(b.mots.map((m) => [m.id, m]));
+  const known = A.keywords(s, t);
+  const chips = known.map(([k, n]) => {
+    const m = byId.get(k) || { titre: k, emoji: "", ton: "=" };
+    return h("button", { class: "mchip " + TONE_CLASS[m.ton], type: "button", dataset: { kw: k }, title: `${m.titre} ×${n} — toucher : une fois de plus`, "aria-label": `${m.titre} : une fois de plus`,
+      onclick: () => { A.addKeyword(s, k, t); app.commit(); } }, (m.emoji || m.titre.slice(0, 3)) + (n > 1 ? `×${n}` : ""));
+  });
+  const titles = Object.fromEntries(b.mots.map((m) => [m.id, m.titre]));
+  const add = h("button", { class: "mchip add", type: "button", "aria-label": "Mots-clés", onclick: (e) => menu(e.currentTarget, [
+    ...b.mots.map((m) => ({ label: chipLabel(m), onClick: () => { A.addKeyword(s, m.id, t); app.commit(); } })),
+    ...(known.length ? [{ separator: true }, ...known.map(([k, n]) => ({ label: `Retirer une fois : ${titles[k] || k} (×${n})`, icon: "−", onClick: () => { A.removeKeyword(s, k, t); app.commit(); } }))] : [])]) }, "＋");
+  return h("div", { class: "mots" }, chips, add);
+}
+
 // ---------------------------------------------------------------- l'assistant
 export function openAppreciations(app, cls, start = null, { onClose = null } = {}) {
   const t = app.t, settings = app.state.settings, scale = C.scale(settings), word = app.per.word;

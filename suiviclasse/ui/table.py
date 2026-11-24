@@ -5,7 +5,7 @@ import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import messagebox, ttk
 
-from .. import columns, exchange, model
+from .. import appreciation, columns, exchange, model
 from ..prefs import COLUMN_MIN
 from .theme import P
 
@@ -16,7 +16,7 @@ LAYOUTS = {
 }
 # Largeur par défaut (compact, normal) de chaque sorte de colonne
 WIDTHS = {"numero": (30, 40), "nom": (108, 150), "prenom": (94, 125), "infos": (104, 150), "note": (46, 64),
-          "xnote": (52, 64), "xtext": (150, 200), "xlist": (110, 140), "xcheck": (46, 56), "comment": (280, 340), "fiche": (34, 40)}
+          "xnote": (52, 64), "xtext": (150, 200), "xlist": (110, 140), "xcheck": (46, 56), "comment": (280, 340), "fiche": (34, 40), "mots": (170, 220)}
 COUNTER_KINDS = ("seance", "counter")
 
 
@@ -61,6 +61,9 @@ def build_columns(app):
     for c in (c for c in customs if c["visible"]):
         kind = {"compteur": "counter", "note": "xnote", "texte": "xtext", "liste": "xlist", "coche": "xcheck", "niveaux": "grade"}[c["type"]]
         defs[c["id"]] = [Col(c["id"], kind, c["titre"], c["emoji"], c, per_period=True)]
+    b = columns.base(settings, "mots", short=compact)
+    if b["visible"]:
+        defs["mots"] = [Col("mots", "mots", b["titre"], b["emoji"])]
     b = columns.base(settings, "comm", short=compact)
     if b["visible"]:
         defs["comm"] = [Col("comm", "comment", b["titre"], b["emoji"])]
@@ -647,6 +650,7 @@ class Row:
         self.texts = []  # zones de texte à hauteur variable : (colonne, widget)
         self.fields = {}  # champs de saisie par clé de colonne (notes, commentaires…) : Entrée passe au champ du dessous
         self.comm = self.num = self.name = self.prenom = self.infos = None  # restent None si la colonne est masquée
+        self.mots = None  # pastilles des mots-clés (colonne « Mots-clés »)
         for i, col in enumerate(table.cols):
             parent = self._cell(r, i)
             getattr(self, "_build_" + col.kind)(col, parent, i)
@@ -771,6 +775,51 @@ class Row:
         label.bind("<Button-1>", lambda e, col=col: self.grade_menu(col, e))
         self.grades[col.key] = (parent, label)
 
+    def _build_mots(self, col, parent, i):
+        """Mots-clés notés pour l'appréciation : pastilles (clic = une fois de plus, clic droit = en retirer une) et « ＋ » pour en ajouter."""
+        btn = ttk.Button(parent, text="＋", style="Mini.TButton", width=2, command=lambda: self.mots_menu(btn))
+        btn.pack(side="right", padx=2)
+        self.mots = tk.Frame(parent, bg=self.bg)
+        self.mots.pack(side="left", fill="both", expand=True, padx=(3, 0))
+
+    def _paint_mots(self):
+        for w in self.mots.winfo_children():
+            w.destroy()
+        by_id = {m["id"]: m for m in appreciation.bank(self.app.state["settings"])["mots"]}
+        tone = {"+": "ok", "-": "warn", "=": "surface2"}
+        for k, n in appreciation.keywords(self.s, self.app.t):
+            m = by_id.get(k, {"titre": k, "emoji": "", "ton": "="})
+            text = (m["emoji"] or m["titre"][:3]) + (f"×{n}" if n > 1 else "")
+            lab = tk.Label(self.mots, text=text, bg=P[tone[m["ton"]]], fg=P["text"], font=self.font, padx=3, cursor="hand2")
+            lab.pack(side="left", padx=(0, 2), pady=3)
+            lab.bind("<Button-1>", lambda e, k=k: self.mot_add(k))
+            lab.bind("<Button-3>", lambda e, k=k: self.mot_remove(k))
+            Tooltip(lab, f"{m['titre']} ×{n} — clic : une fois de plus · clic droit : en retirer une")
+
+    def mots_menu(self, button):
+        t = self.app.t
+        bank = appreciation.bank(self.app.state["settings"])
+        menu = tk.Menu(button, tearoff=0)
+        for m in bank["mots"]:
+            menu.add_command(label=f"{m['emoji']} {m['titre']}".strip(), command=lambda k=m["id"]: self.mot_add(k))
+        noted = appreciation.keywords(self.s, t)
+        if noted:
+            menu.add_separator()
+            titles = {m["id"]: m["titre"] for m in bank["mots"]}
+            for k, n in noted:
+                menu.add_command(label=f"Retirer une fois : {titles.get(k, k)} (×{n})", command=lambda k=k: self.mot_remove(k))
+        menu.tk_popup(button.winfo_rootx(), button.winfo_rooty() + button.winfo_height())
+
+    def mot_add(self, k):
+        appreciation.add_keyword(self.s, k, self.app.t)
+        self.app.commit()
+        self._paint_mots()
+
+    def mot_remove(self, k):
+        if appreciation.remove_keyword(self.s, k, self.app.t):
+            self.app.commit()
+            self._paint_mots()
+
     def _build_xnote(self, col, parent, i):
         v = model.extra_value(self.s, col.cfg, self.app.t)
         var = tk.StringVar(value=exchange.note_text(v))
@@ -872,6 +921,8 @@ class Row:
             elif col.kind == "xcheck":
                 done = bool(model.extra_value(s, col.cfg, t))
                 self.checks[col.key].configure(text="☑" if done else "☐", bg=P["ok"] if done else self.bg)
+        if self.mots is not None:
+            self._paint_mots()
         self.fit()
 
     def _paint_counter(self, col, value, level):

@@ -235,3 +235,52 @@ print(json.dumps(d))`);
   };
   same(strip(js), strip(out));
 });
+
+// ---------------------------------------------------------------- menu d'un titre de colonne
+test("colonnes : afficher/masquer, pictogramme, colonnes maintenues au début et déplacements identiques au Python", () => {
+  const clone = (x) => JSON.parse(JSON.stringify(x));
+  const steps = [
+    ["set_visible", "oubli", false], ["set_visible", "infos", false], ["set_visible", "nom", false], ["set_visible", "inconnue", false],
+    ["set_emoji", "notes", "📝"], ["set_emoji", "travail", "🏠"], ["set_icon_only", "notes", true], ["set_icon_only", "travail", true], ["set_icon_only", "notes", false],
+    ["pin", "oubli"], ["pin", "oubli"], ["unpin", "nom"], ["pin", "qualSeance"], ["unpin", "numero"], ["pin", "c1"],
+    ["move", "oubli", "prenom"], ["move", "nom", "comm"], ["move", "qualMaison", "numero"], ["move", "c1", "mots"], ["set_visible", "infos", true], ["unpin", "oubli"],
+  ];
+  const base = { colonnes: [{ id: "c1", titre: "Oral", type: "texte" }], builtin: { oubli: { titre: "Oubli" } } };
+  const out = py(`
+import json, sys
+from suiviclasse import columns as C
+d = json.load(sys.stdin)
+st = d["base"]
+res = []
+for step in d["steps"]:
+    op, args = step[0], step[1:]
+    if op == "move":
+        order = [k for k in C.order(st, [c["id"] for c in C.customs(st)]) if k != args[0]]
+        order.insert(order.index(args[1]), args[0])
+        C.apply_move(st, order, args[0], d["pref"]); r = None
+    elif op == "set_visible": r = C.set_visible(st, *args)
+    elif op == "set_emoji": r = C.set_emoji(st, *args)
+    elif op == "set_icon_only": C.set_icon_only(st, *args); r = None
+    elif op == "pin": C.pin(st, args[0], d["pref"]); r = None
+    elif op == "unpin": C.unpin(st, args[0], d["pref"]); r = None
+    res.append([r, C.pinned_keys(st, d["pref"]), C.order(st, [c["id"] for c in C.customs(st)]), C.hidden_columns(st), C.icon_only_keys(st),
+                C.base(st, "notes")["emoji"], C.builtin(st, "travail")["emoji"], st.get("epingles"), st.get("icones")])
+print(json.dumps(res))`, { base, steps, pref: "infos" });
+  const st = clone(base);
+  steps.forEach((step, n) => {
+    const [op, ...args] = step;
+    let r = null;
+    if (op === "move") {
+      const order = C.order(st, C.customs(st).map((c) => c.id)).filter((k) => k !== args[0]);
+      order.splice(order.indexOf(args[1]), 0, args[0]);
+      C.applyMove(st, order, args[0], "infos");
+    } else if (op === "set_visible") r = C.setVisible(st, ...args);
+    else if (op === "set_emoji") r = C.setEmoji(st, ...args);
+    else if (op === "set_icon_only") C.setIconOnly(st, ...args);
+    else if (op === "pin") C.pin(st, args[0], "infos");
+    else if (op === "unpin") C.unpin(st, args[0], "infos");
+    const ids = C.customs(st).map((c) => c.id);
+    same([r, C.pinnedKeys(st, "infos"), C.order(st, ids), C.hiddenColumns(st), C.iconOnlyKeys(st), C.base(st, "notes").emoji, C.builtin(st, "travail").emoji, st.epingles === undefined ? null : st.epingles, st.icones === undefined ? null : st.icones], out[n], `étape ${n} ${JSON.stringify(step)}`);
+  });
+  same([C.configKey("note", "note2"), C.configKey("grade", "qualSeance"), C.configKey("comment", "comm")], ["notes", "qualSeance", "comm"]);
+});

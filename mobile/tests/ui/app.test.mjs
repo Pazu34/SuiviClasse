@@ -464,8 +464,8 @@ test("tableau : nom et prénom restent affichés quand on défile vers la droite
   // choix proposé dans les préférences
   await page.click('[aria-label="Menu"]');
   await page.click(".menu >> text=Préférences…");
-  await page.locator(".settingrow", { hasText: "Colonnes figées dans le tableau" }).locator("select").waitFor();
-  assert.equal(await page.locator(".settingrow", { hasText: "Colonnes figées dans le tableau" }).locator("select").inputValue(), "aucune");
+  await page.locator(".settingrow", { hasText: "Colonnes figées" }).locator("select").waitFor();
+  assert.equal(await page.locator(".settingrow", { hasText: "Colonnes figées" }).locator("select").inputValue(), "aucune");
   await shot(page, "colonnes-figees");
   await page.keyboard.press("Escape");
   noErrors(page);
@@ -825,6 +825,68 @@ test("colonnes : glisser un titre pour changer l'ordre (enregistré avec les don
   assert.deepEqual((await heads()).slice(7, 10), ["🎒Oubli matériel (T1)", "📚Travail en séance (T1)", "🏠Travail à la maison (T1)"]);
   await page.evaluate(() => app.undoAction());
   assert.deepEqual(await heads(), before);
+  noErrors(page);
+  await page.context().close();
+});
+
+test("menu d'un titre de colonne : copier, maintenir au début, pictogramme, cacher et réafficher", async () => {
+  const page = await env.page({ viewport: { width: 1500, height: 800 } });
+  await createVault(page);
+  await page.evaluate(() => {
+    window.__clip = null;
+    Object.defineProperty(navigator.clipboard, "writeText", { value: async (t) => { window.__clip = t; }, configurable: true });
+  });
+  const th = (txt) => page.locator("table.grid thead th", { hasText: txt }).first();
+  const heads = () => page.$$eval("table.grid thead th", (t) => t.map((x) => x.textContent.trim().replace(/\s+/g, " ")));
+  const menuOn = async (txt) => { await th(txt).click({ button: "right" }); await page.waitForSelector(".menu"); };
+  const items = () => page.$$eval(".menu button", (b) => b.map((x) => x.textContent.trim()));
+  // 1. copier : une valeur par ligne (T1), notes particulières comprises, puis avec les noms
+  await page.evaluate(() => { app.state.classes[0].eleves.find((s) => s.nom === "CHARPENTIER").notes["1"] = "a"; app.commit(); });
+  await menuOn("T1 /20");
+  assert.ok((await items()).some((t) => /Copier la colonne \(une valeur par ligne\)/.test(t)));
+  await page.locator(".menu >> text=Copier la colonne (une valeur par ligne)").click();
+  await page.waitForFunction(() => window.__clip !== null);
+  assert.equal(await page.evaluate(() => window.__clip), "14,5\r\n11\r\nAbs\r\n17\r\n12\r\n13\r\n\r\n19");  // comme une colonne de tableur : à coller dans PRONOTE
+  await menuOn("T1 /20");
+  await page.locator(".menu >> text=Copier la colonne avec les noms des élèves").click();
+  await page.waitForFunction(() => window.__clip && window.__clip.startsWith("ANDRÉ Léa"));
+  assert.equal((await page.evaluate(() => window.__clip)).split("\r\n")[0], "ANDRÉ Léa\t14,5");
+  // 2. maintenir au début : la colonne vient après Prénom, devient fixe et s'enregistre
+  await menuOn("Oubli");
+  await page.locator(".menu >> text=Maintenir au début du tableau").click();
+  let order = await heads();
+  assert.deepEqual(order.slice(0, 5), ["n°", "Nom", "Prénom", "🎒Oubli matériel (T1)", "Infos (PAI…)"]);
+  assert.equal(await page.locator("table.grid thead th.stick", { hasText: "Oubli" }).count(), 1);
+  assert.deepEqual(await page.evaluate(() => app.state.settings.epingles), ["numero", "nom", "prenom", "oubli"]);
+  await menuOn("Oubli");
+  assert.ok((await items()).some((t) => /Ne plus maintenir au début/.test(t)));
+  await page.locator(".menu >> text=Ne plus maintenir au début du tableau").click();
+  assert.equal(await page.locator("table.grid thead th.stick", { hasText: "Oubli" }).count(), 0);
+  assert.deepEqual(await page.evaluate(() => app.state.settings.epingles), ["numero", "nom", "prenom"]);
+  // 3. pictogramme à la place du titre, pour cette colonne seulement
+  await menuOn("Oubli");
+  await page.locator(".menu >> text=Remplacer le titre par un pictogramme").click();
+  await page.waitForSelector(".emojis button");
+  await page.locator(".emojis button", { hasText: "⭐" }).first().click();
+  assert.equal(await page.locator("table.grid thead th.iconly").count(), 1);
+  assert.equal((await page.locator("table.grid thead th.iconly").first().textContent()).trim(), "⭐");
+  assert.deepEqual(await page.evaluate(() => [app.state.settings.icones, app.state.settings.builtin.oubli.emoji]), [["oubli"], "⭐"]);
+  await page.locator("table.grid thead th.iconly").click({ button: "right" });
+  await page.locator(".menu >> text=Rétablir le titre").click();
+  assert.equal(await page.locator("table.grid thead th.iconly").count(), 0);
+  // 4. cacher (sauf le nom), puis réafficher depuis le menu d'une autre colonne
+  await menuOn("Nom");
+  assert.equal(await page.locator(".menu button", { hasText: "Cacher la colonne" }).isDisabled(), true);
+  await page.keyboard.press("Escape");
+  await menuOn("Oubli");
+  await page.locator(".menu >> text=Cacher la colonne").click();
+  assert.equal((await heads()).some((t) => /Oubli/.test(t)), false);
+  await menuOn("Prénom");
+  assert.ok((await items()).some((t) => /Réafficher : Oubli matériel/.test(t)));
+  await page.locator(".menu >> text=Réafficher : Oubli matériel").click();
+  assert.equal((await heads()).some((t) => /Oubli/.test(t)), true);
+  // 5. tout s'annule : l'état initial est retrouvé
+  for (let k = 0; k < 8; k++) await page.evaluate(() => app.undoAction());
   noErrors(page);
   await page.context().close();
 });

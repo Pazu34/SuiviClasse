@@ -10,7 +10,7 @@ const TYPE_LABELS = Object.fromEntries(C.TYPES);
 const parseNumber = (text) => { const v = Number(String(text).trim().replace(",", ".")); if (String(text).trim() === "" || !Number.isFinite(v)) throw new Error("Valeur numérique invalide."); return v; };
 
 // ---------------------------------------------------------------- pictogrammes
-function emojiPicker(current, onPick) {
+export function emojiPicker(current, onPick) {
   const other = h("input", { type: "text", maxLength: 8, style: { width: "100px" }, placeholder: "😀" });
   let ctl = null;
   const pick = (e) => { onPick(e); ctl.close(); };

@@ -4,9 +4,11 @@ import * as C from "../core/columns.js";
 import { isNumber, noteText } from "../core/exchange.js";
 import * as M from "../core/model.js";
 import { fmtNum, norm } from "../core/util.js";
-import { COUNTER_KINDS, buildColumns, configKey, counterState, directLevels, gradeMeanOf, gradeState, parseGrade } from "./columns_build.js";
+import { COUNTER_KINDS, buildColumns, columnTexts, configKey, counterState, directLevels, gradeMeanOf, gradeState, parseGrade } from "./columns_build.js";
 import { keywordCell } from "./appreciation_ui.js";
+import { copyText } from "../platform.js";
 import { alertDialog, confirmDialog, h, menu, promptDialog, toast } from "./dom.js";
+import { emojiPicker } from "./prefs_ui.js";
 import { openStudentSheet } from "./student.js";
 
 let ctx = null;
@@ -18,8 +20,8 @@ function measure(text, bold = false) {
 }
 
 const ANGLE = 60;
-const rotated = (app, c) => app.values.titresColonnes === "inclines" && !!c.title;  // toutes les colonnes qui ont un titre (pas « fiche »)
-const iconic = (app, c) => app.values.titresColonnes === "icones" && !!c.icon;
+const iconic = (app, c) => !!c.icon && (app.values.titresColonnes === "icones" || C.iconOnlyKeys(app.state.settings).includes(configKey(c)));  // réglage global ou colonne par colonne
+const rotated = (app, c) => app.values.titresColonnes === "inclines" && !!c.title && !iconic(app, c);  // toutes les colonnes titrées (pas « fiche »)
 
 /** Largeur d'un titre d'en-tête (majuscules, gras, 0,78 em, espacement 0,02 em : voir le CSS). */
 function measureHead(text) {
@@ -86,8 +88,6 @@ async function editText(app, td, { title, value, counter = null, save }) {
   else if (viaEnter) applyPendingFocus(app, td.closest("table") ? td.closest("table").parentElement : document);
 }
 
-/** Colonnes qui peuvent rester figées à gauche (début du tableau, jusqu'à la colonne choisie dans les préférences). */
-const FREEZE = { aucune: [], nom: ["numero", "nom"], prenom: ["numero", "nom", "prenom"], infos: ["numero", "nom", "prenom", "infos"] };
 
 function sizes(compact) { return compact ? { btn: 34, gap: 3 } : { btn: 40, gap: 3 }; }
 
@@ -301,11 +301,36 @@ function moveColumn(app, cols, i, j, after) {
   const current = C.order(settings, C.customs(settings).map((c) => c.id));
   const order = current.filter((k) => k !== src);
   order.splice(order.indexOf(dst) + (after ? 1 : 0), 0, src);
-  if (order.join() !== current.join()) { settings.ordre = order; app.commit(); }
+  if (order.join() !== current.join()) { C.applyMove(settings, order, src, app.values.colonneFigee); app.commit(); }
+}
+
+// ---------------------------------------------------------------- menu d'un titre de colonne (clic droit, ou toucher le titre)
+function columnMenu(app, cls, cols, i, anchor) {
+  const col = cols[i], settings = app.state.settings, key = configKey(col), pref = app.values.colonneFigee;
+  const pinned = C.pinnedKeys(settings, pref).includes(key), iconOnly = C.iconOnlyKeys(settings).includes(key);
+  const apply = (fn) => () => { fn(); app.commit(); };
+  const copy = (withNames) => async () => {
+    let values = columnTexts(app, cls, col);
+    if (withNames) values = values.map((v, n) => `${cls.eleves[n].nom} ${cls.eleves[n].prenom}\t${v}`);
+    const ok = await copyText(values.join("\r\n"));
+    toast(ok ? `Colonne « ${col.title || col.key} » copiée : ${values.length} lignes${withNames ? " avec les noms" : ""}` : "Copie impossible.", ok ? "" : "bad");
+  };
+  const pick = () => emojiPicker(col.icon, (emoji) => { C.setEmoji(settings, key, emoji); C.setIconOnly(settings, key, !!emoji); app.commit(); });
+  const hidden = C.hiddenColumns(settings);
+  menu(anchor, [
+    ...(col.kind !== "fiche" ? [{ label: "Copier la colonne (une valeur par ligne)", icon: "⧉", onClick: copy(false) }, { label: "Copier la colonne avec les noms des élèves", icon: "⧉", onClick: copy(true) }, { separator: true }] : []),
+    { label: pinned ? "Ne plus maintenir au début du tableau" : "Maintenir au début du tableau (à gauche)", icon: "📌", onClick: apply(() => (pinned ? C.unpin : C.pin)(settings, key, pref)) },
+    ...(col.kind !== "fiche" ? [{ label: iconOnly ? "Changer le pictogramme…" : "Remplacer le titre par un pictogramme…", icon: "🏷", onClick: pick }] : []),
+    ...(iconOnly ? [{ label: "Rétablir le titre", icon: "Aa", onClick: apply(() => C.setIconOnly(settings, key, false)) }] : []),
+    { label: "Cacher la colonne", icon: "🙈", disabled: C.ALWAYS_VISIBLE.has(key), onClick: apply(() => C.setVisible(settings, key, false)) },
+    ...(hidden.length ? [{ separator: true }, { header: "Colonnes cachées" }, ...hidden.map(([k, title]) => ({ label: `Réafficher : ${title}`, icon: "👁", onClick: apply(() => C.setVisible(settings, k, true)) }))] : []),
+    { separator: true },
+    { label: "Réglages des colonnes…", icon: "⚙", onClick: async () => (await import("./prefs_ui.js")).openPrefs(app, "colonnes") },
+  ], {});
 }
 
 /** Souris : glisser le titre ; écran tactile : appui long sur le titre, puis glisser (un glissement immédiat fait défiler le tableau). */
-function enableColumnDrag(app, wrap, heads, cols) {
+function enableColumnDrag(app, cls, wrap, heads, cols) {
   let drag = null, guide = null, ghost = null, scroller = null, lastX = 0;
   const targetAt = (x, y) => {
     const th = document.elementsFromPoint(x, y).find((el) => el.tagName === "TH" && heads.includes(el));
@@ -354,9 +379,17 @@ function enableColumnDrag(app, wrap, heads, cols) {
     }
     place(e.clientX);
   };
-  const onUp = (e) => end(e, true);
+  const onUp = (e) => {
+    const d = drag, tap = d && !d.on && Math.hypot(e.clientX - d.x0, e.clientY - d.y0) < 8;
+    end(e, true);
+    if (tap) columnMenu(app, cls, cols, d.i, heads[d.i]);  // un simple toucher (ou clic) sur le titre ouvre le menu
+  };
   const onCancel = (e) => end(e, false);
   const onTouchMove = (e) => { if (drag && drag.on) e.preventDefault(); };
+  heads.forEach((th, i) => th.addEventListener("contextmenu", (e) => {  // clic droit ; l'appui long tactile sert au glissement
+    e.preventDefault();
+    if (!(drag && drag.on) && e.pointerType !== "touch" && !(e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents)) columnMenu(app, cls, cols, i, { x: e.clientX, y: e.clientY });
+  }));
   heads.forEach((th, i) => th.addEventListener("pointerdown", (e) => {
     if (e.button > 0 || drag) return;
     const r = th.getBoundingClientRect();
@@ -379,8 +412,8 @@ export function renderTable(app, cls) {
   const widths = cols.map((c) => colWidth(c, compact));
   const lefts = [];
   let acc = 0, nSticky = 0;
-  const allowed = FREEZE[app.values.colonneFigee] || [];
-  for (let i = 0; i < cols.length && allowed.includes(cols[i].key); i++) { lefts.push(acc); acc += widths[i]; nSticky++; }
+  const allowed = new Set(C.pinnedKeys(app.state.settings, app.values.colonneFigee));  // colonnes maintenues au début (clic sur un titre)
+  for (let i = 0; i < cols.length && allowed.has(configKey(cols[i])); i++) { lefts.push(acc); acc += widths[i]; nSticky++; }
   // trop de colonnes figées pour la largeur de l'écran (plus de la moitié) : elles défileraient avec les autres plutôt que de tout cacher
   if (nSticky >= cols.length || acc > window.innerWidth * 0.5) { nSticky = 0; lefts.length = 0; }
   const stickyAttrs = (i) => (i < nSticky ? { class: "stick" + (i === nSticky - 1 ? " last" : ""), style: { left: lefts[i] + "px" } } : {});
@@ -424,7 +457,7 @@ export function renderTable(app, cls) {
     h("colgroup", {}, widths.map((w) => h("col", { style: { width: w + "px" } }))),
     h("thead", {}, head), h("tbody", {}, rows), h("tfoot", {}, foot));
   const wrap = h("div", { class: "tablewrap", style: rotH ? { paddingRight: Math.ceil(rotH * 0.6) + "px" } : {} }, table);
-  enableColumnDrag(app, wrap, heads, cols);
+  enableColumnDrag(app, cls, wrap, heads, cols);
   if (!students.length) {
     wrap.append(h("div", { class: "empty" }, cls.eleves.length ? "Aucun élève ne correspond à la recherche." : "Aucun élève. Utilisez « Importer des élèves… » dans le menu ⋮."));
   }

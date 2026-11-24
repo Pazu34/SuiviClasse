@@ -24,7 +24,7 @@ SCHEMA = [
                   ("prenom_i", "Prénom + initiale du nom"), ("initiales", "Initiales")], unit=""),
     dict(key="affichage", group="Affichage", label="Densité du tableau", type="choice", default="compact",
          options=[("compact", "Resserré (portable)"), ("normal", "Normal (grand écran)")], unit=""),
-    dict(key="colonneFigee", group="Affichage", label="Colonnes figées dans le tableau", type="choice", default="prenom",
+    dict(key="colonneFigee", group="Affichage", label="Colonnes figées au départ (clic droit sur un titre pour en épingler d'autres)", type="choice", default="prenom",
          options=[("aucune", "Aucune"), ("nom", "Jusqu'au nom"), ("prenom", "Jusqu'au prénom (n°, nom, prénom)"),
                   ("infos", "Jusqu'aux infos (PAI…)")], unit=""),
     dict(key="oubliOrange", group="Alertes — oublis de matériel", label="Orange à partir de", type="int", min=1, max=99, default=2, unit="par période"),

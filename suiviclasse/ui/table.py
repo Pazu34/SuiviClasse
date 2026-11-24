@@ -187,10 +187,6 @@ class Tooltip:
             self.tip = None
 
 
-# colonnes qui peuvent rester figées : le début du tableau jusqu'à la colonne choisie dans les préférences
-FREEZE = {"nom": ("numero", "nom"), "prenom": ("numero", "nom", "prenom"), "infos": ("numero", "nom", "prenom", "infos")}
-
-
 class ClassTable(ttk.Frame):
     def __init__(self, parent, app, cls):
         super().__init__(parent)
@@ -203,6 +199,7 @@ class ClassTable(ttk.Frame):
         self.scale = columns.scale(app.state["settings"])
         self.cols = build_columns(app)
         self.titres = app.values["titresColonnes"]  # « texte », « icones » ou « inclines »
+        self.icon_only = set(columns.icon_only_keys(app.state["settings"]))  # colonnes dont le titre est remplacé par leur pictogramme
         self._init_fonts()
         self.defaults = [self.default_width(c) for c in self.cols]
         saved = app.prefs.widths(self.mode)  # largeurs réglées à la souris, par clé de colonne
@@ -293,11 +290,11 @@ class ClassTable(ttk.Frame):
 
     def rotated(self, col):
         """Titre incliné ? (mode « inclinés » : toutes les colonnes qui ont un titre, donc pas « fiche »)"""
-        return self.titres == "inclines" and bool(col.title)
+        return self.titres == "inclines" and bool(col.title) and not self.iconic(col)
 
     def iconic(self, col):
         """Pictogramme seul ? (les colonnes qui n'ont pas de pictogramme gardent leur titre)"""
-        return self.titres == "icones" and bool(col.icon)
+        return bool(col.icon) and (self.titres == "icones" or self.config_key(col) in self.icon_only)
 
     def rotated_text(self, col):
         """Titre incliné, raccourci (…) pour tenir sous la hauteur maximale ; (texte, longueur en pixels).
@@ -322,18 +319,22 @@ class ClassTable(ttk.Frame):
         items, need, longest = [], self.row_h, 0
         for i, col in enumerate(self.cols):
             title = col.title + (f" ({pre}{t})" if col.per_period else "")
-            if self.rotated(col):
+            if self.iconic(col):
+                need = max(need, self.icon_font.metrics("linespace") + 14)
+                items.append((i, "icon", col.icon, title))
+            elif self.rotated(col):
                 text, length = self.rotated_text(col)
                 need, longest = max(need, math.ceil(length * sin + lh * cos + 4 + 6)), max(longest, length)
-                items.append((i, True, text, title))
+                items.append((i, "rot", text, title))
             else:
                 text = title.upper()
                 need = max(need, wrapped_lines(text, self.head_font, max(10, self.widths[i] - 14)) * lh + 14)
-                items.append((i, False, text, title))
+                items.append((i, "flat", text, title))
         self.head_h = H = need
         self.head_extra = int(longest * cos / 1 + lh) + 10  # place pour le débordement du dernier titre incliné
         edges = {self.hdrL: [], self.hdr: []}
-        for i, rot, text, title in items:
+        for i, kind, text, title in items:
+            rot = kind == "rot"
             cv = self.hdrL if i < self.nfix else self.hdr
             x = sum(self.widths[:i]) if i < self.nfix else sum(self.widths[self.nfix:i])
             w = self.widths[i]
@@ -342,6 +343,10 @@ class ClassTable(ttk.Frame):
                 cv.create_line(x, H, x + H / tan, 0, fill=P["border"], tags="head")
                 px = x + w / 2 + (lh / 2) / sin + 4 / tan  # la ligne médiane du titre passe par le milieu de la colonne
                 cv.create_text(px, H - 4, text=text, angle=ANGLE, anchor="sw", font=self.head_font, fill=P["muted"], tags=("head", f"t{i}"))
+                self._canvas_tip(cv, f"t{i}", title)
+            elif kind == "icon":
+                cv.create_text(x + w / 2, H - 6, text=text, anchor="s", font=self.icon_font, fill=P["text"], tags=("head", f"t{i}"))
+                cv.create_line(x + w - 1, H - lh - 10, x + w - 1, H - 4, fill=P["border"], tags="head")
                 self._canvas_tip(cv, f"t{i}", title)
             else:
                 cv.create_text(x + w / 2, H - 6, text=text, anchor="s", width=max(10, w - 14), justify="center", font=self.head_font,
@@ -383,6 +388,7 @@ class ClassTable(ttk.Frame):
                 self.reset_width(i)
 
         cv.bind("<Motion>", motion)
+        cv.bind("<Button-3>", lambda e: self.column_menu(self._col_at(e.x_root)[0], e))
         cv.bind("<ButtonPress-1>", press)
         cv.bind("<B1-Motion>", self._drag_move)
         cv.bind("<ButtonRelease-1>", self._drag_end)
@@ -444,12 +450,12 @@ class ClassTable(ttk.Frame):
 
     # ---------- colonnes figées ----------
     def frozen_count(self):
-        """Nombre de colonnes figées à gauche : celles du début du tableau jusqu'à la colonne choisie dans les préférences.
+        """Nombre de colonnes figées à gauche : les colonnes maintenues au début (clic droit sur un titre ; à défaut, le réglage des préférences).
         Aucune si elles occuperaient plus de la moitié de la largeur disponible (il ne resterait plus de place pour défiler)."""
-        allowed = FREEZE.get(self.app.values["colonneFigee"], ())
+        allowed = set(columns.pinned_keys(self.app.state["settings"], self.app.values["colonneFigee"]))
         n = 0
         for c in self.cols:
-            if c.key not in allowed:
+            if self.config_key(c) not in allowed:
                 break
             n += 1
         avail = self.winfo_width()
@@ -593,9 +599,112 @@ class ClassTable(ttk.Frame):
         return "notes" if col.kind == "note" else col.key
 
     def _bind_col_drag(self, widget, i):
+        widget.bind("<Button-3>", lambda e, i=i: self.column_menu(i, e), add="+")
         widget.bind("<ButtonPress-1>", lambda e, i=i: self._col_press(e, i), add="+")
         widget.bind("<B1-Motion>", self._col_motion, add="+")
         widget.bind("<ButtonRelease-1>", self._col_release, add="+")
+
+    # ---------- menu d'un titre de colonne (clic droit) ----------
+    def column_texts(self, col):
+        """Contenu de la colonne pour la période affichée : une valeur par élève, dans l'ordre de la classe (une ligne chacune)."""
+        t, out = self.app.t, []
+        titles = {m["id"]: m["titre"] for m in appreciation.bank(self.app.state["settings"])["mots"]}
+        for s in self.cls["eleves"]:
+            k = col.kind
+            if k == "num":
+                v = "" if s.get("numero") is None else str(s["numero"])
+            elif k in ("nom", "prenom"):
+                v = s[k]
+            elif k == "infos":
+                v = " · ".join(x.strip() for x in s["infos"].splitlines() if x.strip())
+            elif k == "note":
+                v = exchange.note_text(s["notes"][col.key[4:]])
+            elif k == "xnote":
+                v = exchange.note_text(model.extra_value(s, col.cfg, t))
+            elif k in ("xtext", "xlist"):
+                v = model.extra_value(s, col.cfg, t) or ""
+            elif k == "xcheck":
+                v = "oui" if model.extra_value(s, col.cfg, t) else ""
+            elif k in COUNTER_KINDS:
+                v = exchange.fmt_num(counter_state(self.app, col, s, t)[0])
+            elif k == "grade":
+                text, _, n = grade_state(self.app, col, s, t)
+                v = text if n else ""
+            elif k == "comment":
+                v = s["comms"].get(str(t), "")
+            elif k == "mots":
+                v = "; ".join(titles.get(m, m) + (f" ×{n}" if n > 1 else "") for m, n in appreciation.keywords(s, t))
+            else:
+                v = ""
+            out.append(" ".join(str(v).split()))
+        return out
+
+    def copy_column(self, col, with_names):
+        """Copie la colonne dans le presse-papiers : une valeur par ligne (« Coller » les notes dans PRONOTE), ou « NOM Prénom ⇥ valeur »."""
+        values = self.column_texts(col)
+        if with_names:
+            values = [f"{s['nom']} {s['prenom']}\t{v}" for s, v in zip(self.cls["eleves"], values)]
+        self.clipboard_clear()
+        self.clipboard_append("\r\n".join(values))
+        self.update()
+        self.app.status.set(f"Colonne « {col.title or col.key} » copiée : {len(values)} lignes" + (" avec les noms" if with_names else ""))
+
+    def column_menu(self, i, e):
+        col, settings = self.cols[i], self.app.state["settings"]
+        key = self.config_key(col)
+        pref = self.app.values["colonneFigee"]
+        pinned = key in columns.pinned_keys(settings, pref)
+        menu = tk.Menu(self, tearoff=0)
+        if col.kind != "fiche":
+            menu.add_command(label="Copier la colonne (une valeur par ligne)", command=lambda: self.copy_column(col, False))
+            menu.add_command(label="Copier la colonne avec les noms des élèves", command=lambda: self.copy_column(col, True))
+            menu.add_separator()
+        menu.add_command(label="Ne plus maintenir au début du tableau" if pinned else "Maintenir au début du tableau (à gauche)",
+                         command=lambda: self.pin_column(key, not pinned))
+        if col.kind != "fiche":
+            if key in self.icon_only:
+                menu.add_command(label="Changer le pictogramme…", command=lambda: self.pick_icon(col, key))
+                menu.add_command(label="Rétablir le titre", command=lambda: self.set_icon_only(key, False))
+            else:
+                menu.add_command(label="Remplacer le titre par un pictogramme…", command=lambda: self.pick_icon(col, key))
+        menu.add_command(label="Cacher la colonne", state="disabled" if key in columns.ALWAYS_VISIBLE else "normal", command=lambda: self.hide_column(key))
+        hidden = columns.hidden_columns(settings)
+        if hidden:
+            sub = tk.Menu(menu, tearoff=0)
+            for hk, title in hidden:
+                sub.add_command(label=title, command=lambda hk=hk: self.show_column(hk))
+            menu.add_cascade(label="Réafficher une colonne cachée", menu=sub)
+        menu.add_separator()
+        menu.add_command(label="Largeur par défaut", command=lambda: self.reset_width(i))
+        menu.add_command(label="Réglages des colonnes…", command=lambda: self.app.show_prefs())
+        menu.tk_popup(e.x_root, e.y_root)
+
+    def pin_column(self, key, on):
+        settings, pref = self.app.state["settings"], self.app.values["colonneFigee"]
+        (columns.pin if on else columns.unpin)(settings, key, pref)
+        self.commit_columns()
+
+    def hide_column(self, key):
+        if columns.set_visible(self.app.state["settings"], key, False):
+            self.commit_columns()
+
+    def show_column(self, key):
+        if columns.set_visible(self.app.state["settings"], key, True):
+            self.commit_columns()
+
+    def set_icon_only(self, key, on):
+        columns.set_icon_only(self.app.state["settings"], key, on)
+        self.commit_columns()
+
+    def pick_icon(self, col, key):
+        from .columns_dialog import EmojiPicker
+
+        def chosen(emoji):
+            settings = self.app.state["settings"]
+            columns.set_emoji(settings, key, emoji)
+            columns.set_icon_only(settings, key, bool(emoji))
+            self.commit_columns()
+        EmojiPicker(self.app, None, col.icon, chosen)
 
     def _col_press(self, e, i):
         self._cdrag = {"i": i, "x0": e.x_root, "on": False}
@@ -651,15 +760,19 @@ class ClassTable(ttk.Frame):
         order = [k for k in current if k != src]
         order.insert(order.index(dst) + (1 if after else 0), src)
         if order != current:
-            settings["ordre"] = order
-            x, y = self.body.xview()[0], self.body.yview()[0]
-            self.app.commit()
-            self.app.render()  # nouvelle liste de colonnes : le tableau est reconstruit, à la même position de défilement
-            t = self.app.table
-            if t is not None:
-                t.update_idletasks()
-                t._xview("moveto", x)
-                t.body.yview_moveto(y)
+            columns.apply_move(settings, order, src, self.app.values["colonneFigee"])
+            self.commit_columns()
+
+    def commit_columns(self):
+        """Enregistre un changement de configuration des colonnes (annulable) et reconstruit le tableau à la même position de défilement."""
+        x, y = self.body.xview()[0], self.body.yview()[0]
+        self.app.commit()
+        self.app.render()  # nouvelle liste de colonnes : le tableau est reconstruit
+        t = self.app.table
+        if t is not None:
+            t.update_idletasks()
+            t._xview("moveto", x)
+            t.body.yview_moveto(y)
 
     def _drag_move(self, e):
         if self._cdrag:

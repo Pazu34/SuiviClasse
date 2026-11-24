@@ -351,3 +351,68 @@ class NiveauxPersonnalisesTest(unittest.TestCase):
         self.assertEqual([e["v"] for e in data["classes"][0]["eleves"][0]["events"]], [3, 3, 2, 2, 1])   # 5->3, 4->3 (2,25+1), 3->2, 2->2, 1->1
         self.assertEqual(data["classes"][0]["eleves"][1]["events"][0]["v"], 5)                          # une autre colonne n'est pas touchée
         self.assertEqual(model.rescale_levels(data, "c1", 3, 3), 0)
+
+
+class MenuDesTitresTest(unittest.TestCase):
+    def test_afficher_masquer(self):
+        st = {}
+        self.assertTrue(C.set_visible(st, "oubli", False))
+        self.assertFalse(C.builtin(st, "oubli")["visible"])
+        self.assertTrue(C.set_visible(st, "infos", False))
+        self.assertFalse(C.base(st, "infos")["visible"])
+        self.assertFalse(C.set_visible(st, "nom", False))  # le nom reste affiché
+        self.assertTrue(C.base(st, "nom")["visible"])
+        st["colonnes"] = [{"id": "c1", "titre": "Oral", "type": "texte"}]
+        self.assertTrue(C.set_visible(st, "c1", False))
+        hidden = [k for k, _ in C.hidden_columns(st)]
+        self.assertEqual(hidden, ["infos", "seancePlus", "seanceMoins", "travail", "oubli", "c1"])  # séance et travail sont masqués par défaut
+        C.set_visible(st, "infos", True)
+        self.assertEqual([k for k, _ in C.hidden_columns(st)], hidden[1:])
+        self.assertFalse(C.set_visible(st, "inconnue", False))
+
+    def test_pictogramme(self):
+        st = {}
+        C.set_emoji(st, "notes", "📝")
+        C.set_emoji(st, "travail", "🏠")
+        self.assertEqual((C.base(st, "notes")["emoji"], C.builtin(st, "travail")["emoji"]), ("📝", "🏠"))
+        C.set_icon_only(st, "notes", True)
+        C.set_icon_only(st, "travail", True)
+        C.set_icon_only(st, "notes", False)
+        self.assertEqual(C.icon_only_keys(st), ["travail"])
+        self.assertEqual(C.icon_only_keys({"icones": "non"}), [])
+
+    def test_colonnes_maintenues_au_debut(self):
+        st = {}
+        self.assertEqual(C.pinned_keys(st), ["numero", "nom", "prenom"])  # réglage de départ
+        self.assertEqual(C.pinned_keys(st, "aucune"), [])
+        self.assertEqual(C.pinned_keys(st, "infos"), ["numero", "nom", "prenom", "infos"])
+        C.pin(st, "oubli")  # épinglée : elle vient juste après les colonnes déjà épinglées
+        self.assertEqual(C.pinned_keys(st), ["numero", "nom", "prenom", "oubli"])
+        self.assertEqual(C.order(st, [])[:6], ["numero", "nom", "prenom", "oubli", "infos", "notes"])
+        C.pin(st, "oubli")  # déjà épinglée : rien ne change
+        self.assertEqual(C.pinned_keys(st)[-1], "oubli")
+        C.unpin(st, "nom")  # retirée : elle passe après le bloc, les autres restent au début
+        self.assertEqual(C.pinned_keys(st), ["numero", "prenom", "oubli"])
+        self.assertEqual(C.order(st, [])[:5], ["numero", "prenom", "oubli", "nom", "infos"])
+        for k in ("numero", "prenom", "oubli"):
+            C.unpin(st, k)
+        self.assertEqual(C.pinned_keys(st, "prenom"), [])  # un choix explicite : plus rien n'est épinglé
+        self.assertEqual(st["epingles"], [])
+
+    def test_deplacement_met_a_jour_les_colonnes_maintenues(self):
+        def move(st, key, before):
+            order = [k for k in C.order(st, []) if k != key]
+            order.insert(order.index(before), key)
+            C.apply_move(st, order, key)
+        st = {}
+        move(st, "oubli", "prenom")  # déposée dans le bloc du début : elle devient maintenue
+        self.assertEqual(C.pinned_keys(st), ["numero", "nom", "oubli", "prenom"])
+        move(st, "nom", "comm")  # sortie du bloc : elle ne l'est plus
+        self.assertEqual(C.pinned_keys(st), ["numero", "oubli", "prenom"])
+        st2 = {}
+        move(st2, "oubli", "travail")  # déplacement ordinaire loin du début : rien d'épinglé ne change
+        self.assertEqual(C.pinned_keys(st2), ["numero", "nom", "prenom"])
+        self.assertNotIn("epingles", st2)
+
+    def test_cle_de_configuration(self):
+        self.assertEqual([C.config_key("note", "note2"), C.config_key("grade", "qualSeance"), C.config_key("comment", "comm")], ["notes", "qualSeance", "comm"])

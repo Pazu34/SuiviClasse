@@ -2,7 +2,8 @@
 import * as C from "../core/columns.js";
 import * as M from "../core/model.js";
 import { initialText } from "../core/plan.js";
-import { noteCode } from "../core/exchange.js";
+import * as A from "../core/appreciation.js";
+import { noteCode, noteText } from "../core/exchange.js";
 import { fmtNum } from "../core/util.js";
 
 export const COUNTER_KINDS = ["seance", "counter"];
@@ -18,7 +19,7 @@ export class Col {
 }
 
 /** Clé de la colonne dans la configuration (les colonnes T1, T2, T3 forment un seul groupe : « notes »). */
-export const configKey = (col) => (col.kind === "note" ? "notes" : col.key);
+export const configKey = (col) => C.configKey(col.kind, col.key);
 
 export function buildColumns(app) {
   const settings = app.state.settings, per = app.per;
@@ -105,4 +106,28 @@ export function parseGrade(text, maxi = 20) {
   const v = Number(text.replace(",", "."));
   if (!Number.isFinite(v) || v < 0 || v > maxi) throw new Error("hors limites");
   return v;
+}
+
+/** Contenu de la colonne pour la période affichée : une valeur par élève, dans l'ordre de la classe (une ligne chacune). */
+export function columnTexts(app, cls, col) {
+  const t = app.t, sk = String(t), titles = Object.fromEntries(A.bank(app.state.settings).mots.map((m) => [m.id, m.titre]));
+  return cls.eleves.map((s) => {
+    let v;
+    switch (col.kind) {
+      case "num": v = s.numero === null || s.numero === undefined ? "" : String(s.numero); break;
+      case "nom": v = s.nom; break;
+      case "prenom": v = s.prenom; break;
+      case "infos": v = s.infos.split(/\r?\n/).map((x) => x.trim()).filter(Boolean).join(" · "); break;
+      case "note": v = noteText(s.notes[col.key.slice(4)]); break;
+      case "xnote": v = noteText(M.extraValue(s, col.cfg, sk)); break;
+      case "xtext": case "xlist": v = M.extraValue(s, col.cfg, sk) || ""; break;
+      case "xcheck": v = M.extraValue(s, col.cfg, sk) ? "oui" : ""; break;
+      case "seance": case "counter": v = fmtNum(counterState(app, col, s, t)[0]); break;
+      case "grade": { const [text, , n] = gradeState(app, col, s, t); v = n ? text : ""; break; }
+      case "comment": v = s.comms[sk] || ""; break;
+      case "mots": v = A.keywords(s, t).map(([m, n]) => (titles[m] || m) + (n > 1 ? ` ×${n}` : "")).join("; "); break;
+      default: v = "";
+    }
+    return String(v).split(/\s+/).filter(Boolean).join(" ");
+  });
 }

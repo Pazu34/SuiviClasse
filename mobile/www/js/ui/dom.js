@@ -92,7 +92,8 @@ export function modal({ title = "", body = null, actions = [], size = "", side =
   stack.push(ctl);
   host.append(scrim);
   const first = bodyEl.querySelector("input:not([type=checkbox]):not([type=file]), textarea");
-  if (first && !side) setTimeout(() => first.focus(), 60);
+  // le champ prend le focus, sauf si une autre fenêtre s'est ouverte entre-temps par-dessus : le focus ne lui est pas volé
+  if (first && !side) setTimeout(() => { if (stack[stack.length - 1] === ctl && !ctl.closed) first.focus(); }, 60);
   return ctl;
 }
 

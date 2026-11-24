@@ -5,6 +5,8 @@ La configuration est enregistrée dans les données chiffrées (state["settings"
     settings["builtin"]   réglages des colonnes à compteur intégrées : {clé: {"titre", "emoji", "increments", "visible"}}
     settings["base"]      réglages des colonnes de base (n°, nom, prénom, infos, notes, commentaire, fiche) : {clé: {"titre", "emoji", "visible"}}
     settings["ordre"]     ordre d'affichage de toutes les colonnes (clés) ; les colonnes absentes de la liste reprennent leur place habituelle
+    settings["epingles"]  clés des colonnes maintenues au début (à gauche) du tableau, dans l'ordre ; absent : réglage de départ (voir PIN_DEFAULTS)
+    settings["icones"]    clés des colonnes dont le titre est remplacé par leur pictogramme
     settings["colonnes"]  colonnes personnalisées, dans l'ordre d'affichage :
         {"id", "titre", "emoji", "type", "visible", "increments", "echelle", "choix", "orange", "rouge", "preset"}
 Colonnes à niveaux : à chaque séance on attribue un niveau choisi parmi 2 à 5 (A à E par défaut, du meilleur au moins bon). La colonne
@@ -254,6 +256,129 @@ def order(settings, custom_ids):
         if k not in out:
             out.insert(out.index("comm") if "comm" in out else len(out), k)
     return out
+
+
+# ---------------------------------------------------------------- actions du menu d'un titre de colonne
+# Colonnes maintenues au début du tableau tant que l'utilisateur n'en a pas épinglé lui-même : réglage « Colonnes figées dans le tableau ».
+PIN_DEFAULTS = {"aucune": [], "nom": ["numero", "nom"], "prenom": ["numero", "nom", "prenom"], "infos": ["numero", "nom", "prenom", "infos"]}
+
+
+def config_key(kind, key):
+    """Clé de configuration d'une colonne affichée : les colonnes T1, T2, T3 forment un seul groupe, « notes »."""
+    return "notes" if kind == "note" else key
+
+
+def _entry(settings, key):
+    """Dictionnaire de réglages modifiable d'une colonne (crée celui des colonnes de base et intégrées), ou None."""
+    if key in BASE:
+        return settings.setdefault("base", {}).setdefault(key, {})
+    if key in BUILTINS:
+        return settings.setdefault("builtin", {}).setdefault(key, {})
+    for raw in settings.get("colonnes") or []:
+        if isinstance(raw, dict) and raw.get("id") == key:
+            return raw
+    return None
+
+
+def set_visible(settings, key, visible):
+    """Affiche ou masque une colonne (le nom reste toujours affiché). Retourne True si c'est fait."""
+    if not visible and key in ALWAYS_VISIBLE:
+        return False
+    entry = _entry(settings, key)
+    if entry is None:
+        return False
+    entry["visible"] = bool(visible)
+    return True
+
+
+def set_emoji(settings, key, emoji):
+    entry = _entry(settings, key)
+    if entry is None:
+        return False
+    entry["emoji"] = emoji
+    return True
+
+
+def hidden_columns(settings):
+    """Colonnes masquées : [(clé, titre)], dans l'ordre d'affichage."""
+    ids = [c["id"] for c in customs(settings)]
+    out = []
+    for key in order(settings, ids):
+        if key in BASE:
+            c = base(settings, key)
+        elif key in BUILTINS:
+            c = builtin(settings, key)
+        else:
+            c = next((x for x in customs(settings) if x["id"] == key), None)
+        if c and not c["visible"]:
+            out.append((key, c["titre"] or key))
+    return out
+
+
+def pinned_keys(settings, default_pref="prenom"):
+    """Colonnes maintenues au début du tableau, dans l'ordre : celles de l'utilisateur, sinon celles du réglage de départ."""
+    known = order(settings, [c["id"] for c in customs(settings)])
+    raw = settings.get("epingles")
+    if isinstance(raw, list):
+        wanted = [k for k in raw if k in known]
+    else:
+        wanted = [k for k in PIN_DEFAULTS.get(default_pref, PIN_DEFAULTS["prenom"]) if k in known]
+    return [k for k in known if k in wanted]
+
+
+def _reposition(settings, key, pins, keep_place=False):
+    """Replace `key` juste après la dernière colonne épinglée de `pins` (au tout début s'il n'y en a pas)."""
+    ids = [c["id"] for c in customs(settings)]
+    current = order(settings, ids)
+    rest = [k for k in current if k != key]
+    if pins:
+        pos = max(rest.index(p) for p in pins if p in rest) + 1
+    else:
+        pos = current.index(key) if keep_place else 0
+    rest.insert(pos, key)
+    settings["ordre"] = rest
+
+
+def pin(settings, key, default_pref="prenom"):
+    """Maintient la colonne au début du tableau : elle se place juste après les colonnes déjà épinglées."""
+    pins = pinned_keys(settings, default_pref)
+    if key in pins:
+        return
+    _reposition(settings, key, pins)
+    settings["epingles"] = pins + [key]
+
+
+def unpin(settings, key, default_pref="prenom"):
+    """La colonne n'est plus maintenue ; elle passe juste après les colonnes qui le restent (elles forment toujours le début du tableau)."""
+    pins = [p for p in pinned_keys(settings, default_pref) if p != key]
+    _reposition(settings, key, pins, keep_place=True)
+    settings["epingles"] = pins
+
+
+def apply_move(settings, new_order, moved, default_pref="prenom"):
+    """Enregistre un nouvel ordre après le déplacement de la colonne `moved` : déposée dans le bloc des colonnes maintenues au début,
+    elle l'est aussi ; sortie de ce bloc, elle ne l'est plus."""
+    pins = pinned_keys(settings, default_pref)
+    last = max((new_order.index(p) for p in pins if p != moved and p in new_order), default=-1)
+    i = new_order.index(moved)
+    if moved in pins and i > last:
+        pins.remove(moved)
+    elif moved not in pins and i < last:
+        pins.append(moved)
+    settings["ordre"] = new_order
+    pins = [k for k in new_order if k in pins]
+    if "epingles" in settings or pins != pinned_keys({**settings, "epingles": None}, default_pref):
+        settings["epingles"] = pins
+
+
+def icon_only_keys(settings):
+    raw = settings.get("icones")
+    return [k for k in raw if isinstance(k, str)] if isinstance(raw, list) else []
+
+
+def set_icon_only(settings, key, on):
+    keys = [k for k in icon_only_keys(settings) if k != key]
+    settings["icones"] = keys + [key] if on else keys
 
 
 def scale(settings):

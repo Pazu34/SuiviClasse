@@ -163,6 +163,94 @@ export function order(settings, customIds) {
   return out;
 }
 
+// ---------------------------------------------------------------- actions du menu d'un titre de colonne (voir suiviclasse/columns.py)
+export const PIN_DEFAULTS = { aucune: [], nom: ["numero", "nom"], prenom: ["numero", "nom", "prenom"], infos: ["numero", "nom", "prenom", "infos"] };
+
+/** Clé de configuration d'une colonne affichée : les colonnes T1, T2, T3 forment un seul groupe, « notes ». */
+export const configKey = (kind, key) => (kind === "note" ? "notes" : key);
+
+function entry(settings, key) {
+  if (key in BASE) { settings.base = settings.base || {}; return (settings.base[key] = settings.base[key] || {}); }
+  if (key in BUILTINS) { settings.builtin = settings.builtin || {}; return (settings.builtin[key] = settings.builtin[key] || {}); }
+  return (settings.colonnes || []).find((r) => r && typeof r === "object" && r.id === key) || null;
+}
+
+/** Affiche ou masque une colonne (le nom reste toujours affiché). Retourne true si c'est fait. */
+export function setVisible(settings, key, visible) {
+  if (!visible && ALWAYS_VISIBLE.has(key)) return false;
+  const e = entry(settings, key);
+  if (!e) return false;
+  e.visible = !!visible;
+  return true;
+}
+
+export function setEmoji(settings, key, emoji) {
+  const e = entry(settings, key);
+  if (!e) return false;
+  e.emoji = emoji;
+  return true;
+}
+
+/** Colonnes masquées : [[clé, titre]], dans l'ordre d'affichage. */
+export function hiddenColumns(settings) {
+  const cs = customs(settings), out = [];
+  for (const key of order(settings, cs.map((c) => c.id))) {
+    const c = key in BASE ? base(settings, key) : key in BUILTINS ? builtin(settings, key) : cs.find((x) => x.id === key);
+    if (c && !c.visible) out.push([key, c.titre || key]);
+  }
+  return out;
+}
+
+/** Colonnes maintenues au début du tableau, dans l'ordre : celles de l'utilisateur, sinon celles du réglage de départ. */
+export function pinnedKeys(settings, defaultPref = "prenom") {
+  const known = order(settings, customs(settings).map((c) => c.id));
+  const wanted = Array.isArray(settings.epingles) ? settings.epingles.filter((k) => known.includes(k)) : (PIN_DEFAULTS[defaultPref] || PIN_DEFAULTS.prenom).filter((k) => known.includes(k));
+  return known.filter((k) => wanted.includes(k));
+}
+
+function reposition(settings, key, pins, keepPlace = false) {
+  const current = order(settings, customs(settings).map((c) => c.id));
+  const rest = current.filter((k) => k !== key);
+  const pos = pins.length ? Math.max(...pins.filter((p) => rest.includes(p)).map((p) => rest.indexOf(p))) + 1 : keepPlace ? current.indexOf(key) : 0;
+  rest.splice(pos, 0, key);
+  settings.ordre = rest;
+}
+
+/** Maintient la colonne au début du tableau : elle se place juste après les colonnes déjà épinglées. */
+export function pin(settings, key, defaultPref = "prenom") {
+  const pins = pinnedKeys(settings, defaultPref);
+  if (pins.includes(key)) return;
+  reposition(settings, key, pins);
+  settings.epingles = [...pins, key];
+}
+
+/** La colonne n'est plus maintenue ; elle passe juste après les colonnes qui le restent. */
+export function unpin(settings, key, defaultPref = "prenom") {
+  const pins = pinnedKeys(settings, defaultPref).filter((p) => p !== key);
+  reposition(settings, key, pins, true);
+  settings.epingles = pins;
+}
+
+/** Enregistre un nouvel ordre après le déplacement de la colonne `moved` (déposée dans le bloc du début, elle est maintenue ; sortie, elle ne l'est plus). */
+export function applyMove(settings, newOrder, moved, defaultPref = "prenom") {
+  let pins = pinnedKeys(settings, defaultPref);
+  const last = Math.max(-1, ...pins.filter((p) => p !== moved && newOrder.includes(p)).map((p) => newOrder.indexOf(p)));
+  const i = newOrder.indexOf(moved);
+  if (pins.includes(moved) && i > last) pins = pins.filter((p) => p !== moved);
+  else if (!pins.includes(moved) && i < last) pins.push(moved);
+  settings.ordre = newOrder;
+  pins = newOrder.filter((k) => pins.includes(k));
+  const dflt = pinnedKeys({ ...settings, epingles: null }, defaultPref);
+  if ("epingles" in settings || pins.join() !== dflt.join()) settings.epingles = pins;
+}
+
+export const iconOnlyKeys = (settings) => (Array.isArray(settings.icones) ? settings.icones.filter((k) => typeof k === "string") : []);
+
+export function setIconOnly(settings, key, on) {
+  const keys = iconOnlyKeys(settings).filter((k) => k !== key);
+  settings.icones = on ? [...keys, key] : keys;
+}
+
 export function scale(settings) {
   const v = pyFloat(truthy(settings.echelle) ? settings.echelle : DEFAULT_SCALE);
   if (!Number.isFinite(v)) return DEFAULT_SCALE;

@@ -211,6 +211,7 @@ class ClassTable(ttk.Frame):
         self.total_w = sum(self.widths)
         self.head_h = self.row_h
         self._drag = None
+        self._cdrag = None  # déplacement d'une colonne par glisser-déposer de son titre
         self.guide = tk.Frame(self, width=2, bg=P["accent"])  # repère affiché pendant le redimensionnement d'une colonne
         # Deux zones côte à côte : les colonnes figées (à gauche, ne défilent pas horizontalement) et les autres (à droite).
         # Le défilement vertical est commun ; seules les colonnes de droite défilent vers la gauche ou la droite.
@@ -372,6 +373,8 @@ class ClassTable(ttk.Frame):
             i = hit(e)
             if i is not None:
                 self._drag_start(i, e)
+            else:
+                self._col_press(e, self._col_at(e.x_root)[0])
 
         def double(e):
             i = hit(e)
@@ -557,6 +560,8 @@ class ClassTable(ttk.Frame):
                 lab = tk.Label(c, text=text, bg=P["surface2"], fg=P["muted"], font=head_font, justify="center", anchor="center",
                                wraplength=0 if fits else max(10, self.widths[i] - 10))  # titre centré, à la ligne s'il est trop long
                 lab.pack(fill="both", expand=True, padx=2)
+            for w in [c] + [x for x in c.winfo_children() if isinstance(x, tk.Label)]:
+                self._bind_col_drag(w, i)
             if col.kind != "fiche":
                 self._add_handle(c, i)
             heads.append(c)
@@ -582,7 +587,83 @@ class ClassTable(ttk.Frame):
     def _drag_start(self, i, e):
         self._drag = {"i": i, "x0": e.x_root, "w0": self.widths[i], "w": self.widths[i]}
 
+    # ---------- réorganiser les colonnes : glisser un titre et le déposer entre deux colonnes ----------
+    def config_key(self, col):
+        """Clé de la colonne dans la configuration (les colonnes T1, T2, T3 forment un seul groupe : « notes »)."""
+        return "notes" if col.kind == "note" else col.key
+
+    def _bind_col_drag(self, widget, i):
+        widget.bind("<ButtonPress-1>", lambda e, i=i: self._col_press(e, i), add="+")
+        widget.bind("<B1-Motion>", self._col_motion, add="+")
+        widget.bind("<ButtonRelease-1>", self._col_release, add="+")
+
+    def _col_press(self, e, i):
+        self._cdrag = {"i": i, "x0": e.x_root, "on": False}
+
+    def _col_at(self, x_root):
+        """(colonne sous le pointeur, True si le pointeur est dans sa moitié droite) ; les colonnes figées et les autres sont deux zones."""
+        n = len(self.cols)
+        if self.nfix and x_root < self.hdr.winfo_rootx():
+            x, start, stop = x_root - self.hdrL.winfo_rootx(), 0, self.nfix
+        else:
+            x, start, stop = self.hdr.canvasx(x_root - self.hdr.winfo_rootx()), self.nfix, n
+        acc = 0
+        for j in range(start, stop):
+            w = self.widths[j]
+            if x < acc + w or j == stop - 1:
+                return j, x > acc + w / 2
+            acc += w
+        return start, False
+
+    def _boundary_x(self, j, after):
+        """Abscisse (dans ce tableau) du bord gauche ou droit de la colonne j."""
+        if j < self.nfix:
+            x = self.hdrL.winfo_rootx() + sum(self.widths[:j])
+        else:
+            x = self.hdr.winfo_rootx() + sum(self.widths[self.nfix:j]) - self.hdr.canvasx(0)
+        return x + (self.widths[j] if after else 0) - self.winfo_rootx()
+
+    def _col_motion(self, e):
+        d = self._cdrag
+        if not d or (not d["on"] and abs(e.x_root - d["x0"]) < 6):
+            return
+        d["on"] = True
+        self.configure(cursor="fleur")
+        j, after = self._col_at(e.x_root)
+        self.guide.place(x=self._boundary_x(j, after), y=0, relheight=1.0)
+        self.guide.lift()
+
+    def _col_release(self, e):
+        d, self._cdrag = self._cdrag, None
+        self.configure(cursor="")
+        self.guide.place_forget()
+        if d and d["on"]:
+            j, after = self._col_at(e.x_root)
+            self.move_column(d["i"], j, after)
+
+    def move_column(self, i, j, after):
+        """Place la colonne affichée i avant (ou après) la colonne affichée j ; l'ordre est enregistré avec les données (comme « Monter / Descendre »)."""
+        src, dst = self.config_key(self.cols[i]), self.config_key(self.cols[j])
+        if src == dst:
+            return
+        settings = self.app.state["settings"]
+        current = columns.order(settings, [c["id"] for c in columns.customs(settings)])
+        order = [k for k in current if k != src]
+        order.insert(order.index(dst) + (1 if after else 0), src)
+        if order != current:
+            settings["ordre"] = order
+            x, y = self.body.xview()[0], self.body.yview()[0]
+            self.app.commit()
+            self.app.render()  # nouvelle liste de colonnes : le tableau est reconstruit, à la même position de défilement
+            t = self.app.table
+            if t is not None:
+                t.update_idletasks()
+                t._xview("moveto", x)
+                t.body.yview_moveto(y)
+
     def _drag_move(self, e):
+        if self._cdrag:
+            return self._col_motion(e)
         d = self._drag
         if not d:
             return
@@ -596,6 +677,8 @@ class ClassTable(ttk.Frame):
         self.guide.lift()
 
     def _drag_end(self, e):
+        if self._cdrag:
+            return self._col_release(e)
         d, self._drag = self._drag, None
         self.guide.place_forget()
         if d and d["w"] != self.widths[d["i"]]:

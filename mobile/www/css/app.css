@@ -352,3 +352,5 @@ td.mots .mots { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap;
 .mchip { flex: none; border: 1px solid var(--border); border-radius: 14px; background: var(--surface2); color: var(--text); min-height: 30px; min-width: 32px; padding: 0 8px; }
 .mchip.pos { background: var(--ok); } .mchip.neg { background: var(--warn); }
 .mchip.add { margin-left: auto; color: var(--muted); }
+.colguide { position: fixed; width: 3px; background: var(--accent); z-index: 85; pointer-events: none; border-radius: 2px; }
+table.grid thead th { cursor: grab; }

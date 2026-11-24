@@ -4,7 +4,7 @@ import * as C from "../core/columns.js";
 import { isNumber, noteText } from "../core/exchange.js";
 import * as M from "../core/model.js";
 import { fmtNum, norm } from "../core/util.js";
-import { COUNTER_KINDS, buildColumns, counterState, directLevels, gradeMeanOf, gradeState, parseGrade } from "./columns_build.js";
+import { COUNTER_KINDS, buildColumns, configKey, counterState, directLevels, gradeMeanOf, gradeState, parseGrade } from "./columns_build.js";
 import { keywordCell } from "./appreciation_ui.js";
 import { alertDialog, confirmDialog, h, menu, promptDialog, toast } from "./dom.js";
 import { openStudentSheet } from "./student.js";
@@ -210,7 +210,7 @@ function cellFor(app, cls, s, col, dups, scale) {
       const k = col.key.slice(4);
       const input = h("input", { class: "cell", type: "text", inputMode: "decimal", enterKeyHint: "next", value: noteText(s.notes[k]) });
       const td = h("td", {}, input);
-      input.addEventListener("focus", () => setTimeout(() => input.select(), 0));
+      input.addEventListener("focus", () => { const v0 = input.value; setTimeout(() => { if (input.value === v0) input.select(); }, 0); });  // sélection au toucher, sans effacer ce qu'on a déjà tapé
       const commit = () => {
         let value;
         try { value = parseGrade(input.value, scale); } catch (e) { toast(`Entrez un nombre entre 0 et ${fmtNum(scale)}, ou a (absent), n (non noté), d (dispensé).`, "bad"); input.value = noteText(s.notes[k]); return "invalid"; }
@@ -243,7 +243,7 @@ function cellFor(app, cls, s, col, dups, scale) {
       const input = h("input", { class: "cell", type: "text", inputMode: "decimal", enterKeyHint: "next", value: noteText(v) });
       const td = h("td", {}, input);
       let cur = v;
-      input.addEventListener("focus", () => setTimeout(() => input.select(), 0));
+      input.addEventListener("focus", () => { const v0 = input.value; setTimeout(() => { if (input.value === v0) input.select(); }, 0); });  // sélection au toucher, sans effacer ce qu'on a déjà tapé
       const commit = () => {
         let value;
         try { value = parseGrade(input.value, maxi); } catch (e) { toast(`Entrez un nombre entre 0 et ${fmtNum(maxi)}, ou a (absent), n (non noté), d (dispensé).`, "bad"); input.value = noteText(cur); return "invalid"; }
@@ -290,6 +290,83 @@ function footerValue(app, cls, col) {
     ? cls.eleves.map((s) => s.notes[col.key.slice(4)]).filter(isNumber)   // Abs, Disp et N.Not ne comptent pas dans la moyenne
     : cls.eleves.map((s) => M.extraValue(s, col.cfg, t)).filter(isNumber);
   return vals.length ? fmtNum(vals.reduce((a, b) => a + b, 0) / vals.length) : "";
+}
+
+// ---------------------------------------------------------------- réorganiser les colonnes : glisser un titre, le déposer entre deux colonnes
+/** Place la colonne i avant (ou après) la colonne j ; l'ordre est enregistré avec les données (comme « Monter / Descendre »). */
+function moveColumn(app, cols, i, j, after) {
+  const src = configKey(cols[i]), dst = configKey(cols[j]);
+  if (src === dst) return;
+  const settings = app.state.settings;
+  const current = C.order(settings, C.customs(settings).map((c) => c.id));
+  const order = current.filter((k) => k !== src);
+  order.splice(order.indexOf(dst) + (after ? 1 : 0), 0, src);
+  if (order.join() !== current.join()) { settings.ordre = order; app.commit(); }
+}
+
+/** Souris : glisser le titre ; écran tactile : appui long sur le titre, puis glisser (un glissement immédiat fait défiler le tableau). */
+function enableColumnDrag(app, wrap, heads, cols) {
+  let drag = null, guide = null, ghost = null, scroller = null, lastX = 0;
+  const targetAt = (x, y) => {
+    const th = document.elementsFromPoint(x, y).find((el) => el.tagName === "TH" && heads.includes(el));
+    if (th) { const r = th.getBoundingClientRect(); return [heads.indexOf(th), x > r.left + r.width / 2]; }
+    const first = heads[0].getBoundingClientRect(), last = heads[heads.length - 1].getBoundingClientRect();
+    return x < first.left ? [0, false] : [heads.length - 1, true];
+  };
+  const place = (x) => {
+    lastX = x;
+    const [j, after] = targetAt(x, drag.y);
+    const r = heads[j].getBoundingClientRect(), w = wrap.getBoundingClientRect();
+    guide.style.left = (after ? r.right : r.left) - 1 + "px"; guide.style.top = w.top + "px"; guide.style.height = w.height + "px";
+    ghost.style.left = x + 8 + "px"; ghost.style.top = drag.y + 8 + "px";
+    return [j, after];
+  };
+  const begin = (x) => {
+    drag.on = true;
+    guide = h("div", { class: "colguide" });
+    ghost = h("div", { class: "dragghost" }, cols[drag.i].title || "Colonne");
+    document.body.append(guide, ghost);
+    scroller = setInterval(() => {  // près d'un bord de l'écran : le tableau défile
+      const w = wrap.getBoundingClientRect();
+      if (lastX < w.left + 48) wrap.scrollLeft -= 14; else if (lastX > w.right - 48) wrap.scrollLeft += 14;
+      place(lastX);
+    }, 30);
+    place(x);
+  };
+  const end = (e, ok) => {
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+    window.removeEventListener("pointercancel", onCancel);
+    window.removeEventListener("touchmove", onTouchMove);
+    if (!drag) return;
+    clearTimeout(drag.timer);
+    clearInterval(scroller);
+    const d = drag; drag = null;
+    if (guide) { guide.remove(); ghost.remove(); guide = ghost = null; }
+    if (d.on && ok) { const [j, after] = targetAt(e.clientX, d.y); moveColumn(app, cols, d.i, j, after); }
+  };
+  const onMove = (e) => {
+    if (!drag) return;
+    if (!drag.on) {
+      const moved = Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0);
+      if (drag.touch) { if (moved > 12) end(e, false); } else if (moved > 6) begin(e.clientX);
+      return;
+    }
+    place(e.clientX);
+  };
+  const onUp = (e) => end(e, true);
+  const onCancel = (e) => end(e, false);
+  const onTouchMove = (e) => { if (drag && drag.on) e.preventDefault(); };
+  heads.forEach((th, i) => th.addEventListener("pointerdown", (e) => {
+    if (e.button > 0 || drag) return;
+    const r = th.getBoundingClientRect();
+    drag = { i, x0: e.clientX, y0: e.clientY, y: r.top + r.height / 2, on: false, touch: e.pointerType !== "mouse", timer: null };
+    if (drag.touch) drag.timer = setTimeout(() => { if (drag) { begin(drag.x0); if (navigator.vibrate) navigator.vibrate(15); } }, 380);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("touchmove", onTouchMove, { passive: false });
+  }));
 }
 
 /** Construit le tableau (zone défilante) d'une classe pour la période affichée et la recherche en cours. */
@@ -347,6 +424,7 @@ export function renderTable(app, cls) {
     h("colgroup", {}, widths.map((w) => h("col", { style: { width: w + "px" } }))),
     h("thead", {}, head), h("tbody", {}, rows), h("tfoot", {}, foot));
   const wrap = h("div", { class: "tablewrap", style: rotH ? { paddingRight: Math.ceil(rotH * 0.6) + "px" } : {} }, table);
+  enableColumnDrag(app, wrap, heads, cols);
   if (!students.length) {
     wrap.append(h("div", { class: "empty" }, cls.eleves.length ? "Aucun élève ne correspond à la recherche." : "Aucun élève. Utilisez « Importer des élèves… » dans le menu ⋮."));
   }

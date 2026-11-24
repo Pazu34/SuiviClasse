@@ -17,6 +17,9 @@ export class Col {
   get levels() { return C.gradeCfg(this.cfg).niveaux; }
 }
 
+/** Clé de la colonne dans la configuration (les colonnes T1, T2, T3 forment un seul groupe : « notes »). */
+export const configKey = (col) => (col.kind === "note" ? "notes" : col.key);
+
 export function buildColumns(app) {
   const settings = app.state.settings, per = app.per;
   const compact = app.values.affichage === "compact";

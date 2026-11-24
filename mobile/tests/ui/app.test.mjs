@@ -786,3 +786,45 @@ test("colonne « Mots-clés » du tableau : pastilles, ajout et retrait, suit l'
   noErrors(page);
   await page.context().close();
 });
+
+test("colonnes : glisser un titre pour changer l'ordre (enregistré avec les données, annulable)", async () => {
+  const page = await env.page({ viewport: { width: 1500, height: 800 } });
+  await createVault(page);
+  const heads = () => page.$$eval("table.grid thead th", (t) => t.map((x) => x.textContent.trim().replace(/\s+/g, " ")));
+  const drag = async (from, to, side) => {
+    const a = await page.locator("table.grid thead th", { hasText: from }).first().boundingBox();
+    const b = await page.locator("table.grid thead th", { hasText: to }).first().boundingBox();
+    const y = a.y + a.height / 2;
+    await page.mouse.move(a.x + a.width / 2, y);
+    await page.mouse.down();
+    await page.mouse.move(a.x + a.width / 2 + 20, y, { steps: 3 });
+    await page.mouse.move(side === "before" ? b.x + 6 : b.x + b.width - 6, y, { steps: 8 });
+    assert.equal(await page.locator(".colguide").count(), 1, "repère d'insertion affiché");
+    await page.mouse.up();
+  };
+  const before = await heads();
+  assert.deepEqual(before.slice(7, 10), ["📚Travail en séance (T1)", "🏠Travail à la maison (T1)", "🎒Oubli matériel (T1)"]);
+  // « Oubli » glissé devant « Travail en séance »
+  await drag("Oubli", "Travail en séance", "before");
+  assert.deepEqual((await heads()).slice(7, 10), ["🎒Oubli matériel (T1)", "📚Travail en séance (T1)", "🏠Travail à la maison (T1)"]);
+  assert.equal(await page.locator(".colguide").count(), 0);
+  const ordre = await page.evaluate(() => app.state.settings.ordre);
+  assert.ok(ordre.indexOf("oubli") < ordre.indexOf("qualSeance") && ordre.indexOf("oubli") > ordre.indexOf("notes"), "ordre enregistré : " + ordre);
+  // le groupe des notes (T1, T2, T3) se déplace d'un bloc : T2 glissé après « Commentaire bulletin »
+  await drag("T2", "Commentaire", "after");
+  const h2 = await heads();
+  assert.deepEqual(h2.slice(-5, -2), ["T1 /20", "T2 /20", "T3 /20"].slice(0, 0).concat(h2.slice(-5, -2)));
+  assert.ok(h2.indexOf("T1 /20") > h2.indexOf("Commentaire bulletin") && h2.indexOf("T3 /20") === h2.indexOf("T1 /20") + 2, h2.join(" | "));
+  // simple clic sur un titre : rien ne bouge
+  const stable = await heads();
+  await page.locator("table.grid thead th", { hasText: "Prénom" }).first().click();
+  assert.deepEqual(await heads(), stable);
+  // annuler ramène l'ordre précédent
+  await page.keyboard.press("Escape");
+  await page.evaluate(() => app.undoAction());
+  assert.deepEqual((await heads()).slice(7, 10), ["🎒Oubli matériel (T1)", "📚Travail en séance (T1)", "🏠Travail à la maison (T1)"]);
+  await page.evaluate(() => app.undoAction());
+  assert.deepEqual(await heads(), before);
+  noErrors(page);
+  await page.context().close();
+});

@@ -366,7 +366,8 @@ def remove_last(student, type_, t):
         e = student["events"][i]
         if e["type"] == type_ and e["t"] == t:
             del student["events"][i]
-            return
+            return True
+    return False
 
 
 def event_datetime(event):

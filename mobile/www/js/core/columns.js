@@ -1,5 +1,6 @@
 // Colonnes du tableau : colonnes intégrées (réglables) et colonnes personnalisées. Port de suiviclasse/columns.py.
 // La configuration est enregistrée dans les données chiffrées (state.settings) : voir la description détaillée dans columns.py.
+import { bank as appreciationBank } from "./appreciation.js";
 import { EMOJIS, PRESETS } from "./columns_data.js";
 import { cps, pyFloat, pyRound } from "./util.js";
 
@@ -225,5 +226,9 @@ export function typeLabel(settings, ev) {
   for (const key of ["travail", "oubli", ...GRADE_KEYS]) if (ev === key) return builtin(settings, key).titre;
   if (ev === "seance") return "Séance";
   for (const col of customs(settings)) if (col.id === ev) return col.titre;
+  if (ev.startsWith("mot:")) {  // mot-clé noté pour l'appréciation de bulletin
+    const key = ev.slice(4), m = appreciationBank(settings).mots.find((x) => x.id === key);
+    return "Mot-clé : " + (m ? m.titre : key);
+  }
   return ev;
 }

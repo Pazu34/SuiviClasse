@@ -150,8 +150,9 @@ export function setSeanceTotal(student, t, bucket, target) {
 export function removeLast(student, type, t) {
   for (let i = student.events.length - 1; i >= 0; i--) {
     const e = student.events[i];
-    if (e.type === type && e.t === t) { student.events.splice(i, 1); return; }
+    if (e.type === type && e.t === t) { student.events.splice(i, 1); return true; }
   }
+  return false;
 }
 
 export const eventDate = (e) => new Date(e.date);

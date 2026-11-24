@@ -276,3 +276,79 @@ print(json.dumps(data))`, data);
   assert.equal(M.coerceExtra("d", "note"), "d");
   assert.equal(M.coerceExtra("12,5", "note"), 12.5);
 });
+
+// ---------------------------------------------------------------- assistant d'appréciation
+import * as A from "../www/js/core/appreciation.js";
+
+test("assistant d'appréciation : phrases, genre, tranches, évolution, suggestions, banque identiques au Python", () => {
+  const templates = ["{prénom} est {sérieux|sérieuse} et {il} reste {concentré|concentrée} ce {période}. {Il} a progressé{e}.", "a {faute} b", "{a|b|c}", "{seul}", "{Il} {e}{e}", ""];
+  const cases = [];
+  for (const t of templates) for (const g of ["f", "m", ""]) cases.push([t, "Léa", g, "semestre"]);
+  const out = py(`
+import json, sys
+from suiviclasse import appreciation as A
+print(json.dumps([A.render(*c) for c in json.load(sys.stdin)]))`, cases);
+  cases.forEach((c, i) => assert.equal(A.render(...c), out[i], JSON.stringify(c)));
+
+  const prenoms = ["Léa", "LÉA", "Inès", "Marie-Claire", "Hugo", "Mathéo", "Jean-Baptiste", "Zzyzx", "", "Camille", "  éloïse ", "Anne Sophie", "RAPHAËL"];
+  const g = py(`
+import json, sys
+from suiviclasse import appreciation as A
+print(json.dumps([A.guess_genre(p) for p in json.load(sys.stdin)]))`, prenoms);
+  prenoms.forEach((p, i) => assert.equal(A.guessGenre(p), g[i], JSON.stringify(p)));
+
+  const notes = [[0, 20], [7.9, 20], [8, 20], [11.99, 20], [12, 20], [15, 20], [16, 20], [20, 20], [7, 10], [5, 5], [null, 20], ["a", 20], ["n", 20], [10, 0]];
+  const bands = py(`
+import json, sys
+from suiviclasse import appreciation as A
+print(json.dumps([A.band_index(*c) for c in json.load(sys.stdin)]))`, notes);
+  notes.forEach((c, i) => assert.equal(A.bandIndex(...c), bands[i], JSON.stringify(c)));
+
+  const raws = [null, {}, "x", [], { mots: [{ id: "Mon Mot!", titre: " Mon  mot ", ton: "?", phrases: ["  a  b ", "", 3] }, { id: "x" }, "z", { id: "monmot", titre: "doublon" }, { id: "ok", titre: "Ok", emoji: "😀😀😀😀😀😀😀😀😀😀", ton: "+" }],
+    resultats: [{ id: "r0", phrases: ["Seule phrase"] }], evolution: "n'importe quoi", conclusions: [{ id: "c5", phrases: [] }] }, { mots: "non" }, DEFAULT_BANK_FOR_TEST()];
+  const banks = py(`
+import json, sys
+from suiviclasse import appreciation as A
+print(json.dumps([A.sanitize_bank(r) for r in json.load(sys.stdin)]))`, raws);
+  raws.forEach((r, i) => same(A.sanitizeBank(r), banks[i], "banque " + i));
+  same(A.defaultBank(), py(`
+import json
+from suiviclasse import appreciation as A
+print(json.dumps(A.default_bank()))`));
+  const settingsCases = [{}, { appreciation: {} }, { appreciation: { mots: [] } }, { appreciation: "x" }, { appreciation: { mots: [{ id: "a", titre: "A", phrases: ["p"] }] } }];
+  const bs = py(`
+import json, sys
+from suiviclasse import appreciation as A
+print(json.dumps([A.bank(s) for s in json.load(sys.stdin)]))`, settingsCases);
+  settingsCases.forEach((s, i) => same(A.bank(s), bs[i], "bank " + i));
+  same(["Matériel", "Chant & danse", "!!!"].map((t) => A.newKeywordId(t, A.defaultBank())), ["materiel2", "chantdanse", "mot"]);
+
+  // élèves : mots-clés, évolution, suggestions
+  const mk = (notes, events) => ({ nom: "X", prenom: "Léa", notes, comms: {}, extra: {}, events: events.map(([type, t, date], n) => ({ id: "e" + n, type, t, v: 1, note: "", date })) });
+  const students = [
+    mk({ 1: 10, 2: 14.5, 3: null }, [["mot:efforts", 2, "2026-01-02T10:00:00Z"], ["mot:bavardages", 2, "2026-01-03T10:00:00Z"], ["mot:bavardages", 2, "2026-01-04T10:00:00Z"], ["mot:retards", 1, "2026-01-01T10:00:00Z"], ["travail", 2, "2026-01-01T10:00:00Z"]]),
+    mk({ 1: 12, 2: 10, 3: "a" }, [["mot:disparu", 2, "2026-01-02T10:00:00Z"], ["mot:serieux", 2, "2026-01-02T10:00:00Z"], ["mot:attention", 2, "2026-01-02T10:00:00Z"]]),
+    mk({ 1: 12, 2: 12.5, 3: 9 }, []),
+    mk({ 1: null, 2: null, 3: null }, [["mot:soin", 1, "2026-01-02T10:00:00Z"]]),
+  ];
+  const custom = { appreciation: { mots: [{ id: "soin", titre: "Soin", ton: "+", phrases: ["Bien tenu"] }, { id: "efforts", titre: "Efforts", phrases: ["a"] }] } };
+  const jobs = [];
+  for (const s of students) for (const t of [1, 2, 3]) for (const scale of [20, 10]) for (const st of [{}, custom]) jobs.push([s, t, scale, st]);
+  const res = py(`
+import json, sys
+from suiviclasse import appreciation as A
+jobs = json.load(sys.stdin)
+print(json.dumps([[A.keywords(s, t), list(A.evolution(s, t, sc)), A.suggestions(st, s, t, sc)] for s, t, sc, st in jobs]))`, jobs);
+  jobs.forEach(([s, t, scale, st], i) => {
+    same([A.keywords(s, t), A.evolution(s, t, scale), A.suggestions(st, s, t, scale)], res[i], `élève/période ${i}`);
+  });
+  const sg = clone(students[0]);
+  A.addKeyword(sg, "soin", 1);
+  assert.deepEqual(A.keywords(sg, 1).map(([k]) => k), ["retards", "soin"]);
+  assert.equal(A.removeKeyword(sg, "soin", 1), true);
+  assert.equal(A.removeKeyword(sg, "soin", 1), false);
+  assert.equal(M.stats(students[0], 2).join(), "0,0,1,0");  // les mots-clés ne changent aucun total
+});
+
+function clone(x) { return JSON.parse(JSON.stringify(x)); }
+function DEFAULT_BANK_FOR_TEST() { return A.defaultBank(); }

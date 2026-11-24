@@ -7,7 +7,7 @@ import { applyPendingFocus, renderTable } from "./table.js";
 const lazy = {
   prefs: () => import("./prefs_ui.js"), importer: () => import("./import_ui.js"), exporter: () => import("./export_ui.js"),
   archives: () => import("./archives_ui.js"), data: () => import("./data_ui.js"), plan: () => import("./plan_view.js"),
-  classes: () => import("./classes_ui.js"),
+  classes: () => import("./classes_ui.js"), apprec: () => import("./appreciation_ui.js"),
 };
 
 export class Shell {
@@ -26,7 +26,7 @@ export class Shell {
     this.search.value = this.app.search || "";
     this.render();
     lazy.plan().then((m) => { this.planModule = m; if (this.app.state && this.app.state.ui.vue === "plan") this.renderContent(); });
-    for (const k of ["prefs", "importer", "exporter", "archives", "data", "classes"]) lazy[k]();  // préchargement
+    for (const k of ["prefs", "importer", "exporter", "archives", "data", "classes", "apprec"]) lazy[k]();  // préchargement
   }
 
   schedule() {
@@ -84,7 +84,8 @@ export class Shell {
       return;
     }
     const info = h("div", { class: "classinfo" }, h("h2", {}, cls.nom), h("span", { class: "muted" }, `${cls.eleves.length} élève${cls.eleves.length > 1 ? "s" : ""}`),
-      h("div", { class: "grow" }));
+      h("div", { class: "grow" }),
+      cls.eleves.length ? h("button", { class: "btn small", type: "button", onclick: () => this.appreciations(cls) }, "✍ Appréciations") : null);
     let body;
     if (app.seance) body = renderSeance(app, cls, this);
     else if (app.state.ui.vue === "plan") {
@@ -116,6 +117,8 @@ export class Shell {
     if (nom && nom.trim()) this.app.addClass(nom);
   }
 
+  async appreciations(cls) { (await lazy.apprec()).openAppreciations(this.app, cls); }
+
   async importList() { (await lazy.importer()).openImport(this.app, null); }
 
   mainMenu(anchor) {
@@ -128,6 +131,8 @@ export class Shell {
       cls ? { label: "Supprimer la classe…", icon: "🗑", danger: true, onClick: async () => {
         if (await confirmDialog(`Supprimer la classe ${cls.nom} et ses ${cls.eleves.length} élèves ?\n\nUne archive des données actuelles est créée juste avant : vous pourrez la restaurer depuis « Archives » en cas d’erreur.`, { okLabel: "Supprimer", danger: true, title: "Supprimer la classe" })) await app.deleteClass(cls);
       } } : null,
+      cls && cls.eleves.length ? { label: "Appréciations de bulletin…", icon: "✍", onClick: () => this.appreciations(cls) } : null,
+      cls ? { label: "Phrases types et mots-clés…", icon: "🏷", onClick: async () => (await lazy.apprec()).openBank(app) } : null,
       { label: "Ordre des classes…", icon: "↕", onClick: async () => (await lazy.classes()).openClassOrder(app) },
       { separator: true },
       { label: "Colonnes…", icon: "▦", onClick: async () => (await lazy.prefs()).openPrefs(app, "colonnes") },

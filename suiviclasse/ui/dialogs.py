@@ -70,6 +70,27 @@ class Dialog(tk.Toplevel):
 
 
 # ---------------------------------------------------------------- fiche élève
+def student_summary(app, s, k):
+    """Résumé d'un élève pour la période k : notes finales des colonnes à niveaux, séance, travail, oublis, compteurs ajoutés."""
+    settings = app.state["settings"]
+    plus, moins = model.seance(s, k)
+    parts = []
+    for g in columns.grade_columns(settings):  # notes finales des colonnes à niveaux
+        key = g["key"]
+        short = (columns.builtin(settings, key, short=True)["titre"]
+                 if key in columns.GRADE_KEYS and g["titre"] == columns.BUILTINS[key]["titre"] else g["titre"])
+        parts.append(f"{short.lower()} {model.grade_text(model.grade_final(s, g, k), g['niveaux'])}")
+    if any(columns.builtin(settings, key)["visible"] for key in ("seancePlus", "seanceMoins")):
+        parts.append(f"Séance + {exchange.fmt_num(plus)} · − {exchange.fmt_num(moins)}")
+    for key in ("travail", "oubli"):
+        cfg = columns.builtin(settings, key)
+        if cfg["visible"]:
+            parts.append(f"{cfg['titre'].lower()} {exchange.fmt_num(model.total(s, key, k))}")
+    parts += [f"{c['titre'].lower()} {exchange.fmt_num(model.total(s, c['id'], k))}" for c in columns.customs(settings)
+              if c["visible"] and c["type"] == "compteur"]
+    return " · ".join(parts)
+
+
 class StudentWindow(Dialog):
     def __init__(self, app, cls, student):
         app.close_student_window()
@@ -154,6 +175,10 @@ class StudentWindow(Dialog):
                     e.bind("<Return>", lambda ev, c=c: self.commit_extra(c))
                 self.extra_vars[c["id"]] = var
 
+        from .appreciation_dialog import KeywordBar  # import tardif : ce module importe celui-ci
+        ttk.Label(self, text=f"Mots-clés pour l'appréciation ({app.per['prefix']}{t})", font=("TkDefaultFont", 10, "bold")).pack(anchor="w", **pad)
+        KeywordBar(self, app, student, on_change=self.refresh).pack(fill="x", padx=10)
+
         ttk.Label(self, text=f"Journal du {app.per['word']} {t}", font=("TkDefaultFont", 10, "bold")).pack(anchor="w", **pad)
         quick = ttk.Frame(self)
         quick.pack(fill="x", padx=10)
@@ -231,23 +256,7 @@ class StudentWindow(Dialog):
         return out
 
     def stats_text(self, k):
-        s, settings = self.s, self.app.state["settings"]
-        plus, moins = model.seance(s, k)
-        parts = []
-        for g in columns.grade_columns(settings):  # notes finales des colonnes à niveaux
-            key = g["key"]
-            short = (columns.builtin(settings, key, short=True)["titre"]
-                     if key in columns.GRADE_KEYS and g["titre"] == columns.BUILTINS[key]["titre"] else g["titre"])
-            parts.append(f"{short.lower()} {model.grade_text(model.grade_final(s, g, k), g['niveaux'])}")
-        if any(columns.builtin(settings, key)["visible"] for key in ("seancePlus", "seanceMoins")):
-            parts.append(f"Séance + {exchange.fmt_num(plus)} · − {exchange.fmt_num(moins)}")
-        for key in ("travail", "oubli"):
-            cfg = columns.builtin(settings, key)
-            if cfg["visible"]:
-                parts.append(f"{cfg['titre'].lower()} {exchange.fmt_num(model.total(s, key, k))}")
-        parts += [f"{c['titre'].lower()} {exchange.fmt_num(model.total(s, c['id'], k))}" for c in columns.customs(settings)
-                  if c["visible"] and c["type"] == "compteur"]
-        return " · ".join(parts)
+        return student_summary(self.app, self.s, k)
 
     def commit_extra(self, c):
         var, t = self.extra_vars[c["id"]], self.app.t

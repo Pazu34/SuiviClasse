@@ -355,6 +355,7 @@ class App:
                     padx=(14 if t == 1 else 1, 1))
         bar.add(ttk.Button(bar, text="Importer des élèves…", command=lambda: dialogs.ImportDialog(self, c)), padx=(14, 4))
         bar.add(ttk.Button(bar, text="Exporter (PRONOTE, tableur)…", command=lambda: dialogs.ExportDialog(self, c)), padx=(4, 4))
+        bar.add(ttk.Button(bar, text="Appréciations…", command=lambda: self.open_appreciations(c)), padx=(4, 4))
         bar.add(ttk.Button(bar, text="Renommer", command=lambda: self.rename_class(c)), padx=(4, 4))
         bar.add(ttk.Button(bar, text="Supprimer la classe", style="Danger.TButton", command=lambda: self.delete_class(c)), padx=(4, 4))
         bar.add(ttk.Label(bar, text="Rechercher", style="Muted.TLabel"), padx=(8, 4))
@@ -365,6 +366,14 @@ class App:
         else:
             self.table = ClassTable(self.body, self, c)
             self.table.pack(fill="both", expand=True)
+
+    def open_appreciations(self, cls):
+        """Assistant d'appréciation de bulletin pour la classe affichée et la période choisie."""
+        from .appreciation_dialog import AppreciationDialog
+        if not cls["eleves"]:
+            messagebox.showinfo("Appréciations", "Cette classe n'a pas encore d'élèves.", parent=self.root)
+            return
+        AppreciationDialog(self, cls)
 
     def add_class(self):
         nom = dialogs.ask_text(self.root, "Nouvelle classe", "Nom de la classe (ex. 6A)")

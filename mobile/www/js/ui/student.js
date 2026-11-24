@@ -4,6 +4,7 @@ import { noteText } from "../core/exchange.js";
 import * as M from "../core/model.js";
 import { fmtNum } from "../core/util.js";
 import { directLevels, parseGrade } from "./columns_build.js";
+import { keywordBar } from "./appreciation_ui.js";
 import { confirmDialog, h, menu, modal, toast } from "./dom.js";
 
 const collapse = (s) => s.split(/\s+/).filter(Boolean).join(" ");
@@ -156,6 +157,7 @@ export function openStudentSheet(app, cls, s) {
     h("h4", {}, "Informations particulières (handicap, PAI, situation…)"), infos,
     h("h4", {}, "Notes et commentaires de bulletin"), periodBlocks.map((b) => b.el),
     extraRows.length ? [h("h4", {}, `Autres colonnes (${per.prefix}${t})`), extraRows] : null,
+    h("h4", {}, `Mots-clés pour l'appréciation (${per.prefix}${t})`), keywordBar(app, s, refreshJournal),
     h("h4", {}, `Journal du ${per.word} ${t}`), precision, quick, journal);
 
   ctl = modal({ title: `${s.nom} ${s.prenom}`.trim(), side: true, body, actions: [

@@ -568,3 +568,73 @@ test("notes particulières : a, n, d = Abs, N.Not, Disp, sans effet sur les moye
   noErrors(page);
   await page.context().close();
 });
+
+test("assistant d'appréciation : mots-clés, phrases types, genre, rédaction à la suite", async () => {
+  const page = await env.page();
+  await createVault(page);
+  const kws = (nom) => page.evaluate((n) => app.state.classes[0].eleves.find((s) => s.nom === n).events.filter((e) => e.type.startsWith("mot:")).map((e) => e.type), nom);
+  // 1. mots-clés notés depuis la fiche de l'élève
+  await row(page, "ANDRÉ").locator("td.nom").click();
+  await page.waitForSelector(".dialog.side .kwbar");
+  await page.locator(".dialog.side .kwadd").click();
+  await page.locator(".menu >> text=Bavardages").click();
+  await page.locator(".dialog.side .kwchip .kw").click();  // « une fois de plus »
+  await page.locator(".dialog.side .kwadd").click();
+  await page.locator(".menu >> text=Efforts").click();
+  assert.deepEqual(await kws("ANDRÉ"), ["mot:bavardages", "mot:bavardages", "mot:efforts"]);
+  assert.match(await page.locator(".dialog.side .kwchip").first().textContent(), /Bavardages ×2/);
+  await page.locator(".dialog.side .kwminus").first().click();
+  assert.deepEqual(await kws("ANDRÉ"), ["mot:bavardages", "mot:efforts"]);
+  assert.match(await page.locator(".dialog.side .journal").textContent(), /Mot-clé : Bavardages/);
+  await page.keyboard.press("Escape");
+  // 2. mot-clé noté en séance (outil « Retards » puis un tap sur Noah)
+  await page.click('.seg button:has-text("Séance")');
+  await page.click('.tool[data-tool="mot:retards"]');
+  await page.locator('.scard:has(.nm:text("Noah Henry"))').click();
+  assert.deepEqual(await kws("HENRY"), ["mot:retards"]);
+  await page.click('.seg button:has-text("Tableau")');
+  await page.waitForSelector("table.grid");
+  // 3. l'assistant
+  await page.click("text=✍ Appréciations");
+  await page.waitForSelector(".apprview .appstu");
+  assert.equal(await page.locator(".appstu").count(), 8);
+  assert.match(await page.locator(".appname").textContent(), /ANDRÉ Léa/);
+  assert.match(await page.locator(".appfacts").textContent(), /T1 : 14,5/);
+  assert.equal(await page.locator(".kwchip").count(), 2);
+  const groups = await page.locator(".sgt").allTextContents();
+  assert.match(groups[0], /Résultats — de 14 à 16/);
+  assert.ok(groups.some((g) => /Bavardages/.test(g)) && groups.some((g) => /Efforts/.test(g)) && groups.some((g) => /Conclusion/.test(g)));
+  // le genre est deviné (Léa) : accords au féminin
+  assert.equal(await page.locator('[aria-label="Genre"] button[aria-pressed="true"]').textContent(), "♀ Fille");
+  await page.locator(".phrase", { hasText: "pour rester concentrée" }).click();
+  await page.locator(".phrase", { hasText: "Léa obtient de bons résultats" }).click();
+  const full = "Bon début de trimestre, élève sérieuse. Elle doit limiter ses bavardages pour rester concentrée. Léa obtient de bons résultats, c'est encourageant.";
+  assert.equal(await page.locator(".apptext").inputValue(), full);  // ajouté à l'appréciation déjà saisie
+  // changer le genre change les accords proposés
+  await page.locator('[aria-label="Genre"] button:has-text("Garçon")').click();
+  assert.equal(await page.locator(".phrase", { hasText: "pour rester concentré." }).count(), 1);
+  assert.equal(await page.evaluate(() => app.state.classes[0].eleves.find((s) => s.nom === "ANDRÉ").genre), "m");
+  await page.locator('[aria-label="Genre"] button:has-text("Fille")').click();
+  // enregistrer et passer à l'élève suivant
+  await page.locator("footer .btn.primary", { hasText: "Enregistrer et suivant" }).click();
+  assert.equal(await page.evaluate(() => app.state.classes[0].eleves.find((s) => s.nom === "ANDRÉ").comms["1"]), full);
+  assert.match(await page.locator(".appname").textContent(), /BERNARD Zoé/);
+  assert.match(await page.locator(".apptext").inputValue(), /Participe volontiers/);  // appréciation déjà saisie : reprise
+  assert.match(await page.locator(".appfacts").textContent(), /Notes \(sur 20\)/);
+  await shot(page, "assistant-appreciation");
+  // 4. éditeur : ajouter un mot-clé et sa phrase
+  await page.click("text=Phrases types et mots-clés…");
+  await page.click("text=Ajouter un mot-clé");
+  await page.fill('.dialog:has-text("Nouveau mot-clé") input[type=text]', "Oral");
+  await page.locator('.dialog:has-text("Nouveau mot-clé") footer .btn.primary').click();
+  await page.locator(".bankphrases").fill("{prénom} s'exprime avec aisance.\n{Il} gagne en {assurance|assurance}.");
+  await page.locator(".dialog").last().locator("footer .btn.primary").click();
+  const bank = await page.evaluate(() => app.state.settings.appreciation.mots.find((m) => m.id === "oral"));
+  assert.deepEqual(bank.phrases, ["{prénom} s'exprime avec aisance.", "{Il} gagne en {assurance|assurance}."]);
+  // le nouveau mot-clé est proposé dans le menu « + Mot-clé »
+  await page.locator(".apprview .kwadd").click();
+  assert.equal(await page.locator(".menu >> text=Oral").count(), 1);
+  await page.keyboard.press("Escape");
+  noErrors(page);
+  await page.context().close();
+});

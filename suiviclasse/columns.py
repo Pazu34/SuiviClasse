@@ -346,4 +346,8 @@ def type_label(settings, event_type_):
     for col in customs(settings):
         if col["id"] == event_type_:
             return col["titre"]
+    if event_type_.startswith("mot:"):  # mot-clé noté pour l'appréciation de bulletin
+        from . import appreciation
+        key = event_type_[4:]
+        return "Mot-clé : " + next((m["titre"] for m in appreciation.bank(settings)["mots"] if m["id"] == key), key)
     return event_type_

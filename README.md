@@ -95,6 +95,15 @@ py suiviclasse
 
 (`py -m suiviclasse` fonctionne aussi, ainsi qu'un double‑clic sur `lancer.pyw` sous Windows.) Au premier lancement, choisissez un mot de passe.
 
+## Assistant d'appréciation de bulletin
+
+Pour rédiger les appréciations d'une classe à la suite, à partir de ce qu'on a noté pendant la période.
+
+1. **Noter des mots-clés en cours de période** (matériel, bavardages, efforts, participation, absences, retards, sérieux, progrès, difficultés, travail à la maison, attention, soin, comportement — modifiables) : dans la **fiche de l'élève** (pastilles : toucher = une fois de plus, « − » = en retirer une, « + Mot-clé » = en ajouter) ou, sur la tablette, en **mode séance** (outil « Mots-clés » : on choisit un mot-clé, puis on touche les élèves concernés). Chaque mot-clé est une entrée datée du journal de l'élève (« Mot-clé : Bavardages ») ; il ne change aucun total ni aucune moyenne.
+2. **Ouvrir l'assistant** : bouton « Appréciations… » (PC) ou « ✍ Appréciations » (tablette). Une liste d'élèves à gauche (✓ = appréciation déjà écrite) ; à droite, pour l'élève choisi : le **genre** (♂ / ♀, deviné d'après le prénom puis à vérifier ; il règle les accords), les **notes** de chaque période avec l'évolution (↗ ↘ →), le résumé séance/travail/oublis, les informations particulières (PAI…), ses **mots-clés** de la période et les **phrases proposées**. Un clic sur une phrase l'ajoute à l'appréciation (modifiable librement) ; « Enregistrer et suivant » (ou Ctrl+Entrée) passe à l'élève suivant. Le compteur suit la longueur maximale réglée dans les préférences (255 par défaut, comme PRONOTE). L'appréciation est celle de la colonne « Commentaire bulletin ».
+3. **Phrases proposées** : selon la **note** de la période (6 tranches ramenées sur 20 : résultats, puis conclusion), selon l'**évolution** par rapport à la période précédente (progrès, baisse, stable) et selon les **mots-clés** notés (le plus fréquent d'abord).
+4. **Phrases types et mots-clés…** (bouton de l'assistant) : on modifie, ajoute ou supprime les mots-clés (titre, pictogramme, teinte) et toutes les phrases (une par ligne). Syntaxe des accords : `{prénom}`, `{il}` / `{Il}` (il, elle), `{sérieux|sérieuse}` (masculin|féminin), `{e}` (rien ou « e »), `{période}` (trimestre ou semestre). Exemple : « `{Il} est {sérieux|sérieuse} et {investi|investie}.` ». Les phrases sont enregistrées dans les données chiffrées (même banque sur le PC et la tablette) ; « Rétablir les phrases par défaut » revient à celles du programme.
+
 ## Icône
 
 L'icône (un cahier de suivi ouvert : élèves à gauche, tableau de notes colorées à droite, un crayon) est dessinée dans `assets/icon.svg` (et `assets/icon-small.svg`, simplifiée pour les très petites tailles). `python3 tools/make_app_icon.py` en tire l'icône de l'exécutable Windows (`assets/suiviclasse.ico`), celle de la fenêtre (`suiviclasse/ui/appicon.py`), les icônes Android (`mobile/tools/android-res/`, dont l'icône adaptative) et celles de la version web. Les fichiers produits sont versionnés : il n'y a à relancer le script que si le dessin change.

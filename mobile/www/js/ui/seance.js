@@ -1,6 +1,7 @@
 // Mode séance : l'écran de la classe en cours de cours. On choisit un OUTIL (un niveau A à E, ou un compteur : « oubli +1 »…), puis on touche
 // les élèves : chaque touche ajoute une entrée datée du jour au journal de l'élève — exactement les mêmes données que le tableau, la fiche
 // et la version PC. Les cartes montrent qui a déjà été noté aujourd'hui et qui reste à noter.
+import * as A from "../core/appreciation.js";
 import * as C from "../core/columns.js";
 import * as M from "../core/model.js";
 import * as P from "../core/plan.js";
@@ -34,6 +35,10 @@ export function seanceTools(app) {
   for (const c of C.customs(settings)) if (c.visible && c.type === "compteur") counters.push({ key: c.id, event: c.id, title: c.titre, emoji: c.emoji, incs: c.increments, symbolic: false });
   for (const c of counters) groups.push({ key: c.key, event: c.event, title: c.title, emoji: c.emoji, grade: false,
     items: c.incs.map((v, i) => ({ id: `${c.key}:${i}`, label: C.incrementLabel(v, c.symbolic), value: v })) });
+  // mots-clés pour l'appréciation de bulletin : un outil par mot-clé (une entrée du journal « mot:<identifiant> » par élève touché)
+  const mots = A.bank(settings).mots;
+  if (mots.length) groups.push({ key: "mots", event: null, title: "Mots-clés", emoji: "🏷", grade: false, keyword: true,
+    items: mots.map((m) => ({ id: `mot:${m.id}`, label: `${m.emoji ? m.emoji + " " : ""}${m.titre}`, value: 1, event: `mot:${m.id}` })) });
   return groups;
 }
 
@@ -43,6 +48,8 @@ export function renderSeance(app, cls, shell) {
   const items = groups.flatMap((g) => g.items.map((it) => ({ ...it, group: g })));
   let tool = app.seanceTool && items.find((it) => it.id === app.seanceTool) ? app.seanceTool : null;
   const toolItem = tool ? items.find((it) => it.id === tool) : null;
+  const toolEvent = toolItem ? toolItem.event || toolItem.group.event : null;
+  const tagOf = (e) => (toolItem.group.keyword ? "✓" : toolItem.group.grade ? M.gradeLetter(e.v, toolItem.group.names) : C.incrementLabel(e.v));
   app.seanceTool = tool;
   const now = new Date();
   const cols = buildColumns(app).filter((c) => COUNTER_KINDS.includes(c.kind) || c.kind === "grade");
@@ -51,10 +58,10 @@ export function renderSeance(app, cls, shell) {
   const q = app.search ? app.search.toLowerCase() : "";
 
   // ----- avancement du jour pour l'outil choisi
-  const doneIds = toolItem ? new Set(cls.eleves.filter((s) => todayEvents(s, toolItem.group.event, t, now).length).map((s) => s.id)) : new Set();
+  const doneIds = toolItem ? new Set(cls.eleves.filter((s) => todayEvents(s, toolEvent, t, now).length).map((s) => s.id)) : new Set();
 
   function apply(s) {
-    M.addEvent(s, toolItem.group.event, t, toolItem.value);
+    M.addEvent(s, toolEvent, t, toolItem.value);
     app.seanceFlash = { id: s.id, at: Date.now() };
     if (navigator.vibrate) navigator.vibrate(12);
     app.commit();
@@ -63,10 +70,10 @@ export function renderSeance(app, cls, shell) {
   function cardMenu(anchor, s) {
     const items2 = [{ label: "Ouvrir la fiche", icon: "📋", onClick: () => openStudentSheet(app, cls, s) }];
     if (toolItem) {
-      const mine = todayEvents(s, toolItem.group.event, t, now);
+      const mine = todayEvents(s, toolEvent, t, now);
       if (mine.length) {
         const last = mine[mine.length - 1];
-        const label = toolItem.group.grade ? M.gradeLetter(last.v, toolItem.group.names) : C.incrementLabel(last.v);
+        const label = tagOf(last);
         items2.push({ label: `Annuler la dernière entrée du jour (${toolItem.group.title} ${label})`, icon: "↶", onClick: () => { s.events = s.events.filter((x) => x.id !== last.id); app.commit(); } });
       }
     }
@@ -75,9 +82,9 @@ export function renderSeance(app, cls, shell) {
 
   function badges(s) {
     if (!toolItem) return null;
-    const mine = todayEvents(s, toolItem.group.event, t, now);
+    const mine = todayEvents(s, toolEvent, t, now);
     if (!mine.length) return null;
-    return h("div", { class: "today", "aria-label": "Aujourd'hui" }, mine.map((e) => h("span", { class: "tbadge" }, toolItem.group.grade ? M.gradeLetter(e.v, toolItem.group.names) : C.incrementLabel(e.v))));
+    return h("div", { class: "today", "aria-label": "Aujourd'hui" }, mine.map((e) => h("span", { class: "tbadge" }, tagOf(e))));
   }
 
   function card(s, extraStyle = null, compact = false) {
@@ -158,9 +165,9 @@ function bilan(app, cls, groups, t) {
   const rows = [];
   for (const s of cls.eleves) {
     const parts = [];
-    for (const g of groups) {
+    for (const g of groups.flatMap((x) => (x.keyword ? x.items.map((it) => ({ title: it.label, event: it.event, keyword: true })) : [x]))) {
       const mine = todayEvents(s, g.event, t, now);
-      if (mine.length) parts.push(`${g.title} : ${mine.map((e) => (g.grade ? M.gradeLetter(e.v, g.names) : C.incrementLabel(e.v))).join(" ")}`);
+      if (mine.length) parts.push(`${g.title} : ${mine.map((e) => (g.keyword ? "✓" : g.grade ? M.gradeLetter(e.v, g.names) : C.incrementLabel(e.v))).join(" ")}`);
     }
     if (parts.length) rows.push([s, parts]);
   }

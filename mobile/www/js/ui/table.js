@@ -99,7 +99,10 @@ function counterButtons(col) {
   return neg.length && pos.length ? { left: neg, right: pos } : { left: [...incs].sort((a, b) => Math.abs(a[0]) - Math.abs(b[0])), right: [] };
 }
 
-function colWidth(col, compact) {
+/** Un bouton par niveau ? Seulement si le réglage « Un bouton par niveau » est choisi et que les noms sont courts ; sinon « Noter ▾ » ouvre le menu des niveaux. */
+const levelButtons = (app, names) => app.values.niveauxAffichage === "boutons" && directLevels(names);
+
+function colWidth(col, compact, app) {
   const { btn, gap } = sizes(compact);
   const btnW = (label) => Math.max(btn, measure(label, true) + 16) + gap;
   switch (col.kind) {
@@ -121,7 +124,7 @@ function colWidth(col, compact) {
     }
     case "grade": {
       const names = col.levels;
-      const buttons = directLevels(names) ? names.reduce((w, n) => w + Math.max(btn - 4, measure(n, true) + 12) + gap, 0) : measure("Noter ▾", true) + 30;
+      const buttons = levelButtons(app, names) ? names.reduce((w, n) => w + Math.max(btn - 4, measure(n, true) + 12) + gap, 0) : measure("Noter ▾", true) + 30;
       return buttons + Math.max(66, Math.max(...names.map((n) => measure(n + "−", true))) + 18) + 10;
     }
     default: return 100;
@@ -233,7 +236,7 @@ function cellFor(app, cls, s, col, dups, scale) {
       const [text, level, n] = gradeState(app, col, s, t);
       const names = col.levels, nn = names.length;
       const label = h("div", { class: "total" + (n ? "" : " none"), role: "button", onclick: (e) => gradeMenu(app, s, col, e.currentTarget) }, text);
-      const buttons = directLevels(names)
+      const buttons = levelButtons(app, names)
         ? names.map((name, i) => h("button", { class: "cbtn lvl", type: "button", "aria-label": `${col.title} ${name}`, onclick: () => { M.addEvent(s, col.event, t, nn - i); app.commit(); } }, name))
         : [h("button", { class: "cbtn", type: "button", onclick: (e) => levelMenu(app, s, col, e.currentTarget) }, "Noter ▾")];
       return h("td", { class: "ctr " + level }, h("div", { class: "cellrow" }, buttons, label));
@@ -409,7 +412,7 @@ export function renderTable(app, cls) {
   const q = norm(app.search);
   const students = cls.eleves.filter((s) => !q || norm(`${s.nom} ${s.prenom} ${s.infos}`).includes(q));
   const dups = M.duplicateNumbers(cls);
-  const widths = cols.map((c) => colWidth(c, compact));
+  const widths = cols.map((c) => colWidth(c, compact, app));
   const lefts = [];
   let acc = 0, nSticky = 0;
   const allowed = new Set(C.pinnedKeys(app.state.settings, app.values.colonneFigee));  // colonnes maintenues au début (clic sur un titre)

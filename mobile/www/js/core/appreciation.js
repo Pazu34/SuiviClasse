@@ -1,6 +1,6 @@
 // Assistant d'appréciation de bulletin : mots-clés notés en cours de période, phrases types, accords selon le genre.
 // Port de suiviclasse/appreciation.py (voir ce fichier pour la description des données et la syntaxe des phrases types).
-import { DEFAULT_BANK, FEM_NAMES, MASC_NAMES } from "./appreciation_data.js";
+import { DEFAULT_BANK, FEM_NAMES, MASC_NAMES, PHRASE_FIXES } from "./appreciation_data.js";
 import { isNumber } from "./exchange.js";
 import { gradeColumns } from "./columns.js";
 import { addEvent, gradeFinal, gradeLevel, removeLast, seance, total } from "./model.js";
@@ -29,7 +29,7 @@ export const defaultBank = () => clone(DEFAULT_BANK);
 const text = (v) => (typeof v === "string" ? v : "");
 const collapse = (s) => s.split(/\s+/).filter(Boolean).join(" ");
 const cut = (s, n) => Array.from(s).slice(0, n).join("");
-const phrases = (raw) => (Array.isArray(raw) ? raw.filter((p) => typeof p === "string" && p.trim()).map(collapse) : []);
+const phrases = (raw) => (Array.isArray(raw) ? raw.filter((p) => typeof p === "string" && p.trim()).map(collapse).map((p) => (Object.prototype.hasOwnProperty.call(PHRASE_FIXES, p) ? PHRASE_FIXES[p] : p)) : []);
 
 /** Ramène n'importe quel objet à une banque valide (rubriques absentes = valeurs par défaut ; mots-clés de l'utilisateur). */
 export function sanitizeBank(raw) {
@@ -51,7 +51,8 @@ export function sanitizeBank(raw) {
     if (Array.isArray(raw[key])) for (const x of raw[key]) if (x && typeof x === "object" && !Array.isArray(x)) given[x.id] = x;
     return base[key].map((b) => ({ ...b, phrases: b.id in given ? phrases(given[b.id].phrases) : b.phrases }));
   };
-  for (const key of ["resultats", "conclusions", "evolution"]) out[key] = merged(key);
+  for (const key of ["resultats", "conclusions", "evolution", "pistes"]) out[key] = merged(key);
+  out.conseils = Array.isArray(raw.conseils) ? raw.conseils.filter((c) => typeof c === "string" && c.trim()).map((c) => cut(collapse(c), 400)) : [...base.conseils];  // conseils de rédaction (liste vide : choix de l'utilisateur)
   // aide à la saisie : mots proposés (sans doublon, casse et accents ignorés) et abréviations (clé en lettres et chiffres, unique)
   const vocab = [], seenV = new Set();
   for (let w of Array.isArray(raw.vocabulaire) ? raw.vocabulaire : base.vocabulaire) {
@@ -151,6 +152,71 @@ export function expandAbbreviation(before, abbrevs, prenom = "", genre = "", per
   return null;
 }
 
+// ---------------------------------------------------------------- suggestions d'abréviations d'après les commentaires enregistrés
+export const SUGGEST_LIMIT = 25, SUGGEST_MIN_DOCS = 3, SUGGEST_MIN_LEN = 7, SUGGEST_MAX_WORDS = 4;
+const STOP = new Set(("le la les un une des du de d l et ou à a au aux en est sont ont il elle ils elles ce cet cette ces se sa son ses que qui ne pas "
+  + "par pour sur dans avec sans mais donc or ni car y on nous vous je tu lui leur leurs ma mon mes ta ton tes si comme").split(" "));
+
+function* clausesWords(text) {
+  for (const clause of text.split(/[.!?…;:,()«»"\n\r]+/)) {
+    const words = clause.toLowerCase().match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu);
+    if (words) yield words;
+  }
+}
+
+function abbreviationFor(text, taken) {
+  const letters = (w) => norm(w).replace(/[^a-z0-9]/g, "");
+  const words = text.split(" ").map(letters).filter(Boolean);
+  if (!words.length) return null;
+  let base, spare;
+  if (words.length >= 2) { base = words.map((w) => w[0]).join(""); spare = words.join("").slice(words.length); }
+  else {
+    const w = words[0], cons = [...w.slice(1)].filter((c) => !"aeiouy0123456789".includes(c));
+    base = w[0] + cons.slice(0, 2).join(""); spare = w.slice(base.length);
+  }
+  for (let k = 0; k <= spare.length; k++) {
+    const key = base + spare.slice(0, k);
+    if (key.length >= 2 && key.length <= 6 && !taken.has(key)) return key;
+  }
+  return null;
+}
+
+/** Abréviations à proposer d'après les commentaires `texts` (voir suiviclasse/appreciation.py : suggest_abbreviations). */
+export function suggestAbbreviations(texts, existing = [], excludeWords = [], limit = SUGGEST_LIMIT) {
+  const stopNames = new Set(excludeWords.map(norm)), docs = new Map(), corpus = new Set();
+  texts.forEach((text, d) => {
+    for (const words of clausesWords(text)) {
+      for (const w of words) corpus.add(norm(w));
+      for (let n = 1; n <= SUGGEST_MAX_WORDS; n++) {
+        for (let i = 0; i + n <= words.length; i++) {
+          const g = words.slice(i, i + n).join(" ");
+          if (!docs.has(g)) docs.set(g, new Set());
+          docs.get(g).add(d);
+        }
+      }
+    }
+  });
+  const coveredText = existing.map((a) => " " + norm(a.texte) + " ");
+  const cands = [];
+  for (const [text, ds] of docs) {
+    const ws = text.split(" ");
+    if (ds.size < SUGGEST_MIN_DOCS || Array.from(text).length < SUGGEST_MIN_LEN || STOP.has(ws[0]) || STOP.has(ws[ws.length - 1])) continue;
+    if (ws.some((w) => stopNames.has(norm(w))) || coveredText.some((c) => c.includes(" " + norm(text) + " "))) continue;
+    cands.push([ds.size * Array.from(text).length, text, ds.size]);
+  }
+  cands.sort((a, b) => b[0] - a[0] || (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0));
+  const taken = new Set([...existing.map((a) => a.abr), ...STOP, ...corpus]), out = [];
+  for (const [, text, n] of cands) {
+    if (out.some((c) => (" " + c.texte + " ").includes(" " + text + " ") && c.docs * 1.25 >= n)) continue;
+    const key = abbreviationFor(text, taken);
+    if (key === null) continue;
+    taken.add(key);
+    out.push({ abr: key, texte: text, docs: n });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------- genre
 const GENRE_OF = new Map([...FEM_NAMES.map((n) => [norm(n), "f"]), ...MASC_NAMES.map((n) => [norm(n), "m"])]);
 
@@ -240,6 +306,9 @@ export function suggestions(settings, student, t, scale = 20, values = null) {
     const known = new Set(noted.map(([k]) => k));
     for (const k of autoKeywords(settings, values, student, t)) if (!known.has(k)) { const m = byId.get(k); out.push(pick(m, "mot", { emoji: m.emoji, ton: m.ton, count: 0, auto: true })); }
   }
+  // piste de progrès : quand la note est inférieure à 14 sur 20 ou qu'un mot-clé négatif est noté (ou détecté)
+  const negative = out.some((g) => g.kind === "mot" && g.ton === "-");
+  if ((n !== null && n <= 3) || negative) out.push({ kind: "piste", id: "pistes", titre: b.pistes[0].titre, phrases: b.pistes[0].phrases, count: 0 });
   if (n !== null) out.push(pick(b.conclusions[n], "conclusion"));
   return out;
 }

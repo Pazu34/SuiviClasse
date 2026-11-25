@@ -16,6 +16,8 @@ SCHEMA = [
          options=[("clair", "Clair"), ("sombre", "Sombre"), ("auto", "Automatique (suit Windows)")], unit=""),
     dict(key="pictogrammes", group="Affichage", label="Pictogrammes dans les titres", type="choice", default="oui",
          options=[("oui", "Oui"), ("non", "Non")], unit=""),
+    dict(key="niveauxAffichage", group="Affichage", label="Colonnes à niveaux (A à E) : saisie", type="choice", default="menu",
+         options=[("menu", "Menu déroulant (colonne étroite)"), ("boutons", "Un bouton par niveau")], unit=""),
     dict(key="titresColonnes", group="Affichage", label="Titres des colonnes du tableau", type="choice", default="texte",
          options=[("texte", "Titres (avec pictogrammes si activés)"), ("icones", "Pictogrammes seuls"),
                   ("inclines", "Titres inclinés à 60° (carnet papier)")], unit=""),

@@ -407,10 +407,14 @@ class ClassTable(ttk.Frame):
         cv.bind("<ButtonRelease-1>", self._drag_end)
         cv.bind("<Double-Button-1>", double)
 
+    def use_buttons(self, col):
+        """Un bouton par niveau ? Seulement si le réglage « Un bouton par niveau » est choisi et que les noms sont courts."""
+        return self.app.values["niveauxAffichage"] == "boutons" and direct_levels(col.levels)
+
     def grade_button_widths(self, col):
-        """Largeur de chaque bouton d'une colonne à niveaux (un par niveau si les noms sont courts, sinon un seul « Noter ▾ »)."""
+        """Largeur de chaque bouton d'une colonne à niveaux (un par niveau, ou un seul « Noter ▾ » ouvrant le menu des niveaux)."""
         names = col.levels
-        if direct_levels(names):
+        if self.use_buttons(col):
             return [max(self.letter_w, self.measure.measure(n) + 12) + 2 for n in names]
         return [self.measure.measure("Noter ▾") + 16]
 
@@ -967,11 +971,12 @@ class Row:
         self.counters[col.key] = (parent, total)
 
     def _build_grade(self, col, parent, i):
-        """Un bouton par niveau (un clic = une note pour la séance), ou « Noter ▾ » qui ouvre le menu des niveaux quand les noms sont
-        longs, puis la note finale ; un clic sur la note finale propose d'annuler la dernière note ou d'ouvrir l'historique."""
+        """« Noter ▾ » qui ouvre le menu des niveaux (colonne étroite ; réglage par défaut), ou un bouton par niveau (un clic = une note pour la séance)
+        si les noms sont courts et que ce réglage est choisi, puis la note finale ; un clic sur la note finale propose d'annuler la dernière note
+        ou d'ouvrir l'historique."""
         names = col.levels
         n = len(names)
-        if direct_levels(names):
+        if self.table.use_buttons(col):
             for i, name in enumerate(names):
                 ttk.Button(parent, text=name, style="Letter.Mini.TButton",
                            command=lambda v=n - i, col=col: self.add(col.event, v)).pack(side="left", padx=1, pady=2)

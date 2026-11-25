@@ -424,3 +424,38 @@ print(json.dumps([A.review(d["cls"], t, m) for t, m in d["cases"]]))`, { cls, ca
   cases.forEach(([t, m], i) => same(A.review(cls, t, m), rv[i], `relecture ${t}/${m}`));
   same(A.sentences("Un. Deux ! Trois ? Fin…  Dernier"), ["Un.", "Deux !", "Trois ?", "Fin…", "Dernier"]);
 });
+
+test("suggestions d'abréviations d'après les commentaires, pistes de progrès et conseils identiques au Python", () => {
+  const textes = ["Très bon travail ce trimestre, élève sérieuse et investie dans la classe. Bonne participation orale.",
+    "Très bon travail, participation orale active. Léa doit poursuivre ses efforts.", "Bon travail, élève sérieuse et investie. Bonne participation orale en classe.",
+    "Élève sérieuse et investie, très bon travail.", "Résultats fragiles : il faut apprendre régulièrement les leçons.",
+    "Il faut apprendre régulièrement les leçons et poser des questions.", "Doit apprendre régulièrement les leçons.", "L'élève rend « un travail soigné » (très soigné), vraiment.",
+    "Un travail soigné.", "Travail soigné et régulier.", "un travail soigné"];
+  const gros = Array.from({ length: 4 }, (_, k) => Array.from({ length: 60 }, (_, n) => `mot${n}x${k}`).join(" ") + ". participation régulière active");
+  const bank = A.defaultBank();
+  const jobs = [[textes, bank.abreviations, ["Léa"], 25], [textes, [], [], 25], [textes, [{ abr: "esei", texte: "autre chose" }], [], 25], [textes.slice(0, 2), [], [], 25], [gros, [], [], 25], [gros, [], [], 3], [[], [], [], 25],
+    [textes.concat(textes), bank.abreviations, ["Léa", "Sérieuse"], 2]];
+  const res = py(`
+import json, sys
+from suiviclasse import appreciation as A
+print(json.dumps([A.suggest_abbreviations(*j) for j in json.load(sys.stdin)]))`, jobs);
+  jobs.forEach((j, i) => same(A.suggestAbbreviations(...j), res[i], `suggestions ${i}`));
+  assert.ok(A.suggestAbbreviations(textes, bank.abreviations, ["Léa"]).length >= 3);
+
+  // pistes de progrès et conseils : banque, validation, ancienne phrase corrigée
+  const raws = [{ conseils: ["  Un   conseil  ", "", 3, "x".repeat(500)] }, { conseils: [] }, { conseils: "non" }, {},
+    { mots: [{ id: "comportement", titre: "Comportement", phrases: ["{Il} est un élément {moteur|motrice} dans la classe.", "Autre."] }], pistes: [{ id: "pistes", phrases: ["Une piste.", "  "] }] }, { pistes: "non" }];
+  const banks = py(`
+import json, sys
+from suiviclasse import appreciation as A
+print(json.dumps([A.sanitize_bank(r) for r in json.load(sys.stdin)]))`, raws);
+  raws.forEach((r, i) => same(A.sanitizeBank(r), banks[i], "banque " + i));
+  assert.equal(A.sanitizeBank(raws[4]).mots[0].phrases[0], "{Il} est un élément moteur dans la classe.");
+  const mk = (notes, events) => ({ nom: "X", prenom: "Léa", notes, comms: {}, extra: {}, events: events.map(([type, t], n) => ({ id: "e" + n, type, t, v: 1, note: "", date: `2026-01-0${n + 1}T10:00:00Z` })) });
+  const students = [mk({ 1: 16 }, []), mk({ 1: 16 }, [["mot:retards", 1]]), mk({ 1: 9 }, []), mk({ 1: null }, []), mk({ 1: 13.9 }, [["mot:efforts", 1]]), mk({ 1: 14 }, [["mot:efforts", 1]])];
+  const sg = py(`
+import json, sys
+from suiviclasse import appreciation as A
+print(json.dumps([A.suggestions({}, s, 1, 20) for s in json.load(sys.stdin)]))`, students);
+  students.forEach((s, i) => same(A.suggestions({}, s, 1, 20), sg[i], `pistes ${i}`));
+});

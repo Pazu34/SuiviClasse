@@ -154,7 +154,7 @@ export const DEFAULT_BANK = {
    "phrases": [
     "Comportement agréable et respectueux.",
     "{prénom} a une attitude positive en classe.",
-    "{Il} est un élément {moteur|motrice} dans la classe."
+    "{Il} est un élément moteur dans la classe."
    ]
   }
  ],
@@ -307,6 +307,36 @@ export const DEFAULT_BANK = {
    ]
   }
  ],
+ "pistes": [
+  {
+   "id": "pistes",
+   "titre": "Pistes de progrès",
+   "phrases": [
+    "Relire la leçon le soir même et refaire quelques exercices permettrait de consolider les acquis.",
+    "Apprendre régulièrement les leçons, en petites séances, aiderait à mieux mémoriser.",
+    "Reprendre les évaluations corrigées et refaire les exercices ratés aiderait à combler les lacunes.",
+    "Poser des questions dès qu'un point n'est pas compris permettrait de lever les blocages.",
+    "Relire attentivement les consignes avant de commencer un exercice limiterait les erreurs.",
+    "Noter le travail à faire dans l'agenda et s'y tenir aiderait à travailler régulièrement.",
+    "Préparer son sac et son matériel la veille éviterait les oublis.",
+    "Prendre la parole plus souvent à l'oral permettrait de gagner en assurance.",
+    "Soigner la présentation (écriture, cahier) rendrait le travail plus lisible.",
+    "Un accompagnement (aide aux devoirs, tutorat, soutien) serait bénéfique pour progresser."
+   ]
+  }
+ ],
+ "conseils": [
+  "Trois temps : un constat précis (acquis, progrès), un point à travailler, puis une piste concrète pour la période suivante.",
+  "Parler du travail et des acquis, pas de la personne : « manque de régularité dans le travail personnel » plutôt que « élève paresseux ».",
+  "Éviter les formules vagues (« élève en difficulté », « peut mieux faire ») : dire où est la difficulté et ce qui peut aider.",
+  "Ne pas répéter la note ou la moyenne : le bulletin les affiche déjà. Apporter une information en plus.",
+  "Valoriser les efforts et les progrès, sans rien retirer à l'exigence.",
+  "Comportement et assiduité : décrire l'effet sur le travail (« les bavardages gênent la concentration ») plutôt que juger l'élève. Assiduité, ponctualité et participation peuvent figurer au bulletin.",
+  "Rester factuel : le bulletin est conservé et peut être lu par l'élève, sa famille et d'autres enseignants. Pas d'éléments de vie privée ou de santé, pas de comparaison avec d'autres élèves, pas de « don » ou de « manque de don ».",
+  "Ne pas généraliser une observation ponctuelle ; nuancer quand c'est utile.",
+  "Écrire pour être compris de l'élève et de sa famille : pas de jargon, des phrases courtes.",
+  "Respecter la longueur maximale (255 caractères dans PRONOTE par défaut) : l'essentiel d'abord."
+ ],
  "vocabulaire": [
   "très bien",
   "assez bien",
@@ -398,7 +428,7 @@ export const DEFAULT_BANK = {
   "à poursuivre",
   "à encourager",
   "à surveiller",
-  "peut mieux faire",
+  "peut progresser",
   "doit se ressaisir",
   "doit progresser",
   "doit s'investir",
@@ -513,6 +543,10 @@ export const DEFAULT_BANK = {
    "texte": "matériel"
   }
  ]
+};
+
+export const PHRASE_FIXES = {
+ "{Il} est un élément {moteur|motrice} dans la classe.": "{Il} est un élément moteur dans la classe."
 };
 
 export const FEM_NAMES = ["emma", "léa", "jade", "louise", "chloé", "alice", "manon", "inès", "sarah", "lina", "zoé", "louna", "lola", "eva", "anna", "juliette", "clara", "mila", "rose", "ambre", "océane", "margaux", "maëlys", "lucie", "léna", "jeanne", "romane", "adèle", "charlotte", "agathe", "capucine", "élise", "éloïse", "emilie", "marie", "julie", "laura", "pauline", "mathilde", "noémie", "lou", "nina", "ella", "maëlle", "mélissa", "célia", "anaïs", "yasmine", "samia", "amina", "fatima", "aya", "salma", "sara", "nour", "meryem", "imane", "lilou", "elsa", "gabrielle", "victoria", "valentine", "candice", "axelle", "justine", "marine", "morgane", "laurine", "ophélie", "lisa", "maya", "nathalie", "sophie", "isabelle", "katia", "kenza", "leïla", "maëva", "naïa", "elena", "giulia", "sofia", "sophia", "olivia", "zélie", "apolline", "héloïse", "angèle", "anouk", "ayla", "livia", "mia", "lana", "tess", "thaïs", "cléa", "clémence", "constance", "joséphine", "garance", "iris", "lya", "lily", "lyna", "maïlys", "mélina", "méline", "elisa", "eléa", "lena", "océane", "assia", "khadija", "maria", "marwa", "nadia", "rania", "sirine", "soumaya", "wissal", "zahra", "amélie", "audrey", "aurélie", "bérénice", "carla", "céline", "christine", "claire", "cécile", "delphine", "dorine", "emmanuelle", "estelle", "fanny", "flavie", "florence", "hélène", "inaya", "jasmine", "johanna", "laetitia", "léonie", "liv", "louane", "lorie", "lucille", "magali", "maëlie", "margot", "mélanie", "myriam", "nolwenn", "orane", "pénélope", "perrine", "rachel", "raphaëlle", "romy", "salomé", "stella", "suzanne", "sylvie", "tiphaine", "ysée", "yasmina"];

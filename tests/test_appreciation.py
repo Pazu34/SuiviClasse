@@ -83,14 +83,14 @@ class SuggestionsTest(unittest.TestCase):
         A.add_keyword(s, "bavardages", 2)
         sug = A.suggestions({}, s, 2)
         self.assertEqual([(g["kind"], g["id"]) for g in sug],
-                         [("resultats", "r4"), ("evolution", "hausse"), ("mot", "bavardages"), ("mot", "efforts"), ("conclusion", "c4")])
+                         [("resultats", "r4"), ("evolution", "hausse"), ("mot", "bavardages"), ("mot", "efforts"), ("piste", "pistes"), ("conclusion", "c4")])
         self.assertEqual(sug[2]["count"], 2)
         self.assertEqual(A.suggestions({}, student(), 1), [])  # sans note ni mot-clé : rien
 
     def test_mot_cle_supprime_de_la_banque_est_ignore(self):
         s = student(n1=12)
         A.add_keyword(s, "disparu", 1)
-        self.assertEqual([g["kind"] for g in A.suggestions({}, s, 1)], ["resultats", "conclusion"])
+        self.assertEqual([g["kind"] for g in A.suggestions({}, s, 1)], ["resultats", "piste", "conclusion"])  # 12/20 : une piste de progrès est proposée
 
 
 class BanqueTest(unittest.TestCase):
@@ -254,3 +254,89 @@ class RelectureTest(unittest.TestCase):
 
     def test_phrases(self):
         self.assertEqual(A.sentences("Un. Deux ! Trois ? Fin…  Dernier"), ["Un.", "Deux !", "Trois ?", "Fin…", "Dernier"])
+
+
+class AccordsEtRecommandationsTest(unittest.TestCase):
+    def phrases(self):
+        b = A.default_bank()
+        return ([(f"mot:{m['id']}", p) for m in b["mots"] for p in m["phrases"]]
+                + [(f"{k}:{x['id']}", p) for k in ("resultats", "evolution", "conclusions", "pistes") for x in b[k] for p in x["phrases"]])
+
+    def test_element_moteur_reste_masculin(self):
+        self.assertIn("{Il} est un élément moteur dans la classe.", [p for _, p in self.phrases()])
+        txt = A.render("{Il} est un élément moteur dans la classe.", "Léa", "f")
+        self.assertEqual(txt, "Elle est un élément moteur dans la classe.")
+        self.assertNotIn("motrice", " ".join(p for _, p in self.phrases()))
+
+    def test_accords_a_relire_a_chaque_ajout(self):
+        """Chaque alternative {masculin|féminin} des phrases par défaut a été relue : l'adjectif doit s'accorder avec le sujet (l'élève : « {Il} est {sérieux|sérieuse} »)
+        et non avec un nom qu'il qualifie (« un élément moteur » reste masculin). Toute nouvelle alternative fait échouer ce test jusqu'à sa relecture."""
+        import re
+        pairs = {m for _, p in self.phrases() for m in re.findall(r"\{([^{}|]+\|[^{}]+)\}", p)}
+        relues = {"appliqué|appliquée", "concentré|concentrée", "investi|investie", "rigoureux|rigoureuse", "sérieux|sérieuse"}
+        self.assertEqual(pairs, relues)
+
+    def test_ancienne_phrase_enregistree_est_corrigee(self):
+        raw = {"mots": [{"id": "comportement", "titre": "Comportement", "phrases": ["{Il} est un élément {moteur|motrice} dans la classe.", "Autre."]}]}
+        self.assertEqual(A.sanitize_bank(raw)["mots"][0]["phrases"], ["{Il} est un élément moteur dans la classe.", "Autre."])
+
+    def test_pistes_de_progres(self):
+        b = A.default_bank()
+        self.assertEqual(len(b["pistes"][0]["phrases"]), 10)
+        bien = student(n1=16)  # 16/20 sans mot-clé négatif : pas de piste
+        self.assertNotIn("piste", [g["kind"] for g in A.suggestions({}, bien, 1)])
+        A.add_keyword(bien, "retards", 1)  # mot-clé négatif : piste proposée même avec une bonne note
+        self.assertIn("piste", [g["kind"] for g in A.suggestions({}, bien, 1)])
+        faible = student(n1=9)
+        self.assertEqual(A.suggestions({}, faible, 1)[-2]["kind"], "piste")
+        self.assertEqual(A.suggestions({}, student(), 1), [])  # sans note ni mot-clé : rien
+
+    def test_conseils_modifiables(self):
+        b = A.default_bank()
+        self.assertGreaterEqual(len(b["conseils"]), 8)
+        raw = {"conseils": ["  Un   conseil  ", "", 3, "x" * 500]}
+        self.assertEqual(A.sanitize_bank(raw)["conseils"], ["Un conseil", "x" * 400])
+        self.assertEqual(A.sanitize_bank({"conseils": []})["conseils"], [])  # l'utilisateur peut tout retirer
+        self.assertEqual(A.sanitize_bank({})["conseils"], b["conseils"])
+        self.assertEqual(A.sanitize_bank(b), b)
+
+
+class SuggestionsDAbreviationsTest(unittest.TestCase):
+    TEXTES = ["Très bon travail ce trimestre, élève sérieuse et investie dans la classe. Bonne participation orale.",
+              "Très bon travail, participation orale active. Léa doit poursuivre ses efforts.",
+              "Bon travail, élève sérieuse et investie. Bonne participation orale en classe.",
+              "Élève sérieuse et investie, très bon travail.", "Résultats fragiles : il faut apprendre régulièrement les leçons.",
+              "Il faut apprendre régulièrement les leçons et poser des questions.", "Doit apprendre régulièrement les leçons."]
+
+    def test_expressions_frequentes(self):
+        res = A.suggest_abbreviations(self.TEXTES, A.default_bank()["abreviations"], ["Léa"])
+        textes = {r["texte"]: r for r in res}
+        self.assertIn("apprendre régulièrement les leçons", textes)
+        self.assertEqual(textes["apprendre régulièrement les leçons"]["docs"], 3)
+        self.assertIn("élève sérieuse et investie", textes)
+        self.assertIn("participation orale", textes)
+        self.assertNotIn("très bon travail", textes)  # déjà couverte par l'abréviation « tbt »
+        self.assertNotIn("très bon", textes)  # contenue dans une expression déjà couverte
+        for r in res:
+            self.assertGreaterEqual(r["docs"], 3)
+            self.assertGreaterEqual(len(r["texte"]), 7)
+            self.assertTrue(2 <= len(r["abr"]) <= 6 and r["abr"].isalnum())
+
+    def test_pas_de_nom_d_eleve_ni_de_mot_vide(self):
+        res = A.suggest_abbreviations(["Léa progresse beaucoup ce trimestre."] * 5 + ["le travail de la classe est bon"] * 4, [], ["Léa"])
+        self.assertTrue(all("léa" not in r["texte"] and not r["texte"].startswith(("le ", "la ")) and not r["texte"].endswith((" de", " la")) for r in res))
+
+    def test_abreviations_libres_et_uniques(self):
+        res = A.suggest_abbreviations(self.TEXTES * 2, [{"abr": "esei", "texte": "autre chose"}], [])
+        keys = [r["abr"] for r in res]
+        self.assertEqual(len(keys), len(set(keys)))
+        self.assertNotIn("esei", keys)  # déjà prise
+        mots = {w for t in self.TEXTES for w in A.norm(t).split()}
+        self.assertTrue(all(k not in mots for k in keys))  # jamais un mot que l'on écrit vraiment
+
+    def test_limite_et_seuil(self):
+        self.assertEqual(A.suggest_abbreviations(self.TEXTES[:2], []), [])  # trop peu de commentaires
+        gros = [" ".join(f"mot{n}x{k}" for n in range(60)) + ". " + "participation régulière active" for k in range(4)]
+        self.assertLessEqual(len(A.suggest_abbreviations(gros, [])), 25)
+        self.assertLessEqual(len(A.suggest_abbreviations(gros, [], limit=3)), 3)
+        self.assertEqual(A.suggest_abbreviations([], []), [])

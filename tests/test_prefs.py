@@ -50,6 +50,14 @@ class ColonnesFigeesTest(unittest.TestCase):
         self.assertEqual(sanitize({"colonneFigee": "partout"})["colonneFigee"], "prenom")
 
 
+class NiveauxAffichageTest(unittest.TestCase):
+    def test_saisie_des_niveaux(self):
+        self.assertEqual(defaults()["niveauxAffichage"], "menu")
+        for k in ("menu", "boutons"):
+            self.assertEqual(sanitize({"niveauxAffichage": k})["niveauxAffichage"], k)
+        self.assertEqual(sanitize({"niveauxAffichage": "autre"})["niveauxAffichage"], "menu")
+
+
 class TitresColonnesTest(unittest.TestCase):
     def test_choix_de_presentation_des_titres(self):
         self.assertEqual(defaults()["titresColonnes"], "texte")

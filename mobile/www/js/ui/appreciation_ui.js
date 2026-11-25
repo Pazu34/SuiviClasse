@@ -5,7 +5,7 @@ import * as A from "../core/appreciation.js";
 import * as C from "../core/columns.js";
 import { noteText } from "../core/exchange.js";
 import { fmtNum } from "../core/util.js";
-import { confirmDialog, h, menu, modal, promptDialog, select } from "./dom.js";
+import { alertDialog, confirmDialog, h, menu, modal, promptDialog, select } from "./dom.js";
 import { statsText } from "./student.js";
 
 const TONE_CLASS = { "+": "pos", "-": "neg", "=": "neu" };
@@ -115,9 +115,9 @@ export function openAppreciations(app, cls, start = null, { onClose = null } = {
     const groups = A.suggestions(settings, s, t, scale, app.values);
     phraseBox.replaceChildren();
     if (!groups.length) phraseBox.append(h("div", { class: "muted" }, "Aucune suggestion : l'élève n'a pas de note pour cette période et aucun mot-clé noté. Ajoutez des mots-clés ci-dessus."));
-    const names = { resultats: "Résultats", evolution: "Évolution", conclusion: "Conclusion" };
+    const names = { resultats: "Résultats", evolution: "Évolution", conclusion: "Conclusion", piste: "Piste de progrès" };
     for (const g of groups) {
-      const title = g.kind === "mot" ? `${g.emoji ? g.emoji + " " : ""}${g.titre}${g.count > 1 ? ` ×${g.count}` : ""}${g.auto ? "  (détecté automatiquement)" : ""}` : `${names[g.kind]} — ${g.titre.toLowerCase()}`;
+      const title = g.kind === "mot" ? `${g.emoji ? g.emoji + " " : ""}${g.titre}${g.count > 1 ? ` ×${g.count}` : ""}${g.auto ? "  (détecté automatiquement)" : ""}` : g.kind === "piste" ? names.piste : `${names[g.kind]} — ${g.titre.toLowerCase()}`;
       const box = h("div", { class: "sgrp" }, h("div", { class: "sgt" }, title));
       if (!g.phrases.length) box.append(h("div", { class: "muted" }, "(aucune phrase : à ajouter dans « Phrases types et mots-clés… »)"));
       for (const raw of g.phrases) {
@@ -208,7 +208,8 @@ export function openAppreciations(app, cls, start = null, { onClose = null } = {
     onchange: async (e) => { await app.setPrefs({ [key]: e.target.checked ? "oui" : "non" }); updateStrip(); } }), label);
 
   const main = h("div", { class: "appmain" },
-    h("div", { class: "apphead" }, nameEl, genreSeg, genreHint, h("span", { class: "grow" }), progress),
+    h("div", { class: "apphead" }, nameEl, genreSeg, genreHint, h("span", { class: "grow" }), progress,
+      h("button", { class: "btn small", type: "button", onclick: () => openAdvice(app) }, "💡 Conseils")),
     facts, infos,
     h("h4", {}, "Mots-clés notés pendant la période (toucher = une fois de plus)"), kwHolder,
     h("h4", {}, "Phrases proposées (toucher pour ajouter à l'appréciation)"), phraseBox,
@@ -230,9 +231,11 @@ export function openAppreciations(app, cls, start = null, { onClose = null } = {
 }
 
 // ---------------------------------------------------------------- l'éditeur de mots-clés et de phrases types
-const SECTIONS = [["mots", "Mots-clés"], ["resultats", "Résultats selon la note"], ["evolution", "Évolution depuis la période précédente"], ["conclusions", "Conclusion selon la note"]];
+const SECTIONS = [["mots", "Mots-clés"], ["resultats", "Résultats selon la note"], ["evolution", "Évolution depuis la période précédente"],
+  ["pistes", "Pistes de progrès (conseils concrets)"], ["conclusions", "Conclusion selon la note"]];
 const SUBTITLES = { mots: "Phrases proposées quand ce mot-clé a été noté pour l'élève :", resultats: "Phrases proposées pour une note dans cette tranche (ramenée sur 20) :",
-  evolution: "Phrases proposées selon l'évolution de la note :", conclusions: "Phrases de conclusion proposées pour une note dans cette tranche :" };
+  evolution: "Phrases proposées selon l'évolution de la note :",
+  pistes: "Pistes de progrès proposées quand la note est inférieure à 14/20 ou qu'un mot-clé négatif est noté (un conseil concret, applicable dès la période suivante) :", conclusions: "Phrases de conclusion proposées pour une note dans cette tranche :" };
 
 export function openBank(app, onClose = null) {
   let bank = A.bank(app.state.settings);
@@ -252,6 +255,7 @@ export function openBank(app, onClose = null) {
     if (cur && cur[0] === "aide") {  // aide à la saisie : une entrée par ligne (« abréviation = texte » pour les abréviations)
       const lines = phrases.value.split(/\r?\n/);
       if (cur[1] === "vocabulaire") bank.vocabulaire = lines.map(collapse).filter(Boolean);
+      else if (cur[1] === "conseils") bank.conseils = lines.map(collapse).filter(Boolean);
       else bank.abreviations = lines.map((l) => { const i = l.indexOf("="); return i < 0 ? null : { abr: l.slice(0, i).trim(), texte: collapse(l.slice(i + 1)) }; }).filter((a) => a && a.abr && a.texte);
       return;
     }
@@ -268,7 +272,7 @@ export function openBank(app, onClose = null) {
         onclick: () => { store(); select_(key, r.id); } }, chipLabel(r)));
     }
     tree.append(h("div", { class: "bsec" }, "Aide à la saisie"));
-    for (const [id, name] of [["vocabulaire", "Mots proposés pendant la frappe"], ["abreviations", "Abréviations"]]) {
+    for (const [id, name] of [["vocabulaire", "Mots proposés pendant la frappe"], ["abreviations", "Abréviations"], ["conseils", "Conseils de rédaction"]]) {
       tree.append(h("button", { class: "bitem" + (cur && cur[0] === "aide" && cur[1] === id ? " on" : ""), type: "button", dataset: { rid: `aide:${id}` }, onclick: () => { store(); select_("aide", id); } }, name));
     }
   }
@@ -277,8 +281,10 @@ export function openBank(app, onClose = null) {
     if (key === "aide") {
       for (const el of [title, emoji, tone, autoSel]) el.disabled = true;
       title.value = ""; emoji.value = ""; autoSel.value = "";
-      phrases.value = id === "vocabulaire" ? bank.vocabulaire.join("\n") : bank.abreviations.map((a) => `${a.abr} = ${a.texte}`).join("\n");
-      subtitle.textContent = id === "vocabulaire"
+      phrases.value = id === "vocabulaire" ? bank.vocabulaire.join("\n") : id === "conseils" ? bank.conseils.join("\n") : bank.abreviations.map((a) => `${a.abr} = ${a.texte}`).join("\n");
+      subtitle.textContent = id === "conseils"
+        ? "Conseils de rédaction affichés dans l'assistant (bouton « Conseils »), un par ligne. Synthèse de recommandations institutionnelles et académiques : modifiez, supprimez ou ajoutez les vôtres."
+        : id === "vocabulaire"
         ? "Mots et expressions proposés quand on tape leurs premières lettres dans l'appréciation (un par ligne). Les titres des mots-clés sont proposés aussi. Tab valide la première proposition."
         : "Abréviations remplacées dès qu'on tape une espace ou une ponctuation, une par ligne, sous la forme « tb = très bien ». Le texte peut contenir {prénom}, {il}, {sérieux|sérieuse}…";
       renderTree();
@@ -312,6 +318,18 @@ export function openBank(app, onClose = null) {
         const first = bank.mots[0] || bank.resultats[0], key = bank.mots[0] ? "mots" : "resultats";
         select_(key, first.id);
       }
+    } },
+    { label: "Suggérer des abréviations…", left: true, close: false, onClick: () => {
+      store();
+      const texts = app.state.classes.flatMap((c) => c.eleves.flatMap((s) => Object.values(s.comms).filter((x) => typeof x === "string" && x.trim())));
+      const names = app.state.classes.flatMap((c) => c.eleves.flatMap((s) => `${s.nom} ${s.prenom}`.replace(/-/g, " ").split(/\s+/).filter(Boolean)));
+      const found = A.suggestAbbreviations(texts, bank.abreviations, names);
+      if (!found.length) { alertDialog(`Aucune expression ne revient assez souvent : il en faut au moins ${A.SUGGEST_MIN_DOCS} commentaires (${texts.length} commentaire(s) enregistré(s)).`, "Suggestions d'abréviations"); return; }
+      openAbbrevSuggestions(found, (items) => {
+        select_("aide", "abreviations");
+        phrases.value = (phrases.value.trimEnd() ? phrases.value.trimEnd() + "\n" : "") + items.map(([a, t]) => `${a} = ${t}`).join("\n");
+        store();
+      });
     } },
     { label: "Rétablir les phrases par défaut", left: true, close: false, onClick: async () => {
       if (await confirmDialog("Remplacer tous les mots-clés et toutes les phrases par ceux du programme ?", { okLabel: "Rétablir", danger: true })) { bank = A.defaultBank(); select_("mots", bank.mots[0].id); }
@@ -367,4 +385,31 @@ export function openReview(app, cls) {
   ctl.el.querySelector(".body").classList.add("nopad");
   render();
   return ctl;
+}
+
+// ---------------------------------------------------------------- conseils de rédaction, suggestions d'abréviations
+/** Conseils de rédaction (liste modifiable dans « Phrases types et mots-clés… »). */
+export function openAdvice(app) {
+  const conseils = A.bank(app.state.settings).conseils;
+  return modal({ title: "Conseils de rédaction", body: [
+    conseils.length ? h("ul", { class: "advice" }, conseils.map((c) => h("li", {}, c))) : h("p", { class: "muted" }, "Aucun conseil enregistré. Vous pouvez en écrire dans « Phrases types et mots-clés… » → « Conseils de rédaction »."),
+    h("p", { class: "hint" }, "Synthèse établie d'après la page Éduscol « Collège : les bilans » (acquis, progrès, conseils pour progresser, vie scolaire), un guide académique de rédaction du bulletin (académie de Lyon) et des recommandations de praticiens : voir le README. Modifiable : « Phrases types et mots-clés… » → « Aide à la saisie » → « Conseils de rédaction ».")],
+  actions: [{ label: "Fermer", kind: "primary" }] });
+}
+
+/** Abréviations proposées d'après les commentaires enregistrés : on coche celles à garder (clé et texte modifiables) ; onAdd([[abréviation, texte], …]). */
+function openAbbrevSuggestions(found, onAdd) {
+  const rows = found.map((f) => ({ f, on: h("input", { type: "checkbox", checked: true, "aria-label": "Garder" }),
+    abr: h("input", { type: "text", value: f.abr, maxLength: 12, style: { width: "90px" }, "aria-label": "Abréviation" }),
+    texte: h("input", { type: "text", value: f.texte, maxLength: 120, "aria-label": "Texte" }) }));
+  modal({ title: "Suggestions d'abréviations", size: "wide", body: [
+    h("p", { class: "hint" }, `Mots et expressions qui reviennent dans vos commentaires enregistrés (${found.length} proposition(s), 25 au plus). Cochez celles à garder ; vous pouvez modifier l'abréviation et le texte. Elles sont ajoutées à la liste, que vous enregistrez ensuite.`),
+    h("div", { class: "abbrsugg" }, rows.map((r) => h("div", { class: "abbrrow" }, r.on, r.abr, h("span", {}, "="), r.texte, h("span", { class: "muted" }, `${r.f.docs} commentaires`))))],
+  actions: [
+    { label: "Tout cocher / décocher", left: true, close: false, onClick: () => { const on = !rows.every((r) => r.on.checked); rows.forEach((r) => { r.on.checked = on; }); } },
+    { label: "Annuler" },
+    { label: "Ajouter la sélection", kind: "primary", onClick: () => {
+      const items = rows.filter((r) => r.on.checked && r.abr.value.trim() && r.texte.value.trim()).map((r) => [r.abr.value.trim(), r.texte.value.trim()]);
+      if (items.length) onAdd(items);
+    } }] });
 }

@@ -37,10 +37,12 @@ test("compteurs, notes par niveaux, annuler / rétablir", async () => {
   await oublis.locator(".cbtn").last().tap();
   await rendered(page);
   assert.equal(await oublis.locator(".total").textContent(), "5");
-  // un clic sur « B » dans « Séance » : Noah n'avait aucune note -> B
-  await r.locator("td.ctr").nth(0).locator("button", { hasText: /^B$/ }).tap();
+  // colonne à niveaux : un menu déroulant (« Noter ▾ ») au lieu de cinq boutons ; choisir « B » dans « Séance » : Noah n'avait aucune note -> B
+  assert.equal(await r.locator("td.ctr").nth(0).locator("button", { hasText: /^[A-E]$/ }).count(), 0, "plus de boutons A à E");
+  const pick = async (name) => { await r.locator("td.ctr").nth(0).locator("button", { hasText: "Noter" }).tap(); await page.locator(".menu button", { hasText: new RegExp(`^${name}$`) }).tap(); };
+  await pick("B");
   assert.equal(await r.locator("td.ctr").nth(0).locator(".total").textContent(), "B");
-  await r.locator("td.ctr").nth(0).locator("button", { hasText: /^D$/ }).tap();
+  await pick("D");
   assert.equal(await r.locator("td.ctr").nth(0).locator(".total").textContent(), "C");  // (4+2)/2 = 3
   // annuler (↶) deux fois : retour à « non noté » puis à 4 oublis
   await page.click('button[aria-label="Annuler"]');
@@ -887,6 +889,80 @@ test("menu d'un titre de colonne : copier, maintenir au début, pictogramme, cac
   assert.equal((await heads()).some((t) => /Oubli/.test(t)), true);
   // 5. tout s'annule : l'état initial est retrouvé
   for (let k = 0; k < 8; k++) await page.evaluate(() => app.undoAction());
+  noErrors(page);
+  await page.context().close();
+});
+
+test("colonnes à niveaux : menu déroulant par défaut, un bouton par niveau si on le préfère", async () => {
+  const page = await env.page();
+  await createVault(page);
+  const cell = () => row(page, "HENRY").locator("td.ctr").nth(0);
+  const wide = await page.evaluate(() => document.querySelector("table.grid thead th:nth-child(8)").getBoundingClientRect().width);
+  assert.ok(wide < 190, "colonne condensée : " + wide);
+  assert.equal(await cell().locator("button", { hasText: "Noter" }).count(), 1);
+  // réglage « Un bouton par niveau » : retour aux boutons A à E, colonne plus large
+  await page.evaluate(() => app.setPrefs({ niveauxAffichage: "boutons" }));
+  await page.evaluate(() => app.requestRender());
+  assert.equal(await cell().locator("button", { hasText: /^[A-E]$/ }).count(), 5);
+  const large = await page.evaluate(() => document.querySelector("table.grid thead th:nth-child(8)").getBoundingClientRect().width);
+  assert.ok(large > wide + 60, `${large} > ${wide}`);
+  await cell().locator("button", { hasText: /^C$/ }).tap();
+  assert.equal(await cell().locator(".total").textContent(), "C");
+  // le réglage est proposé dans les préférences
+  await page.click('[aria-label="Menu"]');
+  await page.click(".menu >> text=Préférences…");
+  await page.locator(".settingrow", { hasText: "Colonnes à niveaux" }).locator("select").waitFor();
+  assert.equal(await page.locator(".settingrow", { hasText: "Colonnes à niveaux" }).locator("select").inputValue(), "boutons");
+  noErrors(page);
+  await page.context().close();
+});
+
+test("appréciations : accord corrigé, pistes de progrès, conseils modifiables et suggestions d'abréviations", async () => {
+  const page = await env.page();
+  await createVault(page);
+  // élève fille : « Elle est un élément moteur » (moteur qualifie « élément », toujours masculin)
+  await page.evaluate(() => {
+    const e = app.state.classes[0].eleves;
+    for (const s of e) s.comms["1"] = "Très bon travail, élève sérieuse et investie. Il faut apprendre régulièrement les leçons.";
+    e[0].events.push({ id: "k1", type: "mot:comportement", t: 1, v: 1, note: "", date: "2026-01-05T10:00:00Z" });
+    app.commit();
+  });
+  await page.click("text=✍ Appréciations");
+  await page.waitForSelector(".appname");
+  assert.ok((await page.locator(".phrase", { hasText: "élément moteur" }).count()) === 1);
+  assert.equal(await page.locator(".phrase", { hasText: "élément moteur" }).textContent(), "Elle est un élément moteur dans la classe.");
+  assert.equal(await page.locator(".phrase", { hasText: "motrice" }).count(), 0);
+  // HENRY (note manquante, 4 oublis) et BERNARD (11/20) : une piste de progrès concrète est proposée
+  await page.locator(".appstu", { hasText: "BERNARD" }).click();
+  assert.match(await page.locator(".sgt", { hasText: "Piste de progrès" }).textContent(), /Piste de progrès/);
+  assert.ok(await page.locator(".phrase", { hasText: "Relire la leçon le soir même" }).count() > 0);
+  // conseils de rédaction : liste modifiable
+  await page.locator(".btn", { hasText: "💡 Conseils" }).click();
+  assert.ok((await page.locator(".advice li").count()) >= 8);
+  assert.match(await page.locator(".advice").textContent(), /Parler du travail et des acquis, pas de la personne/);
+  await page.locator(".dialog:has(.advice) footer .btn").click();
+  await page.click("text=Phrases types et mots-clés…");
+  await page.click('.bitem[data-rid="aide:conseils"]');
+  await page.locator(".bankphrases").fill("Mon conseil à moi.\nUn autre.");
+  await page.click('.bitem[data-rid="pistes:pistes"]');
+  assert.match(await page.locator(".bankphrases").inputValue(), /Relire la leçon le soir même/);
+  // suggestions d'abréviations d'après les commentaires enregistrés (3 commentaires au moins)
+  await page.locator("footer .btn", { hasText: "Suggérer des abréviations…" }).click();
+  await page.waitForSelector(".abbrrow");
+  const rows = await page.locator(".abbrrow").count();
+  assert.ok(rows >= 1 && rows <= 25, "propositions : " + rows);
+  const first = page.locator(".abbrrow").first();
+  assert.match(await first.locator("input[type=text]").nth(1).inputValue(), /\S/);
+  await first.locator("input[type=text]").first().fill("zq");
+  await page.locator(".dialog:has(.abbrsugg) footer .btn.primary").click();
+  assert.match(await page.locator(".bankphrases").inputValue(), /^zq = /m);
+  await page.locator(".dialog:has(.bankview) footer .btn.primary").click();
+  const bank = await page.evaluate(() => app.state.settings.appreciation);
+  assert.deepEqual(bank.conseils, ["Mon conseil à moi.", "Un autre."]);
+  assert.ok(bank.abreviations.some((a) => a.abr === "zq"));
+  // les conseils modifiés s'affichent
+  await page.locator(".btn", { hasText: "💡 Conseils" }).click();
+  assert.equal(await page.locator(".advice li").count(), 2);
   noErrors(page);
   await page.context().close();
 });

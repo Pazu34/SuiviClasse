@@ -354,3 +354,8 @@ td.mots .mots { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap;
 .mchip.add { margin-left: auto; color: var(--muted); }
 .colguide { position: fixed; width: 3px; background: var(--accent); z-index: 85; pointer-events: none; border-radius: 2px; }
 table.grid thead th { cursor: grab; }
+.advice { margin: 6px 0; padding-left: 20px; } .advice li { margin: 6px 0; line-height: 1.4; }
+.abbrsugg { display: flex; flex-direction: column; gap: 6px; }
+.abbrrow { display: grid; grid-template-columns: 28px 100px 14px 1fr auto; gap: 8px; align-items: center; }
+.abbrrow input[type=checkbox] { width: 22px; height: 22px; min-height: 0; }
+@media (max-width: 760px) { .abbrrow { grid-template-columns: 28px 90px 1fr; } .abbrrow > span { display: none; } }

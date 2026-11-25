@@ -82,7 +82,7 @@ _KEYWORDS = [
     ("comportement", "Comportement", "🤝", "+", [
         "Comportement agréable et respectueux.",
         "{prénom} a une attitude positive en classe.",
-        "{Il} est un élément {moteur|motrice} dans la classe."]),
+        "{Il} est un élément moteur dans la classe."]),  # « moteur » qualifie « élément » (masculin), pas l'élève
 ]
 
 _RESULTS = [
@@ -94,6 +94,37 @@ _RESULTS = [
     ["Des résultats assez satisfaisants.", "Un ensemble correct : {prénom} a les moyens de faire mieux.", "Bon {période} dans l'ensemble."],
     ["De bons résultats.", "{prénom} obtient de bons résultats, c'est encourageant.", "Un bon {période}."],
     ["Excellents résultats.", "Très bon {période}, bravo.", "Des résultats remarquables."],
+]
+
+# Phrases corrigées dans une version précédente de la banque : si l'utilisateur a enregistré l'ancienne formulation, elle est remplacée.
+PHRASE_FIXES = {"{Il} est un élément {moteur|motrice} dans la classe.": "{Il} est un élément moteur dans la classe."}
+
+# Pistes de progrès : un conseil concret et applicable dès la période suivante (les bilans périodiques comportent « des conseils pour progresser »).
+_PISTES = [
+    "Relire la leçon le soir même et refaire quelques exercices permettrait de consolider les acquis.",
+    "Apprendre régulièrement les leçons, en petites séances, aiderait à mieux mémoriser.",
+    "Reprendre les évaluations corrigées et refaire les exercices ratés aiderait à combler les lacunes.",
+    "Poser des questions dès qu'un point n'est pas compris permettrait de lever les blocages.",
+    "Relire attentivement les consignes avant de commencer un exercice limiterait les erreurs.",
+    "Noter le travail à faire dans l'agenda et s'y tenir aiderait à travailler régulièrement.",
+    "Préparer son sac et son matériel la veille éviterait les oublis.",
+    "Prendre la parole plus souvent à l'oral permettrait de gagner en assurance.",
+    "Soigner la présentation (écriture, cahier) rendrait le travail plus lisible.",
+    "Un accompagnement (aide aux devoirs, tutorat, soutien) serait bénéfique pour progresser.",
+]
+
+# Conseils de rédaction affichés dans l'assistant (modifiables) : synthèse de recommandations institutionnelles et académiques, voir le README.
+_CONSEILS = [
+    "Trois temps : un constat précis (acquis, progrès), un point à travailler, puis une piste concrète pour la période suivante.",
+    "Parler du travail et des acquis, pas de la personne : « manque de régularité dans le travail personnel » plutôt que « élève paresseux ».",
+    "Éviter les formules vagues (« élève en difficulté », « peut mieux faire ») : dire où est la difficulté et ce qui peut aider.",
+    "Ne pas répéter la note ou la moyenne : le bulletin les affiche déjà. Apporter une information en plus.",
+    "Valoriser les efforts et les progrès, sans rien retirer à l'exigence.",
+    "Comportement et assiduité : décrire l'effet sur le travail (« les bavardages gênent la concentration ») plutôt que juger l'élève. Assiduité, ponctualité et participation peuvent figurer au bulletin.",
+    "Rester factuel : le bulletin est conservé et peut être lu par l'élève, sa famille et d'autres enseignants. Pas d'éléments de vie privée ou de santé, pas de comparaison avec d'autres élèves, pas de « don » ou de « manque de don ».",
+    "Ne pas généraliser une observation ponctuelle ; nuancer quand c'est utile.",
+    "Écrire pour être compris de l'élève et de sa famille : pas de jargon, des phrases courtes.",
+    "Respecter la longueur maximale (255 caractères dans PRONOTE par défaut) : l'essentiel d'abord.",
 ]
 
 _EVOLUTION = [
@@ -124,7 +155,7 @@ _VOCAB = ("très bien|assez bien|bon travail|très bon travail|travail sérieux|
           "comportement|comportement exemplaire|attitude|attitude positive|ponctualité|retards|absences|matériel|oublis de matériel|"
           "leçons|apprendre ses leçons|travail personnel|travail à la maison|révisions|réviser|persévérer|persévérance|ténacité|autonomie|"
           "autonome|curieux|curieuse|curiosité|dynamique|volontaire|discret|discrète|passif|passive|dispersé|dispersée|fatigué|fatiguée|"
-          "encouragements|félicitations|bravo|à poursuivre|à encourager|à surveiller|peut mieux faire|doit se ressaisir|doit progresser|"
+          "encouragements|félicitations|bravo|à poursuivre|à encourager|à surveiller|peut progresser|doit se ressaisir|doit progresser|"
           "doit s'investir|un sursaut est nécessaire|continuer ainsi|poursuivre les efforts|trimestre|semestre|élève|classe|cours").split("|")
 _ABBR = [("tb", "très bien"), ("ab", "assez bien"), ("bt", "bon travail"), ("tbt", "très bon travail"), ("rs", "résultats satisfaisants"),
          ("ri", "résultats insuffisants"), ("rf", "résultats fragiles"), ("pn", "{prénom}"), ("ens", "ensemble"), ("pb", "problème"),
@@ -142,6 +173,8 @@ def default_bank():
         "resultats": [{"id": f"r{n}", "titre": BAND_TITLES[n], "min": BAND_MINS[n], "phrases": list(_RESULTS[n])} for n in range(6)],
         "evolution": [{"id": i, "titre": t, "phrases": list(p)} for i, t, p in _EVOLUTION],
         "conclusions": [{"id": f"c{n}", "titre": BAND_TITLES[n], "min": BAND_MINS[n], "phrases": list(_CONCLUSIONS[n])} for n in range(6)],
+        "pistes": [{"id": "pistes", "titre": "Pistes de progrès", "phrases": list(_PISTES)}],
+        "conseils": list(_CONSEILS),
         "vocabulaire": list(_VOCAB),
         "abreviations": [{"abr": a, "texte": t} for a, t in _ABBR],
     }
@@ -155,7 +188,8 @@ def _phrases(raw):
     out = []
     for p in raw if isinstance(raw, list) else []:
         if isinstance(p, str) and p.strip():
-            out.append(" ".join(p.split()))
+            p = " ".join(p.split())
+            out.append(PHRASE_FIXES.get(p, p))
     return out
 
 
@@ -184,6 +218,12 @@ def sanitize_bank(raw):
         out[key] = [{**b, "phrases": _phrases(given[b["id"]].get("phrases")) if b["id"] in given else b["phrases"]} for b in base[key]]
     given = {x.get("id"): x for x in raw.get("evolution", []) if isinstance(x, dict)} if isinstance(raw.get("evolution"), list) else {}
     out["evolution"] = [{**b, "phrases": _phrases(given[b["id"]].get("phrases")) if b["id"] in given else b["phrases"]} for b in base["evolution"]]
+    given = {x.get("id"): x for x in raw.get("pistes", []) if isinstance(x, dict)} if isinstance(raw.get("pistes"), list) else {}
+    out["pistes"] = [{**b, "phrases": _phrases(given[b["id"]].get("phrases")) if b["id"] in given else b["phrases"]} for b in base["pistes"]]
+    if isinstance(raw.get("conseils"), list):  # conseils de rédaction : une liste de textes (vide si l'utilisateur l'a vidée)
+        out["conseils"] = [" ".join(c.split())[:400] for c in raw["conseils"] if isinstance(c, str) and c.strip()]
+    else:
+        out["conseils"] = list(base["conseils"])
     # aide à la saisie : mots proposés (sans doublon, casse et accents ignorés) et abréviations (clé en lettres et chiffres, unique)
     vocab, seen_v = [], set()
     for w in raw["vocabulaire"] if isinstance(raw.get("vocabulaire"), list) else base["vocabulaire"]:
@@ -299,6 +339,84 @@ def expand_abbreviation(before, abbrevs, prenom="", genre="", period_word="trime
                 texte = texte[0].upper() + texte[1:]
             return len(word), texte
     return None
+
+
+# ---------------------------------------------------------------- suggestions d'abréviations d'après les commentaires enregistrés
+SUGGEST_LIMIT = 25      # propositions au plus à chaque demande
+SUGGEST_MIN_DOCS = 3    # une expression doit figurer dans au moins autant de commentaires
+SUGGEST_MIN_LEN = 7     # et compter au moins autant de caractères (sinon l'abréviation n'économise rien)
+SUGGEST_MAX_WORDS = 4
+_STOP = frozenset("le la les un une des du de d l et ou à a au aux en est sont ont il elle ils elles ce cet cette ces se sa son ses que qui ne pas "
+                  "par pour sur dans avec sans mais donc or ni car y on nous vous je tu lui leur leurs ma mon mes ta ton tes si comme".split())
+
+
+def _clauses_words(text):
+    """Mots (minuscules) de chaque proposition d'un texte : les expressions ne traversent ni ponctuation ni parenthèse."""
+    for clause in re.split(r"[.!?…;:,()«»\"\n\r]+", text):
+        words = re.findall(r"[^\W_]+(?:['’\-][^\W_]+)*", clause.lower())
+        if words:
+            yield words
+
+
+def _abbreviation_for(text, taken):
+    """Abréviation proposée pour une expression : initiales des mots (« très bon travail » → « tbt »), ou, pour un mot seul, sa première lettre
+    suivie de ses premières consonnes (« participation » → « prt »). On allonge avec les lettres suivantes jusqu'à trouver une clé libre (jamais un mot
+    courant, jamais une abréviation déjà prise) ; None si on n'en trouve pas."""
+    letters = lambda w: re.sub(r"[^a-z0-9]", "", norm(w))
+    words = [letters(w) for w in text.split(" ") if letters(w)]
+    if not words:
+        return None
+    if len(words) >= 2:
+        base = "".join(w[0] for w in words)
+        spare = "".join(words)[len(words):]
+    else:
+        w = words[0]
+        cons = [c for c in w[1:] if c not in "aeiouy0123456789"]
+        base = w[0] + "".join(cons[:2])
+        spare = w[len(base):]
+    for k in range(len(spare) + 1):
+        key = base + spare[:k]
+        if 2 <= len(key) <= 6 and key not in taken:
+            return key
+    return None
+
+
+def suggest_abbreviations(texts, existing=(), exclude_words=(), limit=SUGGEST_LIMIT):
+    """Abréviations à proposer d'après les commentaires `texts` (liste de textes) : les mots et expressions de 1 à 4 mots qui reviennent dans le plus de
+    commentaires (au moins 3), sans article ni préposition au début ou à la fin, ni nom d'élève (`exclude_words`), pas déjà couverts par `existing`
+    (liste de {"abr", "texte"}). Classées par économie de frappe ; au plus `limit`. Retourne [{"abr", "texte", "docs"}]."""
+    stop_names = {norm(w) for w in exclude_words}
+    docs, corpus = {}, set()
+    for d, text in enumerate(texts):
+        for words in _clauses_words(text):
+            corpus.update(norm(w) for w in words)
+            for n in range(1, SUGGEST_MAX_WORDS + 1):
+                for i in range(len(words) - n + 1):
+                    docs.setdefault(" ".join(words[i:i + n]), set()).add(d)
+    covered = {norm(a["texte"]) for a in existing}
+    covered_text = [" " + c + " " for c in covered]
+    cands = []
+    for text, ds in docs.items():
+        ws = text.split(" ")
+        if len(ds) < SUGGEST_MIN_DOCS or len(text) < SUGGEST_MIN_LEN or ws[0] in _STOP or ws[-1] in _STOP:
+            continue
+        if any(norm(w) in stop_names for w in ws) or any(" " + norm(text) + " " in c for c in covered_text):  # déjà couverte par une abréviation
+            continue
+        cands.append((len(ds) * len(text), text, len(ds)))
+    cands.sort(key=lambda c: (-c[0], c[1]))
+    taken = {a["abr"] for a in existing} | _STOP | corpus
+    out = []
+    for score, text, n in cands:
+        if any(f" {text} " in f" {c['texte']} " and c["docs"] * 1.25 >= n for c in out):  # déjà dans une expression plus longue, presque aussi fréquente
+            continue
+        key = _abbreviation_for(text, taken)
+        if key is None:
+            continue
+        taken.add(key)
+        out.append({"abr": key, "texte": text, "docs": n})
+        if len(out) >= limit:
+            break
+    return out
 
 
 # ---------------------------------------------------------------- genre
@@ -444,6 +562,10 @@ def suggestions(settings, student, t, scale=20, values=None):
             if k not in known:
                 m = by_id[k]
                 out.append({"kind": "mot", "id": m["id"], "titre": m["titre"], "emoji": m["emoji"], "ton": m["ton"], "phrases": m["phrases"], "count": 0, "auto": True})
+    # piste de progrès : quand la note est inférieure à 14 sur 20 ou qu'un mot-clé négatif est noté (ou détecté)
+    negative = any(g["kind"] == "mot" and g["ton"] == "-" for g in out)
+    if (n is not None and n <= 3) or negative:
+        out.append({"kind": "piste", "id": "pistes", "titre": b["pistes"][0]["titre"], "phrases": b["pistes"][0]["phrases"], "count": 0})
     if n is not None:
         out.append({"kind": "conclusion", **{k: b["conclusions"][n][k] for k in ("id", "titre", "phrases")}, "count": 0})
     return out

@@ -109,6 +109,7 @@ class AppreciationDialog(Dialog):
         self.progress = ttk.Label(top, style="Muted.TLabel")
         self.progress.pack(side="left", padx=14)
         ttk.Button(top, text="Suivant ▶", command=lambda: self.go(1)).pack(side="right")
+        ttk.Button(top, text="💡 Conseils de rédaction", command=lambda: AdviceDialog(app)).pack(side="right", padx=(0, 10))
         ttk.Button(top, text="◀ Précédent", command=lambda: self.go(-1)).pack(side="right", padx=4)
 
         panes = ttk.PanedWindow(self, orient="horizontal")
@@ -260,14 +261,14 @@ class AppreciationDialog(Dialog):
         if not groups:
             tk.Label(self.inner, bg=P["bg"], fg=P["muted"], justify="left", wraplength=620, padx=6, pady=10,
                      text="Aucune suggestion : l'élève n'a pas de note pour cette période et aucun mot-clé noté. Ajoutez des mots-clés ci-dessus.").pack(anchor="w")
-        names = {"resultats": "Résultats", "evolution": "Évolution", "conclusion": "Conclusion"}
+        names = {"resultats": "Résultats", "evolution": "Évolution", "conclusion": "Conclusion", "piste": "Piste de progrès"}
         width = max(200, self.canvas.winfo_width() - 40)
         for g in groups:
             frame = tk.Frame(self.inner, bg=P["bg"])
             frame.pack(fill="x", pady=(6, 0))
             title = names.get(g["kind"], f"{g.get('emoji', '')} {g['titre']}".strip() + (f"  ×{g['count']}" if g["count"] > 1 else "")
                               + ("  (détecté automatiquement)" if g.get("auto") else ""))
-            if g["kind"] in names:
+            if g["kind"] in names and g["kind"] != "piste":
                 title += f" — {g['titre'].lower()}"
             tk.Label(frame, text=title, bg=P["bg"], fg=P["muted"], font=("TkDefaultFont", 9, "bold")).pack(anchor="w")
             if not g["phrases"]:
@@ -409,7 +410,8 @@ class BankDialog(Dialog):
         self.bank = copy.deepcopy(A.bank(app.state["settings"]))
         self.current = None
         self.buttons(("Enregistrer", self.save, "right"), ("Annuler", self.destroy, "right"), ("Ajouter un mot-clé", self.add_keyword, "left"),
-                     ("Supprimer ce mot-clé", self.delete_keyword, "left"), ("Rétablir les phrases par défaut", self.reset, "left"))
+                     ("Supprimer ce mot-clé", self.delete_keyword, "left"), ("Rétablir les phrases par défaut", self.reset, "left"),
+                     ("Suggérer des abréviations…", self.suggest, "left"))
         body = ttk.Frame(self, padding=10)
         body.pack(fill="both", expand=True)
         left = ttk.Frame(body)
@@ -453,7 +455,7 @@ class BankDialog(Dialog):
     def fill(self, select=None):
         self.tree.delete(*self.tree.get_children())
         for key, name in (("mots", "Mots-clés"), ("resultats", "Résultats selon la note"), ("evolution", "Évolution depuis la période précédente"),
-                          ("conclusions", "Conclusion selon la note")):
+                          ("pistes", "Pistes de progrès (conseils concrets)"), ("conclusions", "Conclusion selon la note")):
             self.tree.insert("", "end", iid=key, text=name, open=True)
             for r in self.bank[key]:
                 label = f"{r.get('emoji', '')} {r['titre']}".strip()
@@ -461,6 +463,7 @@ class BankDialog(Dialog):
         self.tree.insert("", "end", iid="aide", text="Aide à la saisie", open=True)
         self.tree.insert("aide", "end", iid="aide:vocabulaire", text="Mots proposés pendant la frappe")
         self.tree.insert("aide", "end", iid="aide:abreviations", text="Abréviations")
+        self.tree.insert("aide", "end", iid="aide:conseils", text="Conseils de rédaction")
         if select:
             self.tree.selection_set(select)
 
@@ -476,6 +479,9 @@ class BankDialog(Dialog):
             return
         if self.current == "aide:vocabulaire":
             self.bank["vocabulaire"] = [" ".join(x.split()) for x in self.phrases.get("1.0", "end-1c").splitlines() if x.strip()]
+            return
+        if self.current == "aide:conseils":
+            self.bank["conseils"] = [" ".join(x.split()) for x in self.phrases.get("1.0", "end-1c").splitlines() if x.strip()]
             return
         if self.current == "aide:abreviations":
             out = []
@@ -513,7 +519,11 @@ class BankDialog(Dialog):
             self.title_var.set("")
             self.emoji_var.set("")
             self.tone_box.set("")
-            if sel[0] == "aide:vocabulaire":
+            if sel[0] == "aide:conseils":
+                self.phrases.insert("1.0", "\n".join(self.bank["conseils"]))
+                self.subtitle.configure(text="Conseils de rédaction affichés dans l'assistant (bouton « Conseils de rédaction »), un par ligne. Synthèse de recommandations "
+                                             "institutionnelles et académiques : modifiez, supprimez ou ajoutez les vôtres.")
+            elif sel[0] == "aide:vocabulaire":
                 self.phrases.insert("1.0", "\n".join(self.bank["vocabulaire"]))
                 self.subtitle.configure(text="Mots et expressions proposés quand on tape leurs premières lettres dans l'appréciation (un par ligne). "
                                              "Les titres des mots-clés sont proposés aussi. Tab valide la première proposition.")
@@ -544,7 +554,29 @@ class BankDialog(Dialog):
         self.subtitle.configure(text="Phrases proposées quand ce mot-clé a été noté pour l'élève :" if is_kw else
                                 {"resultats": "Phrases proposées pour une note dans cette tranche (ramenée sur 20) :",
                                  "evolution": "Phrases proposées selon l'évolution de la note :",
+                                 "pistes": "Pistes de progrès proposées quand la note est inférieure à 14/20 ou qu'un mot-clé négatif est noté (un conseil concret, applicable dès la période suivante) :",
                                  "conclusions": "Phrases de conclusion proposées pour une note dans cette tranche :"}[key])
+
+    def suggest(self):
+        """Propose des abréviations d'après les expressions les plus courantes des commentaires déjà enregistrés (25 au plus)."""
+        self.store()
+        texts = [c for cls in self.app.state["classes"] for s in cls["eleves"] for c in s["comms"].values() if isinstance(c, str) and c.strip()]
+        names = [w for cls in self.app.state["classes"] for s in cls["eleves"] for w in (s["nom"] + " " + s["prenom"]).replace("-", " ").split()]
+        found = A.suggest_abbreviations(texts, self.bank["abreviations"], names)
+        if not found:
+            messagebox.showinfo("Suggestions d'abréviations", f"Aucune expression ne revient assez souvent : il en faut au moins {A.SUGGEST_MIN_DOCS} commentaires "
+                                f"({len(texts)} commentaire(s) enregistré(s)).", parent=self)
+            return
+        AbbrevSuggestDialog(self.app, self, found, self.add_abbreviations)
+
+    def add_abbreviations(self, items):
+        """Ajoute les abréviations retenues à la liste (rubrique « Abréviations » ; elles sont enregistrées avec « Enregistrer »)."""
+        self.tree.selection_set("aide:abreviations")
+        self.update_idletasks()
+        self.current = "aide:abreviations"
+        cur = self.phrases.get("1.0", "end-1c").rstrip("\n")
+        self.phrases.insert("end", ("\n" if cur else "") + "\n".join(f"{a} = {t}" for a, t in items))
+        self.store()
 
     def add_keyword(self):
         self.store()
@@ -680,3 +712,67 @@ class ReviewDialog(Dialog):
     def edit(self, sid):
         s = next(x for x in self.cls["eleves"] if x["id"] == sid)
         AppreciationDialog(self.app, self.cls, s, on_close=self.refresh)
+
+
+class AdviceDialog(Dialog):
+    """Conseils de rédaction d'une appréciation (liste modifiable dans « Phrases types et mots-clés… »)."""
+
+    def __init__(self, app):
+        super().__init__(app, "Conseils de rédaction", modal=False, size="720x520")
+        self.buttons(("Fermer", self.destroy, "right"))
+        body = ttk.Frame(self, padding=14)
+        body.pack(fill="both", expand=True)
+        conseils = A.bank(app.state["settings"])["conseils"]
+        if not conseils:
+            ttk.Label(body, style="Muted.TLabel", wraplength=640, text="Aucun conseil enregistré. Vous pouvez en écrire dans « Phrases types et mots-clés… » → « Conseils de rédaction ».").pack(anchor="w")
+        for c in conseils:
+            row = ttk.Frame(body)
+            row.pack(fill="x", pady=3)
+            ttk.Label(row, text="•", width=2).pack(side="left", anchor="n")
+            ttk.Label(row, text=c, wraplength=640, justify="left").pack(side="left", fill="x", expand=True)
+        ttk.Label(body, style="Muted.TLabel", wraplength=640, justify="left", text=(
+            "Synthèse établie d'après la page Éduscol « Collège : les bilans » (acquis, progrès, conseils pour progresser, vie scolaire), un guide académique "
+            "de rédaction du bulletin (académie de Lyon) et des recommandations de praticiens : voir le README. Modifiable : « Phrases types et mots-clés… » → "
+            "« Aide à la saisie » → « Conseils de rédaction ».")).pack(anchor="w", pady=(12, 0))
+
+
+class AbbrevSuggestDialog(Dialog):
+    """Abréviations proposées d'après les commentaires enregistrés : on coche celles à garder (et on peut en modifier la clé ou le texte)."""
+
+    def __init__(self, app, parent, found, on_add):
+        super().__init__(app, "Suggestions d'abréviations", modal=True, size="860x640", parent=parent)
+        self.on_add, self.rows = on_add, []
+        self.buttons(("Ajouter la sélection", self.add, "right"), ("Annuler", self.destroy, "right"), ("Tout cocher / décocher", self.toggle_all, "left"))
+        ttk.Label(self, wraplength=800, justify="left", padding=(12, 10, 12, 4), text=(
+            f"Mots et expressions qui reviennent dans vos commentaires enregistrés ({len(found)} proposition(s), 25 au plus). Cochez celles à garder ; "
+            "vous pouvez modifier l'abréviation et le texte. Elles sont ajoutées à la liste, que vous enregistrez ensuite.")).pack(anchor="w")
+        box = ttk.Frame(self, padding=(12, 0))
+        box.pack(fill="both", expand=True)
+        canvas = tk.Canvas(box, highlightthickness=0, bg=P["bg"])
+        vsb = ttk.Scrollbar(box, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="left", fill="y")
+        inner = ttk.Frame(canvas)
+        canvas.create_window(0, 0, window=inner, anchor="nw")
+        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        for n, f in enumerate(found):
+            var, abr, texte = tk.BooleanVar(value=True), tk.StringVar(value=f["abr"]), tk.StringVar(value=f["texte"])
+            ttk.Checkbutton(inner, variable=var).grid(row=n, column=0, padx=(0, 4), pady=2)
+            ttk.Entry(inner, textvariable=abr, width=8).grid(row=n, column=1, padx=2)
+            ttk.Label(inner, text="=").grid(row=n, column=2)
+            ttk.Entry(inner, textvariable=texte, width=52).grid(row=n, column=3, padx=2)
+            ttk.Label(inner, text=f"{f['docs']} commentaires", style="Muted.TLabel").grid(row=n, column=4, padx=8)
+            self.rows.append((var, abr, texte))
+
+    def toggle_all(self):
+        on = not all(v.get() for v, _, _ in self.rows)
+        for v, _, _ in self.rows:
+            v.set(on)
+
+    def add(self):
+        items = [(a.get().strip(), t.get().strip()) for v, a, t in self.rows if v.get() and a.get().strip() and t.get().strip()]
+        cb = self.on_add
+        self.destroy()
+        if items:
+            cb(items)

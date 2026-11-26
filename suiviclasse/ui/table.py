@@ -225,7 +225,7 @@ class ClassTable(ttk.Frame):
         self.guide = tk.Frame(self, width=2, bg=P["accent"])  # repère affiché pendant le redimensionnement d'une colonne
         # Deux zones côte à côte : les colonnes figées (à gauche, ne défilent pas horizontalement) et les autres (à droite).
         # Le défilement vertical est commun ; seules les colonnes de droite défilent vers la gauche ou la droite.
-        self.nfix, self.fix_w, self.head_extra = 0, 0, 0
+        self.nfix, self.fix_w, self.head_extra, self._region_h = 0, 0, 0, 0
         self._tips = {}
         self.hdrL = tk.Canvas(self, height=self.row_h, width=1, highlightthickness=0, bg=P["surface2"])
         self.bodyL = tk.Canvas(self, width=1, highlightthickness=0, bg=P["surface"])
@@ -249,9 +249,9 @@ class ClassTable(ttk.Frame):
             canvas.create_window(0, 0, window=frame, anchor="nw")
         self.bf.bind("<Configure>", lambda e: self._set_regions())
         self.bfL.bind("<Configure>", lambda e: self._set_regions())
-        for canvas in (self.body, self.bodyL):
-            canvas.bind("<Enter>", lambda e: self._bind_wheel(True))
-            canvas.bind("<Leave>", lambda e: self._bind_wheel(False))
+        # la molette est captée dès que le pointeur est n'importe où dans le tableau (colonnes figées, autres colonnes, cases…)
+        self.bind("<Enter>", lambda e: self._pointer(e, True))
+        self.bind("<Leave>", lambda e: self._pointer(e, False))
         self._resize_job = None
         self.bind("<Configure>", self._on_resize)
         self.build()
@@ -453,17 +453,27 @@ class ClassTable(ttk.Frame):
             self._yview("moveto", max(0.0, first - (top - y0 + 4) / total))
 
     def _yview(self, *args):
+        """Défilement vertical : les deux volets (colonnes figées et autres) se déplacent toujours ensemble, de la même hauteur."""
         self.body.yview(*args)
-        self.bodyL.yview(*args)
+        self._sync_y()
 
     def _yset(self, lo, hi):
         self.vsb.set(lo, hi)
-        self.bodyL.yview_moveto(lo)
+        self._sync_y()
+
+    def _sync_y(self):
+        """Aligne verticalement le volet des colonnes figées sur l'autre, en pixels (et non en fraction) : les lignes ne se décalent jamais."""
+        h = self._region_h
+        if h > 0:
+            top = self.body.canvasy(0)
+            self.bodyL.yview_moveto(top / h)
 
     def _set_regions(self):
-        h = self.bf.winfo_reqheight()
+        # même hauteur de zone défilante pour les deux volets, quel que soit l'ordre dans lequel leurs mises en page se terminent
+        self._region_h = h = max(self.bf.winfo_reqheight(), self.bfL.winfo_reqheight() if self.nfix else 0)
         self.body.configure(scrollregion=(0, 0, self.total_w - self.fix_w + self.head_extra, h))
-        self.bodyL.configure(scrollregion=(0, 0, self.fix_w, self.bfL.winfo_reqheight()), width=max(1, self.fix_w))
+        self.bodyL.configure(scrollregion=(0, 0, self.fix_w, h), width=max(1, self.fix_w))
+        self._sync_y()
 
     # ---------- colonnes figées ----------
     def frozen_count(self):
@@ -499,10 +509,19 @@ class ClassTable(ttk.Frame):
     def bparent(self, i):
         return self.bfL if i < self.nfix else self.bf
 
-    def _bind_wheel(self, on):
+    def _pointer(self, e, entering):
+        """Active la molette quand le pointeur entre dans le tableau, la désactive quand il en sort réellement
+        (passer sur une case enfant génère aussi un « Leave » sur le tableau : on l'ignore)."""
+        if not entering:
+            try:
+                under = self.winfo_containing(e.x_root, e.y_root)
+            except (KeyError, tk.TclError):
+                under = None
+            if under is not None and str(under).startswith(str(self)):
+                return
         root = self.winfo_toplevel()
         for ev in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
-            if on:
+            if entering:
                 root.bind_all(ev, self._wheel)
             else:
                 root.unbind_all(ev)
@@ -510,6 +529,7 @@ class ClassTable(ttk.Frame):
     def _wheel(self, e):
         delta = -1 if (e.num == 4 or e.delta > 0) else 1
         self.body.yview_scroll(delta * 2, "units")
+        self._sync_y()
 
     # ---------- construction ----------
     def build(self):
@@ -559,7 +579,9 @@ class ClassTable(ttk.Frame):
                 self.footer_labels[col.key] = lab
         self.refresh_footer()
         self.update_idletasks()
+        self._set_regions()
         self.body.yview_moveto(y)
+        self._sync_y()
 
     # ---------- redimensionnement des colonnes ----------
     def _framed_head(self, pre, t):

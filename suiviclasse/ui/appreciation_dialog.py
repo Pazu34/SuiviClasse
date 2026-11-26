@@ -6,7 +6,7 @@ from tkinter import messagebox, ttk
 
 from .. import appreciation as A
 from .. import columns, exchange
-from .dialogs import Dialog, student_summary
+from .dialogs import Dialog, student_remarks, student_summary
 from .table import Tooltip
 from .theme import P
 
@@ -142,6 +142,8 @@ class AppreciationDialog(Dialog):
         self.facts.pack(anchor="w", pady=(3, 0))
         self.infos = ttk.Label(right, foreground=P["bad_text"], wraplength=720, justify="left")
         self.infos.pack(anchor="w")
+        self.remarks = ttk.Label(right, wraplength=720, justify="left")  # colonnes de texte libre (« Observation »…)
+        self.remarks.pack(anchor="w", pady=(2, 0))
         ttk.Label(right, text="Mots-clés notés pendant la période (cliquer = une fois de plus)", font=("TkDefaultFont", 9, "bold")).pack(anchor="w", pady=(8, 0))
         self.kwbar = KeywordBar(right, app, self.students[self.index] if self.students else {"events": []}, on_change=self.refresh_suggestions, auto=True)
         self.kwbar.pack(fill="x")
@@ -229,6 +231,7 @@ class AppreciationDialog(Dialog):
         self.facts.configure(text=f"Notes (sur {exchange.fmt_num(self.scale)}) : {notes}{trend}" + (f"\n{summary}" if summary else ""))
         infos = " · ".join(x.strip() for x in s["infos"].splitlines() if x.strip())
         self.infos.configure(text=f"⚠ {infos}" if infos else "")
+        self.remarks.configure(text="\n".join(f"👁 {titre} : {text}" for titre, text in student_remarks(self.app, s, t)))
         self.kwbar.set_student(s)
         self.text.delete("1.0", "end")
         self.text.insert("1.0", s["comms"].get(str(t), ""))

@@ -91,6 +91,17 @@ def student_summary(app, s, k):
     return " · ".join(parts)
 
 
+def student_remarks(app, s, k):
+    """Contenu des colonnes de texte libre (« Observation »…) pour la période k : liste de (titre, texte), les colonnes vides sont omises."""
+    out = []
+    for c in columns.customs(app.state["settings"]):
+        if c["visible"] and c["type"] == "texte":
+            text = " ".join(str(model.extra_value(s, c, k) or "").split())
+            if text:
+                out.append((c["titre"], text))
+    return out
+
+
 class StudentWindow(Dialog):
     def __init__(self, app, cls, student):
         app.close_student_window()

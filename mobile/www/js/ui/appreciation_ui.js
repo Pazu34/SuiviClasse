@@ -4,6 +4,7 @@
 import * as A from "../core/appreciation.js";
 import * as C from "../core/columns.js";
 import { noteText } from "../core/exchange.js";
+import * as M from "../core/model.js";
 import { fmtNum } from "../core/util.js";
 import { alertDialog, confirmDialog, h, menu, modal, promptDialog, select } from "./dom.js";
 import { statsText } from "./student.js";
@@ -77,6 +78,7 @@ export function openAppreciations(app, cls, start = null, { onClose = null } = {
   const genreHint = h("span", { class: "muted apphint" });
   const facts = h("div", { class: "appfacts muted" });
   const infos = h("div", { class: "appinfos" });
+  const remarks = h("div", { class: "appremarks" }); // colonnes de texte libre (« Observation »…)
   const kwHolder = h("div", {});
   const phraseBox = h("div", { class: "appsugg" });
   const text = h("textarea", { rows: 5, "aria-label": "Appréciation", class: "apptext" });
@@ -151,6 +153,9 @@ export function openAppreciations(app, cls, start = null, { onClose = null } = {
     facts.replaceChildren(`Notes (sur ${fmtNum(scale)}) : ${notes}${trend}`, summary ? h("div", {}, summary) : null);
     const inf = s.infos.split(/\r?\n/).map((x) => x.trim()).filter(Boolean).join(" · ");
     infos.textContent = inf ? `⚠ ${inf}` : "";
+    remarks.replaceChildren(...C.customs(app.state.settings).filter((c) => c.visible && c.type === "texte")
+      .map((c) => [c.titre, collapse(String(M.extraValue(s, c, t) || ""))]).filter(([, v]) => v)
+      .map(([titre, v]) => h("div", {}, `👁 ${titre} : ${v}`)));
     kwHolder.replaceChildren(keywordBar(app, s, renderSuggestions, { auto: true }));
     text.value = s.comms[k] || "";
     updateStrip();
@@ -210,7 +215,7 @@ export function openAppreciations(app, cls, start = null, { onClose = null } = {
   const main = h("div", { class: "appmain" },
     h("div", { class: "apphead" }, nameEl, genreSeg, genreHint, h("span", { class: "grow" }), progress,
       h("button", { class: "btn small", type: "button", onclick: () => openAdvice(app) }, "💡 Conseils")),
-    facts, infos,
+    facts, infos, remarks,
     h("h4", {}, "Mots-clés notés pendant la période (toucher = une fois de plus)"), kwHolder,
     h("h4", {}, "Phrases proposées (toucher pour ajouter à l'appréciation)"), phraseBox,
     h("div", { class: "approw" }, h("h4", { style: { margin: 0 } }, "Appréciation"), h("span", { class: "grow" }), option("appPredictif", "Prédiction (Tab)"),

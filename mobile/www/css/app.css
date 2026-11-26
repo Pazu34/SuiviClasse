@@ -309,6 +309,7 @@ td.xcheck.done { background: var(--ok) !important; }
 .apphead h3 { margin: 0; font-size: 1.25em; }
 .appfacts { margin: 4px 0 0; font-size: .92em; }
 .appinfos { color: var(--bad-text); font-size: .92em; }
+.appremarks { font-size: .92em; margin-top: 2px; }
 .sgrp { margin: 8px 0 2px; }
 .sgt { font-size: .82em; font-weight: 700; color: var(--muted); margin-bottom: 3px; }
 .phrase { display: block; width: 100%; text-align: left; margin: 3px 0; padding: 9px 12px; min-height: 44px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); line-height: 1.3; }

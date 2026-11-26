@@ -598,11 +598,18 @@ test("assistant d'appréciation : mots-clés, phrases types, genre, rédaction �
   assert.deepEqual(await kws("HENRY"), ["mot:retards"]);
   await page.click('.seg button:has-text("Tableau")');
   await page.waitForSelector("table.grid");
+  // une colonne de texte libre « Observation » : son contenu s'affiche dans l'assistant
+  await page.evaluate(() => {
+    app.state.settings.colonnes = [{ id: "c_obs", titre: "Observation", emoji: "👁", type: "texte", visible: true }];
+    const s = app.state.classes[0].eleves.find((x) => x.nom === "ANDRÉ");
+    s.extra = { c_obs: { 1: "Se concentre mieux  depuis la rentrée." } };
+  });
   // 3. l'assistant
   await page.click("text=✍ Appréciations");
   await page.waitForSelector(".apprview .appstu");
   assert.equal(await page.locator(".appstu").count(), 8);
   assert.match(await page.locator(".appname").textContent(), /ANDRÉ Léa/);
+  assert.match(await page.locator(".appremarks").textContent(), /Observation : Se concentre mieux depuis la rentrée\./);
   assert.match(await page.locator(".appfacts").textContent(), /T1 : 14,5/);
   assert.equal(await page.locator(".kwchip:not(.auto)").count(), 2);  // les pastilles « auto » sont à part
   const groups = await page.locator(".sgt").allTextContents();
